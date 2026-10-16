@@ -1,12 +1,11 @@
 # 公网 SSH 近远端
 
-主分支维护当前 `SSH_RELAY_CONNECT` 方案和工作区目录治理 skill。AI 近端通过公网中继连接 Linux 或 Windows 远端，直接使用 SSH；不依赖 MCP SSH Manager 或 Cloudflare。
+主分支仅维护当前 `SSH_RELAY_CONNECT` 方案。AI 近端通过公网中继连接 Linux 或 Windows 远端，直接使用 SSH；不依赖 MCP SSH Manager 或 Cloudflare。
 
 | 路径 | 用途 |
 |---|---|
 | `.agents/skills/connect-linux-public-ssh/` | Linux 连接 skill、Python 导入程序和近端 `near.cjs` |
 | `.agents/skills/connect-win10-public-ssh/` | Windows 连接 skill、Python 导入程序和近端 `near.cjs` |
-| `.agents/skills/xxm-workspace-governance/` | 项目目录治理 skill；跟随目标电脑上已确认的项目根目录，适用于换电脑或盘符后的工作区 |
 | `remote/linux/`、`remote/win10/` | 从当前发布包原样展开的远端 JavaScript、启动脚本、许可和验证记录 |
 | `downloads/` | 含 Node 运行时的完整远端包、可导入的 skill 包、Linux 桌面入口及 SHA-256 |
 | `scripts/verify-release.py` | 校验发布包、源码副本和 skill 包的一致性 |
@@ -16,8 +15,6 @@
 1. 从 `downloads/` 下载对应远端包并完整解压。Linux x64 运行 `bash start.sh`；Windows x64 双击 `START.cmd`。运行包已含 Node。
 2. 将远端打印的完整连接块交给可信 AI；AI 按对应 `.agents/skills/` 中的 `SKILL.md` 连接。近端需要 Python 3.10+、Node.js 22+ 和 OpenSSH。
 3. 核验主机指纹和实际远端身份后执行任务。连接期间保持远端窗口运行。
-
-目录治理规则直接读取 `.agents/skills/xxm-workspace-governance/SKILL.md`。它保留历史 skill 名称，但不再把 `D:\jfj\xxm` 固定为目标目录；根据目标电脑当前已确认的项目根目录组织项目，每个新项目独立占用一个直接子目录。该技能独立于 SSH 连接包。
 
 运行后生成的 `data/` 含凭据，不提交 Git。连接块、私钥、日志和导入状态均不属于源码。
 
