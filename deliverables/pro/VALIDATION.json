@@ -1,0 +1,239 @@
+{
+  "applicationVersion": "2.0.0",
+  "branch": "recovery/current-public-relay-pro",
+  "passed": false,
+  "deliveryRequestedBeforeFinalHour": true,
+  "status": "User explicitly requested immediate complete source/runtime upload and local project-manager registration; final-source hour is incomplete at this snapshot.",
+  "recordedAtUtc": "2026-10-16T23:51:50.165411+00:00",
+  "runtime": {
+    "electron": "44.8.0",
+    "builtInNode": "24.22.0",
+    "requiresSystemNode": false
+  },
+  "oneHour": {
+    "passed": false,
+    "completed": false,
+    "seconds": 1690,
+    "startedAtUtc": "2026-10-16T23:23:07.964350+00:00",
+    "progress": {
+      "seconds": 1690,
+      "ssh": 35,
+      "sftp": 12,
+      "mcp": 51,
+      "rawClientsRunning": false,
+      "long": {
+        "active": null,
+        "idle": null
+      },
+      "failures": 0
+    }
+  },
+  "historicalBaselineHour": {
+    "passed": true,
+    "seconds": 3631.4546540849988,
+    "sameAsFinalSources": false,
+    "note": "Earlier source version; this is not acceptance of the final source version."
+  },
+  "publicChecks": {
+    "rawSdkConnections": 32,
+    "allRawSdkPassed": true,
+    "mcpIntegrationCalls": 54,
+    "mcpToolNames": 37,
+    "mcpPrompts": 5
+  },
+  "automaticRecovery": [
+    {
+      "name": "public_pairing_and_pinned_identity",
+      "passed": true
+    },
+    {
+      "name": "mcp_37_tools_5_prompts_and_real_command",
+      "passed": true
+    },
+    {
+      "name": "network_drop_auto_recovers_without_command_replay",
+      "passed": true,
+      "seconds": 12.027
+    },
+    {
+      "name": "mcp_pool_reconnected_without_execute_replay",
+      "passed": true
+    },
+    {
+      "name": "near_worker_crash_auto_recovers",
+      "passed": true,
+      "seconds": 11.525,
+      "mcpAutomaticallyRecovered": true
+    },
+    {
+      "name": "near_agent_restart_remembers_target_and_key",
+      "passed": true,
+      "seconds": 15.538,
+      "mcpAutomaticallyRecovered": true
+    },
+    {
+      "name": "far_agent_restart_preserves_ssh_identity",
+      "passed": true,
+      "seconds": 14.528,
+      "mcpAutomaticallyRecovered": true
+    },
+    {
+      "name": "far_network_drop_auto_recovers",
+      "passed": true,
+      "seconds": 11.029,
+      "mcpAutomaticallyRecovered": true
+    },
+    {
+      "name": "wrong_pair_code_cannot_authorize_a_device",
+      "passed": true
+    },
+    {
+      "name": "revoked_authorization_is_not_silently_repaired",
+      "passed": true
+    },
+    {
+      "name": "explicit_repair_after_revocation",
+      "passed": true
+    }
+  ],
+  "desktop": {
+    "title": "SSH Relay Pro",
+    "ready": true,
+    "buttons": 13,
+    "rememberedDevices": 1,
+    "pairedSshVerified": true,
+    "copyAndCancelVerified": true,
+    "closeKeepsBackground": true,
+    "loginStartupRemembered": true,
+    "osBootRestartTested": false,
+    "trayObjectCreated": true,
+    "actualDesktopTrayHostTested": false
+  },
+  "nativeWindows": {
+    "passed": true,
+    "scope": "Native Windows computer reached through independently paired public-relay protocol 2; private source and pinned official runtime installed in a separate app directory.",
+    "node": "24.22.0",
+    "electron": "44.8.0",
+    "applicationSourceFilesVerified": 43,
+    "projectFilesInitiallyVerified": 101,
+    "productionPackagesIntegrityVerified": 145,
+    "mcp": {
+      "passed": true,
+      "checks": [
+        {
+          "name": "mcp_discovery",
+          "passed": true,
+          "tools": 37,
+          "prompts": 5
+        },
+        {
+          "name": "ssh_execute",
+          "passed": true
+        },
+        {
+          "name": "ssh_health_check",
+          "passed": true
+        },
+        {
+          "name": "ssh_monitor",
+          "passed": true
+        }
+      ]
+    },
+    "bulkRoundtrip": {
+      "passed": true,
+      "bytes": 1048576,
+      "seconds": 72.484,
+      "sha256": "52d7ed42434689c877742b4ed90e5c50159874287ca71bd92b66f3ee2b5dfb03",
+      "nativeWindows": true,
+      "relayProtocol": 2
+    },
+    "gui": {
+      "nativeWindowsGuiRendered": true,
+      "bothAgentsSurviveGuiExit": true,
+      "nearAgentPidUnchanged": true,
+      "farAgentPidUnchanged": true,
+      "pairedControllers": 1,
+      "osStartupChanged": false,
+      "physicalTrayInteractionTested": false,
+      "osBootRestartTested": false
+    },
+    "guiScreenshotReviewed": true,
+    "automaticAgentRecovery": {
+      "passed": true,
+      "seconds": 24.788618193997536,
+      "nativeWindowsAgentCrashRecovered": true,
+      "newAgentPidVerified": true,
+      "newPairingRequired": false
+    },
+    "downloadZipSetupDoubleClickTested": false,
+    "privacy": "No computer name, OS account, credential or raw runtime log included.",
+    "installerPolicyCheck": {
+      "osStartupChanged": false,
+      "policy": "Restricted",
+      "encodedInstallerExecuted": true,
+      "passed": true,
+      "uacRegistrationActuallyPerformed": false,
+      "initialFileInvocationBlocked": true
+    },
+    "standardProfileMigration": {
+      "passed": true,
+      "pairingPreserved": true,
+      "deviceIdentityPreserved": true,
+      "osStartupChanged": false
+    }
+  },
+  "sourceHashes": {
+    "src/diagnostics.cjs": "bd5a5982e0be6afd62c6628f673e7ed72a63317feaddd77019485a7d12bb63a0",
+    "src/forwarding.cjs": "5b005587d41f37de1fe961ab6bfcd2bd1d13cf5c9edeeb36dca98530c7f6d5b6",
+    "src/mcp/catalog.js": "5f119ed2a5627e18906d331b09ff668104981c9ab853c86706d73f929b9bf92d",
+    "src/mcp/command-aliases.js": "e10985f2f52783f90fb28712561697755804676c3c16d5f25d86cc5088566d8e",
+    "src/mcp/config.js": "b4f733b0d0de0306c44d4b28efe5fabf801e8366a001ff61ee95d6f25be634d7",
+    "src/mcp/files.js": "c47042c2243307198909043ff9155cf91cbdf85fc5dad0996531189be5c1e8e8",
+    "src/mcp/handlers.js": "0131d546bf53ce0c7059b9f3d140385e75781ba6e9bef25b504a05fec63f88f8",
+    "src/mcp/hooks.js": "2d9ae314e3d01430ffa9a5bd8a9d60e3f6786c766613cf3197d09ca0c46ea36a",
+    "src/mcp/jobs/alerts.cjs": "e5e74570791d855d3cd3ed051802610d2350367a9f6c2b0feeb236dd2e42b744",
+    "src/mcp/jobs/backup.cjs": "434c274201c85f8287048816ff7f09129c3f06e78fdddc75b027792731ba0a2c",
+    "src/mcp/jobs/database.cjs": "0ef10009d2424adb5f50634c6fb368a2b7165b9c752e5938f423328377a24b4a",
+    "src/mcp/jobs/health.cjs": "ebb3920b88ba847fb45275fd433c0f64aec37d9bf41376801ee9f57f617ff017",
+    "src/mcp/jobs/schedule.cjs": "8c4721d25f952e3812307ee831987ca6c9d321bcc14e06d65fddf6ce05596730",
+    "src/mcp/jobs/tail.cjs": "c3fbd45b0ce56a242eb28f4208ee12c46fa11b497f4a8062f5b02e3bc366e6a3",
+    "src/mcp/jobs.js": "152bde666a1df5a4d4c4d1ddacfca9a655059dac973acef7c8792bea70e34a06",
+    "src/mcp/logger.js": "d3acb1c40fc6cc45424a8376e9615fa19318d5b351adc15ad69688eb358ec346",
+    "src/mcp/policy.js": "f3cdfb37eda3fdc5a1b8f8544d7a2b94bbeceda9149df6edc29d4ce79e19a56f",
+    "src/mcp/profile-loader.js": "10004c0428705737fbacf3cd9bc5ac734bb6ba451c9b74b2e42a27ce2d53309a",
+    "src/mcp/prompts.js": "1a644efa7311da8b34f94052e9f126ed60841f8c8b45812e707932abbb7d5ecb",
+    "src/mcp/server-aliases.js": "374d7de578dc943f0d709794c60edfa4cbb092b8ae52fce5d235942632c74b02",
+    "src/mcp/server-groups.js": "8e378c95fa63f9ff64f4ed5d25c130c8f49bacc7eb2b26974b6fed8eb5024dda",
+    "src/mcp/server.js": "61d6b81f8f74ef560d9ad8fa15a6df4cc55e9b47d15d91384a0cf0251f983768",
+    "src/mcp/sessions.js": "55b298f624daee8a9ceb3d1c91b7f76b64ff7557e4bfb098c06ab911c5b2d9f2",
+    "src/mcp/shell-quote.js": "cdf7b6e360c2d2747bc1b0412e590b77446efcb79197300895ad0c230b23b4f9",
+    "src/mcp/state.js": "4903b63c02bf089b8ff1fdce4b4273af61e0e29eed40d1280cce293b5e1ef2df",
+    "src/mcp/tool-registry.js": "3f6a96d876f9e705ce20b0023cb10a95de7413b20b273c5d2a5ae7245ad9581a",
+    "src/mcp/transport.js": "d50b09740149fbe54db71da8186430432c42d89db9224df7bc129ce6704bde03",
+    "src/mcp/tunnels.js": "a6ac9af958aee50d7bbd6a50f4354776c68970ec4e4a7c0d5858ab35b3356b4e",
+    "src/mcp.cjs": "de22349937a6065338f48562624e625c7dc530e7a17fe6fce5d2f265f72be8f3",
+    "src/near.cjs": "4677589dc6010eaf3767374e95c09d3500f6cc39a198b2f044316ea84bd5009a",
+    "src/permissions.cjs": "83d7ebb74c988d9f2130ed9f8e3cfafaa6e3c43c36a94f7f379fecce81cc56e5",
+    "src/pro/agent.cjs": "411314428e358f6bf26dd4a233007487daa5586b5feb93e910b848b545e50802",
+    "src/pro/autostart.cjs": "9e4afcba9c8294aa4f10c16d3f8d4634ce7bf7a2189098a1a5118041965873d9",
+    "src/pro/cli.cjs": "4e82e0e492d9ea894c657383d3e3c6016d74ca3997d57e5ee6c862a4625ce57e",
+    "src/pro/guardian.cjs": "5cc493e6945e5778e4a9a274a7c0d9f4d444abf0d25ea31bc7ea4c3d7e769b8c",
+    "src/pro/keys.cjs": "3d82aa2a409fe577a380b93d74438a69eeaffc6aca73fd20c9d64b50bc599d2a",
+    "src/pro/pairing.cjs": "2764c4d146b2baeb15ca6c5fa053e59d9c1e4a07768252aa01f76ac99c9076d5",
+    "src/pro/store.cjs": "1d828fea9946aa34e3de2e9dfeede7ee76e187f9de9bce4b683363e43eef7e87",
+    "src/pro/worker.cjs": "02b1fe64506153bbf6c8cc34ec08feec08fec5a150ca6329e5ef918d5a4e1e9f",
+    "src/relay.cjs": "e2db868fc2d630df90715026a5fcf489257fef4c0fd31153e0670c708c433198",
+    "src/remote.cjs": "b7d00bec93ed0504ffe37cc3ad32330017b7d7fe4237306792a410c0d0a1b74e",
+    "src/sftp.cjs": "1b6ea0513acaac07c6c145d9408a0b74f5215ff6ea51b78bd67ddf95044b73c3",
+    "src/start.cjs": "38ddc3bca14001edb28e76821963179b39d32eded2f2bcde1a6c6f5e72640332"
+  },
+  "limitations": [
+    "Final-source continuous one-hour acceptance is incomplete at the user-requested delivery snapshot.",
+    "Windows ZIP Setup double-click, physical tray interaction and actual OS boot/restart were not tested.",
+    "Linux GUI used Xvfb; physical Linux tray and OS boot/restart were not tested.",
+    "Database business workloads and scheduler registration were not accepted against actual services.",
+    "Automatic recovery creates new verified connections and never blindly replays interrupted operations."
+  ],
+  "privacy": "No credentials, connection blocks or raw runtime logs included."
+}

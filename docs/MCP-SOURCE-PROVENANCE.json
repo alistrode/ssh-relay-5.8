@@ -87,5 +87,19 @@
     "relay": "src/relay.cjs: new endpoint-acknowledged reliability layer over the existing public relay protocol; not recovered original source",
     "diagnostics": "src/diagnostics.cjs: new bounded metadata logging",
     "verification": "tests/ contains verification helpers, separate from src/ application code"
+  },
+  "proUpgrade": {
+    "base": "recovery/current-public-relay-mcp@4c05038",
+    "applicationCode": [
+      "src/pro/",
+      "desktop/"
+    ],
+    "origin": "New implementation in this upgrade, not recovered original source. Existing public MQTT/SSH protocol and MCP adapters retained.",
+    "dependencies": {
+      "pairing": "@serenity-kit/opaque 1.1.0: OPAQUE key exchange; production dependency",
+      "desktopAndRuntime": "Electron 44.8.0 with built-in Node 24.22.0; upstream binaries pinned in assets/pro-runtime-inputs.json",
+      "windowsServiceHost": "WinSW 2.12.0 .NET Framework 4 variant (included Windows OS framework), bundled only for Windows pre-login services"
+    },
+    "verification": "tests/pro/ is separate verification code; private states and raw logs stay outside Git."
   }
 }

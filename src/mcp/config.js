@@ -47,18 +47,34 @@ export function servers() {
         "Cloud self-test report refused. Test harness must explicitly pass --allow-cloud-self-test yes",
       );
     const folder = path.resolve(report.state_directory);
-    const runtime = JSON.parse(
-      fs.readFileSync(path.join(folder, "runtime.json"), "utf8"),
-    );
+    let runtime;
+    try {
+      runtime = JSON.parse(
+        fs.readFileSync(path.join(folder, "runtime.json"), "utf8"),
+      );
+    } catch (error) {
+      if (!report.agent_managed || error.code !== "ENOENT") throw error;
+      runtime = { port: report.local_port };
+    }
     if (
       !Number.isInteger(runtime.port) ||
       runtime.port < 1 ||
       runtime.port > 65535
     )
       throw new Error("Invalid loopback relay port");
-    const peer = JSON.parse(
-      fs.readFileSync(path.join(folder, "peer.json"), "utf8"),
-    );
+    let peer;
+    try {
+      peer = JSON.parse(
+        fs.readFileSync(path.join(folder, "peer.json"), "utf8"),
+      );
+    } catch (error) {
+      if (!report.agent_managed || error.code !== "ENOENT") throw error;
+      peer = {
+        fingerprint: report.host_fingerprint,
+        hostname: report.remote_hostname,
+        receivedAt: 0,
+      };
+    }
     if (peer.fingerprint !== report.host_fingerprint)
       throw new Error("Authenticated relay fingerprint changed");
     if (peer.hostname.toLowerCase() !== report.remote_hostname.toLowerCase())
@@ -72,6 +88,7 @@ export function servers() {
       throw new Error("Remote identity is this cloud instance");
     result[raw.toLowerCase()] = {
       name: raw.toLowerCase(),
+      agentManaged: report.agent_managed === true,
       host: "127.0.0.1",
       port: runtime.port,
       user: "relay",

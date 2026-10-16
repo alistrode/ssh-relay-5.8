@@ -1,3 +1,5 @@
+> 升级版一次配对、自动重连与托盘界面请使用 [Pro 交付包](pro/README.md)。以下保留原维护版本。
+
 # 下载与双击启动
 
 Linux 图标被 Vim 打开：下载 **linux-launcher-fix.tar.gz** 小补丁，解压覆盖到上一版已经内置 Node 的 Linux 远端目录，再双击 **SSH-Remote（无扩展名）**。该原生入口不依赖 .desktop/.sh 的文件关联，也不修改默认编辑器。已有私密 data/ 不在补丁中，不删除。新下载优先使用下方完整 TAR 包。

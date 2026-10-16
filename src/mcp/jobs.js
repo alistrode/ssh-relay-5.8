@@ -11,7 +11,20 @@ export async function job(server, name, args, timeout = 30000) {
   );
   const script = `(async()=>{const module={exports:null};(function(module){${source}\n})(module);return module.exports(${JSON.stringify(args)});})().then(result=>process.stdout.write(JSON.stringify(result))).catch(error=>{process.stderr.write(error.message);process.exitCode=1;});`;
   const b64 = zlib.gzipSync(Buffer.from(script)).toString("base64");
-  const command = `node -e "eval(require('node:zlib').gunzipSync(Buffer.from('${b64}','base64')).toString())"`;
+  const config = serverConfig(server),
+    win = config.platform === "windows";
+  const executable = config.capabilities.nodeExecutable || "node";
+  const nodePrefix =
+    config.capabilities.nodeMode === "electron"
+      ? win
+        ? "$env:ELECTRON_RUN_AS_NODE='1'; "
+        : "ELECTRON_RUN_AS_NODE=1 "
+      : "";
+  const nodeCommand =
+    nodePrefix + (win ? "& " + psQuote(executable) : shellQuote(executable));
+  const expression = `eval(require('node:zlib').gunzipSync(Buffer.from('${b64}','base64')).toString())`;
+  const command =
+    nodeCommand + " -e " + (win ? psQuote(expression) : shellQuote(expression));
   let result;
   // Encoded command lines are reversible: credentials must travel only via SFTP
   // into a private temporary job, never even as gzip/base64 process arguments.
@@ -38,7 +51,7 @@ export async function job(server, name, args, timeout = 30000) {
       const local = win ? file.replace(/^\/([a-z]:\/)/i, "$1") : file;
       result = await run(
         server,
-        win ? "& node " + psQuote(local) : "node " + shellQuote(local),
+        nodeCommand + " " + (win ? psQuote(local) : shellQuote(local)),
         { timeout },
       );
     } finally {

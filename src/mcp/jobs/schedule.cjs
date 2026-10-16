@@ -52,7 +52,15 @@ module.exports = async function (ARGS) {
         "/TN",
         "RelayMcp-" + ARGS.name,
         "/TR",
-        '"' + process.execPath + '" "' + file + '"',
+        (process.versions.electron
+          ? 'cmd.exe /d /s /c "set ELECTRON_RUN_AS_NODE=1&& '
+          : "") +
+          '"' +
+          process.execPath +
+          '" "' +
+          file +
+          '"' +
+          (process.versions.electron ? '"' : ""),
       ],
       { encoding: "utf8", windowsHide: true, timeout: 30000 },
     );
@@ -73,6 +81,7 @@ module.exports = async function (ARGS) {
     const q = (s) => "'" + s.replaceAll("'", "'\\''") + "'";
     lines.push(
       "* * * * * " +
+        (process.versions.electron ? "ELECTRON_RUN_AS_NODE=1 " : "") +
         q(process.execPath) +
         " " +
         q(file) +

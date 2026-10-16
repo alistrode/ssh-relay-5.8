@@ -137,3 +137,7 @@ await server.connect(new StdioServerTransport());
 console.error(
   `Current public relay MCP ready: ${enabled.size}/37 tools; private application state; fixed host fingerprints`,
 );
+
+// Managed profiles remain discoverable while the background repairs their connection.
+const { recoverManaged } = await import("./transport.js");
+for (const config of Object.values(servers())) recoverManaged(config);

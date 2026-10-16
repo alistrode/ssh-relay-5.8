@@ -1,6 +1,6 @@
 {
   "name": "private-public-ssh-relay-source",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "build": "esbuild src/near.cjs src/start.cjs --bundle --platform=node --target=node22 --outdir=dist --out-extension:.js=.cjs --legal-comments=external --external:cpu-features --external:./crypto/build/Release/sshcrypto.node",
@@ -8,19 +8,25 @@
     "near": "node src/near.cjs",
     "permissions": "node src/permissions.cjs",
     "mcp": "node src/mcp.cjs",
-    "test:relay": "node tests/relay-reliability.cjs"
+    "test:relay": "node tests/relay-reliability.cjs",
+    "pro:agent": "node src/pro/agent.cjs",
+    "pro:ui": "electron .",
+    "test:pro": "node --test tests/pro/unit.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@serenity-kit/opaque": "1.1.0",
     "https-proxy-agent": "^7.0.6",
     "mqtt": "5.16.1",
     "ssh2": "1.17.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "electron": "44.8.0",
     "esbuild": "^0.25.0"
   },
   "engines": {
     "node": ">=22"
-  }
+  },
+  "main": "desktop/main.cjs"
 }

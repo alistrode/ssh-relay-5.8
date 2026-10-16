@@ -20,6 +20,24 @@ var allowed = utils.parseKey(
   fs.readFileSync(path.join(root, "client_key.pub")),
 );
 if (allowed instanceof Error) throw allowed;
+function authorizedKey(ctx) {
+  try {
+    const keys = config.clientKeysFile
+      ? Object.values(
+          JSON.parse(fs.readFileSync(config.clientKeysFile, "utf8")),
+        ).map((v) => utils.parseKey(v.publicKey))
+      : [allowed];
+    return keys.some(
+      (key) =>
+        !(key instanceof Error) &&
+        ctx.key.data.equals(key.getPublicSSH()) &&
+        (!ctx.signature ||
+          key.verify(ctx.blob, ctx.signature, ctx.hashAlgo) === true),
+    );
+  } catch {
+    return false;
+  }
+}
 var hostKey = fs.readFileSync(path.join(root, "host_key"));
 var parsedHost = utils.parseKey(hostKey);
 if (parsedHost instanceof Error) throw parsedHost;
@@ -60,9 +78,7 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
     if (
       ctx.username !== config.user ||
       ctx.method !== "publickey" ||
-      !ctx.key.data.equals(allowed.getPublicSSH()) ||
-      (ctx.signature &&
-        allowed.verify(ctx.blob, ctx.signature, ctx.hashAlgo) !== true)
+      !authorizedKey(ctx)
     ) {
       return ctx.reject(["publickey"]);
     }
@@ -87,7 +103,10 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
             : windows
               ? ["/d", "/s", "/c", command]
               : ["-c", command];
+        const commandEnv = { ...process.env };
+        delete commandEnv.ELECTRON_RUN_AS_NODE;
         const child = spawn(shell, args, {
+          env: commandEnv,
           cwd: os.homedir(),
           windowsHide: true,
           detached: !windows,
@@ -180,6 +199,8 @@ server.listen(config.sshPort, "127.0.0.1", () => {
   relay = createRelay(config, "far");
   const status = {
     capabilities: {
+      nodeExecutable: process.execPath,
+      nodeMode: process.versions.electron ? "electron" : "node",
       exec: true,
       sftp: true,
       shell: true,

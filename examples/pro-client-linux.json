@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "pro-remote": {
+      "command": "/opt/ssh-relay-pro/ssh-relay-pro",
+      "env": { "ELECTRON_RUN_AS_NODE": "1" },
+      "args": [
+        "/opt/ssh-relay-pro/resources/app/src/mcp.cjs",
+        "--connection", "/home/YOUR_USER/.ssh-relay-pro/near/devices/DEVICE_ID/connection.json",
+        "--name", "computer",
+        "--state-dir", "/home/YOUR_USER/.relay-mcp-state"
+      ]
+    }
+  }
+}

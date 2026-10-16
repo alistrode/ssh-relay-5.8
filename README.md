@@ -1,6 +1,26 @@
-# 当前公网近远端与 MCP
+# SSH Relay Pro：公网近远端、自动重连与 MCP
 
-私有工作分支 `recovery/current-public-relay-mcp`，主分支与纯源码分支未改。保留当前 MQTT 公网连接，复现稳定版 MCP SSH Manager 的全部 37 个工具，补齐提示词、连接 Skill 和操作说明；不引入局域网功能。
+当前交付状态：用户随后明确要求立即上传完整源码、运行时并登记本地项目管理器，不再等待最终源码的一小时验收。本次按此最新要求交付；PRO-VALIDATION.json 如实保留最终轮次未完成状态，历史 3631 秒通过不能替代最终源码验收。
+
+升级工作分支为 `recovery/current-public-relay-pro`，基于 `recovery/current-public-relay-mcp@4c05038`。沿用已经连通的公共 MQTT 中继与 SSH，新增一次配对、记住设备、后台守护、自动恢复、托盘界面和自启动设置；无需自行部署服务器。新版本使用独立状态与通道，不替换旧版本。没有向 main 推送或合并。
+
+下载和操作请先读 [Pro 说明](docs/PRO-MANUAL.md) 与 [Pro 交付目录](deliverables/pro/README.md)。Pro 的应用代码位于 `src/pro/`、`desktop/`，属于本次新增实现，不能称为找回的原始源码。原有 37 个 MCP 工具、5 个提示词和连接 Skill 保留。
+
+验证以 [Pro 验收记录](docs/PRO-VALIDATION.json) 为准；旧版的 660 秒记录不能代替 Pro 的连续一小时测试。云端 Linux 自测不代表用户电脑、Windows 双击或实际重启验收。
+
+## 源码开发与 Pro 启动
+
+```sh
+npm ci --ignore-scripts
+node src/pro/cli.cjs start --role near
+node src/pro/cli.cjs start --role far
+```
+
+图形界面使用 Electron；源码开发环境需准备与 lockfile 一致的 Electron 运行时，再运行 `npm run pro:ui`。交付包已内置 Electron 和 Node 运行时，不需要用户安装 npm/Node。无桌面的 AI 云端使用 CLI，按对应连接 Skill 的 Pro 章节操作。
+
+## 保留的旧版入口
+
+以下是保留的旧版入口和源码使用方法；完整新设备记忆与后台恢复请使用上述 Pro 入口。保留当前 MQTT 公网连接，复现稳定版 MCP SSH Manager 的全部 37 个工具，补齐提示词、连接 Skill 和操作说明；不引入局域网功能。
 
 免安装运行包（内置 Node.js）和桌面图标：见 [下载与双击启动](deliverables/README.md)，Windows、Linux 分开下载。以下 npm 步骤用于源码开发。
 

@@ -26,7 +26,7 @@ function createRelay(config, role) {
     clientId: `ssh-${role}-${crypto.randomBytes(10).toString("hex")}`,
     clean: true,
     keepalive: 30,
-    reconnectPeriod: 3000,
+    reconnectPeriod: config.reconnectPolicy ? 0 : 3000,
     connectTimeout: 15000,
     queueQoSZero: false,
     wsOptions: proxy ? { agent: new HttpsProxyAgent(proxy) } : {},
@@ -34,6 +34,8 @@ function createRelay(config, role) {
   const instance = crypto.randomBytes(8).toString("hex");
   const connections = new Map();
   const closed = new Map();
+  let brokerFailures = 0,
+    reconnectTimer = null;
   let epoch = 0,
     lastPeerStatus = 0;
   let ready = false,
@@ -424,6 +426,9 @@ function createRelay(config, role) {
     client.subscribe(prefix + role, { qos: 1 }, (error) => {
       if (error) return events.emit("diagnostic", error.message);
       ready = true;
+      brokerFailures = 0;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
       epoch++;
       trace("mqtt_subscribed", null, { epoch });
       events.emit("ready");
@@ -433,7 +438,30 @@ function createRelay(config, role) {
     trace("mqtt_error", null, { error: error.message });
     events.emit("diagnostic", error.message);
   });
-  client.on("close", () => trace("mqtt_close"));
+  client.on("close", () => {
+    trace("mqtt_close");
+    if (!config.reconnectPolicy || stopping) return;
+    if (ready) {
+      ready = false;
+      trace("mqtt_offline");
+      for (const state of [...connections.values()])
+        reset(state, "broker_offline", false);
+      events.emit("offline");
+    }
+    if (!reconnectTimer) {
+      const attempt = ++brokerFailures;
+      const delay =
+        attempt <= 3
+          ? 0
+          : [2000, 4000, 8000, 16000, 30000, 60000][Math.min(attempt - 4, 5)];
+      trace("mqtt_retry_scheduled", null, { attempt, delayMs: delay });
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (!stopping) client.reconnect();
+      }, delay);
+      reconnectTimer.unref();
+    }
+  });
   client.on("reconnect", () => trace("mqtt_reconnect"));
   client.on("offline", () => {
     ready = false;
@@ -687,10 +715,20 @@ function createRelay(config, role) {
     protocol: peerProtocol,
     pendingResets: pendingResets.size,
   });
+  const testDrop = (message) => {
+    if (config.testHooks && message?.type === "test-drop-network") {
+      trace("test_network_drop");
+      client.stream?.destroy();
+    }
+  };
+  if (config.testHooks && typeof process.send === "function")
+    process.on("message", testDrop);
   events.close = () => {
     stopping = true;
+    if (config.testHooks) process.removeListener("message", testDrop);
     ready = false;
     clearInterval(retransmitter);
+    clearTimeout(reconnectTimer);
     clearTimeout(wireTimer);
     wireTimer = null;
     pumpWire();

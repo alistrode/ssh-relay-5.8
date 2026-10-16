@@ -1,14 +1,16 @@
 ---
 name: connect-linux-public-ssh
-description: 凭用户粘贴的 SSH_RELAY_CONNECT 打印块连接 Linux 远端，自动导入凭据、启动近端公网中继、固定 SSH 主机指纹并验证真实电脑身份。
+description: 连接 Linux 公网 SSH；Pro 优先复用已配对设备并自动恢复，仅首次使用配对码，保留旧版连接块导入和严格指纹核验。
 ---
 
 # 连接 Linux 公网 SSH
 
-用户只需运行新版远端并提供从 SSH_RELAY_CONNECT_BEGIN 到 SSH_RELAY_CONNECT_END 的完整打印块。本分支的技能与仓库一起使用：scripts/connect.py 直接运行仓库 src/near.cjs。先在仓库根目录执行 npm ci --ignore-scripts。近端需要终端执行能力、Python 3.10+、Node.js 22+ 与 OpenSSH 客户端。
+Pro 版本优先复用已保存设备授权；只有首次确实没有授权时才使用一次性配对码。下面保留的旧版流程使用从 SSH_RELAY_CONNECT_BEGIN 到 SSH_RELAY_CONNECT_END 的完整打印块，不得用它替代已有 Pro 配对。本分支的技能与仓库一起使用：scripts/connect.py 直接运行仓库 src/near.cjs。先在仓库根目录执行 npm ci --ignore-scripts。近端需要终端执行能力、Python 3.10+、Node.js 22+ 与 OpenSSH 客户端。
 
 凡是讨论代码时必须指向源码；没有源码，必须明确说“这不是源码”。
 凡是说源码的时候绝对不包含测试，脚本源码不是源码，第三方文件不是源码。
+
+Pro 的 CLI/MCP 使用包内运行时与 SSH 库，不需要为了连接而另装 Python 或 OpenSSH；上述 Python/OpenSSH 要求属于保留的旧版导入流程。
 
 ## 强制重连纪律（必须执行，不得跳过）
 
@@ -22,6 +24,20 @@ description: 凭用户粘贴的 SSH_RELAY_CONNECT 打印块连接 Linux 远端�
 6. **有证据才找用户。** 仅在确认当前目标的可用私密凭据确实不存在、原授权被撤销/密钥已更换、持续身份校验异常，或必须由用户启动/修复远端等本端无法完成的步骤时，才提出具体请求，并说明已经做过的尝试、日志证据和所需的最小动作。普通网络超时或 broker 暂时不可用本身不构成重新配对的理由。不得关闭指纹/TLS 验证、猜密码或在用户明确要求停止后继续重试。
 
 该节是使用者必须遵守的恢复流程，不表示现有 connect.py 或 MCP 进程已经实现全部自动重试；AI 使用者必须实际执行并验证，不得只复述规则。
+
+## Pro 配对与自动恢复（本升级分支优先使用）
+
+`recovery/current-public-relay-pro` 使用同一个已经连通的公共 MQTT 中继，新增后台设备记忆；不要求自建服务器。两端均为 Pro 时，优先复用 `~/.ssh-relay-pro/near` 中已授权设备，运行 `node src/pro/cli.cjs start --role near`，再用 `devices --role near` 查询。交付包使用包内 `relay-cli`（Windows 为 `relay-cli.cmd`），无需另装 Node。自定义目录通过 `--state-dir /private/profile/near` 指定，不碰旧通道。
+
+只有首次确实没有授权，或远端明确撤销授权时才索要一次性配对码。将短码放在仓库之外的 0600 文件，用 `node src/pro/cli.cjs pair --role near --code-file /private/code.txt` 导入，成功后删除输入文件。不要把短码写进命令行、Git、回复或日志。现有 Pro 授权断线时禁止改用旧连接块重新配对。
+
+程序已经实现 MQTT、SSH、worker 和 Agent 意外退出后的自动恢复；独立 guardian 保持后台。仍必须遵守上方强制重连纪律：先实际三次恢复，再按指数退避继续；先检查程序正在恢复，必要时用 `retry --role near` 触发，不能并行启动重复通道或重放业务写入。只有明确停止后台才取消恢复。指纹或授权异常需要调查，不能关闭校验来达成“连上”。
+
+`devices` 返回每个目标的真实 `connectionReport`。用该报告启 MCP，并核验主机指纹、whoami、hostname、`cloud_self_test`；报告的路径以实际输出为准。连接恢复会重建 SSH/MCP，但不会续接旧 shell 或保证之前命令已完成。断线后先核对旧操作结果。MCP 管理报告支持离线发现及后台恢复，不以工具发现成功代替实际远端在线验证。
+
+无桌面云端用 CLI 与 MCP；桌面两端可用托盘界面、保存设备列表和自启动开关。自启动需由用户在界面明确设置；不得代替用户修改当前云环境的系统配置。开机后台服务和登录启动权限不同，详见 `docs/PRO-MANUAL.md`。Linux 云端自测、Windows 包静态检查或 Tray 对象创建都不等于用户真实桌面与系统重启测试通过。
+
+以下打印块流程为保留的旧版入口，不用于替代已配对 Pro 设备。
 
 ## 执行
 

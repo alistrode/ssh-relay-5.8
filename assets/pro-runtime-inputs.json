@@ -1,0 +1,27 @@
+{
+  "electron": {
+    "version": "44.8.0",
+    "files": [
+      {
+        "file": "electron-v44.8.0-linux-x64.zip",
+        "sha256": "926679355f8bf8d521fc6e1a2dc1c71f11cf176a3a1444f9afbd9e1cdfeddb11",
+        "bytes": 123362542,
+        "platform": "linux"
+      },
+      {
+        "file": "electron-v44.8.0-win32-x64.zip",
+        "sha256": "1c9319bab793492715f7668e0be0e6a30bf2a8577275e40035bd33601bf6f573",
+        "bytes": 158524950,
+        "platform": "win32"
+      }
+    ]
+  },
+  "winsw": {
+    "version": "2.12.0",
+    "url": "https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW.NET4.exe",
+    "sha256": "923111c7142b3dc783a3c722b19b8a21bcb78222d7a136ac33f0ca8a29f4cb66",
+    "file": "WinSW.NET4.exe",
+    "variant": ".NET Framework 4 (AnyCPU), using the framework included with supported Windows 10/11",
+    "bundledPath": "vendor/WinSW-x64.exe"
+  }
+}

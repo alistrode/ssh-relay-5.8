@@ -2,6 +2,7 @@ var fs = require("node:fs");
 var path = require("node:path");
 var net = require("node:net");
 var { createRelay } = require("./relay.cjs");
+var { write: writePrivate } = require("./pro/store.cjs");
 var { createTraceWriter } = require("./diagnostics.cjs");
 var configPath = path.resolve(process.argv[2]);
 var config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -14,9 +15,12 @@ server.on("error", (error) => {
   console.error(error.message);
   process.exit(1);
 });
-server.listen(config.localPort, "127.0.0.1", () =>
-  console.log("Near-end loopback listener: " + config.localPort),
-);
+server.listen(config.localPort, "127.0.0.1", () => {
+  const port = server.address().port;
+  if (config.runtimePath)
+    writePrivate(config.runtimePath, { pid: process.pid, port });
+  console.log("Near-end loopback listener: " + port);
+});
 relay.on("ready", () => {
   console.log("Near-end public relay subscribed.");
   relay.status({ near: true }).catch(() => {});
@@ -28,11 +32,7 @@ relay.on("peer", (status) => {
     );
   console.log("Authenticated remote status:", JSON.stringify(status));
   if (config.statusPath && status.fingerprint === config.fingerprint) {
-    fs.writeFileSync(
-      config.statusPath,
-      JSON.stringify({ ...status, receivedAt: Date.now() }),
-      { mode: 384 },
-    );
+    writePrivate(config.statusPath, { ...status, receivedAt: Date.now() });
   }
 });
 relay.on("offline", () =>
