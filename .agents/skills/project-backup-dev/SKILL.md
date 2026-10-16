@@ -14,7 +14,7 @@ Use this skill only when a task changes code or project configuration inside a r
 1. Identify the project root and project name.
 2. Select the backup root for the machine:
    - Local machine: `E:\beifen`
-   - SSH remote machine: `I:\xxm\beifen`
+   - SSH remote machine: Windows `I:\xxm\beifen`; Linux `./xxm/beifen`
 3. Ensure `<backup root>\<project name>\` exists.
 4. Before editing, create a new timestamped archive in that directory. Do not overwrite an existing archive. Use a name such as `<project>_vYYYYMMDD_HHmmss_before-change.zip`.
 5. If the backup cannot be created, the destination is not writable, or the exclusion set is uncertain, stop before editing and ask how to proceed.
@@ -31,4 +31,4 @@ Keep the project runnable and debuggable in development mode. Use the project's 
 
 ## SSH
 
-Apply the same workflow when changing a project over SSH. Install this skill at `%USERPROFILE%\.codex\skills\project-backup-dev\SKILL.md` on the remote machine. Use `I:\xxm\beifen` as its backup root. Do not put these rules in AGENTS.md.
+Apply the same workflow when changing a project over SSH. Install this skill at `%USERPROFILE%\.codex\skills\project-backup-dev\SKILL.md` on the remote machine. Use `I:\xxm\beifen` on Windows or `./xxm/beifen` on Linux as its backup root. Do not put these rules in AGENTS.md.
