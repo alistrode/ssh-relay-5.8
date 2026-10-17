@@ -1,0 +1,36 @@
+{
+  "cloudPublicStability": {
+    "passed": true,
+    "seconds": 660.1010378629999,
+    "sshProbes": 33,
+    "sftpRoundtrips": 11,
+    "activeExitCode": 0,
+    "idleExitCode": 0,
+    "selfTest": true,
+    "protocol": 2,
+    "clientKeepaliveEnabled": false,
+    "parallelSdkConnectionsPassed": 32,
+    "details": "MCP-STABILITY-RESULTS.json"
+  },
+  "linuxMcpIntegration": {
+    "calls": 54,
+    "toolNames": 37
+  },
+  "windowsMcpIntegration": {
+    "calls": 26,
+    "nativeWindows": true,
+    "newRemoteForwardingTested": false
+  },
+  "additionalCalls": 17,
+  "externalDatabaseServicesTested": false,
+  "schedulerRegistrationTested": false,
+  "historicalCloudPublicStability": {
+    "passed": true,
+    "seconds": 660.0004329290005,
+    "sshProbes": 33,
+    "sftpRoundtrips": 11,
+    "activeExitCode": 0,
+    "idleExitCode": 0,
+    "selfTest": true
+  }
+}

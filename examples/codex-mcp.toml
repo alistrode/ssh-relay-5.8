@@ -1,0 +1,6 @@
+# Replace all absolute paths. This is an example; no client config is installed automatically.
+[mcp_servers.current_public_relay]
+command = "node"
+args = ["/absolute/repo/src/mcp.cjs", "--connection", "/private/connection.json", "--name", "win10", "--state-dir", "/private/mcp-state"]
+startup_timeout_sec = 30
+tool_timeout_sec = 480

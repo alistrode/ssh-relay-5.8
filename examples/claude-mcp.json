@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "current-public-relay": {
+      "command": "node",
+      "args": [
+        "/absolute/repo/src/mcp.cjs",
+        "--connection",
+        "/private/connection.json",
+        "--name",
+        "win10",
+        "--state-dir",
+        "/private/mcp-state"
+      ]
+    }
+  }
+}

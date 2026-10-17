@@ -1,0 +1,344 @@
+{
+  "scope": "cloud self-test through public MQTT WSS; not an updated user Windows far",
+  "protocol": 2,
+  "baseline": {
+    "attempts": 12,
+    "failures": 5,
+    "readyTimeoutMs": 45000,
+    "retries": 0
+  },
+  "fixedMixedConcurrency": {
+    "attempts": 32,
+    "failures": 0,
+    "parallelClients": 4,
+    "readyTimeoutMs": 45000,
+    "retries": 0
+  },
+  "faultInjection": [
+    {
+      "name": "capacity",
+      "passed": true,
+      "rejectMs": 200,
+      "existingConnectionsPreserved": 8,
+      "near": {
+        "opened": 9,
+        "closed": 9,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      },
+      "far": {
+        "opened": 8,
+        "closed": 8,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 1,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      }
+    },
+    {
+      "name": "clean",
+      "passed": true,
+      "bytes": 262144,
+      "drops": 0,
+      "near": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      },
+      "far": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      }
+    },
+    {
+      "name": "drop-opened-and-data",
+      "passed": true,
+      "bytes": 262144,
+      "drops": 2,
+      "near": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 1,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      },
+      "far": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 1,
+        "duplicates": 0,
+        "reordered": 6,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      }
+    },
+    {
+      "name": "lost-acks",
+      "passed": true,
+      "bytes": 262144,
+      "drops": 6,
+      "near": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      },
+      "far": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      }
+    },
+    {
+      "name": "reorder-duplicates",
+      "passed": true,
+      "bytes": 262144,
+      "drops": 0,
+      "near": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 4,
+        "reordered": 5,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      },
+      "far": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 3,
+        "reordered": 5,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      }
+    },
+    {
+      "name": "reset-loss",
+      "passed": true,
+      "drops": 4,
+      "elapsedMs": 8115,
+      "near": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      },
+      "far": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 1,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      }
+    },
+    {
+      "name": "permanent-data-loss",
+      "passed": true,
+      "drops": 11,
+      "elapsedMs": 30151,
+      "near": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 10,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 1,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      },
+      "far": {
+        "opened": 1,
+        "closed": 1,
+        "retransmitted": 0,
+        "duplicates": 0,
+        "reordered": 0,
+        "deliveryTimeouts": 0,
+        "rejected": 0,
+        "active": 0,
+        "pendingFrames": 0,
+        "protocol": 2,
+        "pendingResets": 0
+      }
+    }
+  ],
+  "peerRestart": {
+    "passed": true,
+    "seconds": 13.530327608999869,
+    "oldConnectionExit": 255,
+    "newConnectionExit": 0,
+    "commandExecutions": 1,
+    "interruptedCommandState": "gone",
+    "cloudSelfTest": true
+  },
+  "mcp": {
+    "calls": 54,
+    "toolNames": 37,
+    "allExpectedOutcomesPassed": true,
+    "externalDatabaseServicesTested": false,
+    "schedulerRegistrationTested": false
+  },
+  "sourceSha256": {
+    "src/diagnostics.cjs": "bd5a5982e0be6afd62c6628f673e7ed72a63317feaddd77019485a7d12bb63a0",
+    "src/forwarding.cjs": "5b005587d41f37de1fe961ab6bfcd2bd1d13cf5c9edeeb36dca98530c7f6d5b6",
+    "src/mcp.cjs": "de22349937a6065338f48562624e625c7dc530e7a17fe6fce5d2f265f72be8f3",
+    "src/near.cjs": "10f976592d2970b08b9c0f05cab343af7528f9a770e2e41620ce704bd0d8066a",
+    "src/permissions.cjs": "83d7ebb74c988d9f2130ed9f8e3cfafaa6e3c43c36a94f7f379fecce81cc56e5",
+    "src/relay.cjs": "f819526b6462052ee4bed645c50b9eefaa62e45f68c7a985f790fb8f408c8fe3",
+    "src/remote.cjs": "7a873cffdd2545535bfcb830e696de23322b1ae4584d068f4998606dc6359cc8",
+    "src/sftp.cjs": "1b6ea0513acaac07c6c145d9408a0b74f5215ff6ea51b78bd67ddf95044b73c3",
+    "src/start.cjs": "38ddc3bca14001edb28e76821963179b39d32eded2f2bcde1a6c6f5e72640332"
+  },
+  "durableLatestSoak": {
+    "passed": true,
+    "startedAtUtc": "2026-10-16T18:48:53.374148+00:00",
+    "seconds": 660.1010378629999,
+    "failures": [],
+    "longExit": {
+      "active": 0,
+      "idle": 0
+    },
+    "retransmissions": 91,
+    "reorderedFrames": 35,
+    "brokerOffline": 0,
+    "clientKeepaliveEnabled": false,
+    "cloudSelfTest": true,
+    "protocol": 2,
+    "sshProbes": 33,
+    "sftpRoundtrips": 11,
+    "sftpBytesEach": 65536,
+    "allContentChecksPassed": true,
+    "applicationSnapshotByteIdentical": true,
+    "parallelSdkAttempts": 32,
+    "parallelSdkFailures": 0,
+    "parallelSdkRetries": 0
+  },
+  "interruptedLatestSoak": {
+    "completed": false,
+    "lastObservationSeconds": 405,
+    "cause": "terminal session interrupted during environment context switch; not counted as pass"
+  },
+  "earlierPacingSoaks": [
+    {
+      "passed": true,
+      "startedAtUtc": "2026-10-16T18:35:57.104930+00:00",
+      "seconds": 666.9649351360003,
+      "failures": [],
+      "longExit": {
+        "active": 0,
+        "idle": 0
+      },
+      "retransmissions": 84,
+      "reorderedFrames": 27,
+      "brokerOffline": 0,
+      "clientKeepaliveEnabled": false,
+      "cloudSelfTest": true,
+      "protocol": 2,
+      "sshProbes": 33,
+      "sftpRoundtrips": 11,
+      "note": "pacing/reset fix tested; before every-frame peer epoch fix"
+    },
+    {
+      "passed": true,
+      "startedAtUtc": "2026-10-16T18:35:57.131756+00:00",
+      "seconds": 665.3708992280008,
+      "failures": [],
+      "longExit": {
+        "active": 0,
+        "idle": 0
+      },
+      "retransmissions": 73,
+      "reorderedFrames": 41,
+      "brokerOffline": 0,
+      "clientKeepaliveEnabled": false,
+      "cloudSelfTest": true,
+      "protocol": 2,
+      "sshProbes": 33,
+      "sftpRoundtrips": 11,
+      "note": "pacing/reset fix tested; before every-frame peer epoch fix"
+    }
+  ],
+  "diagnosticWriter": {
+    "mode0600Verified": true,
+    "twoMiBRotationVerified": true,
+    "backupCount": 3
+  }
+}

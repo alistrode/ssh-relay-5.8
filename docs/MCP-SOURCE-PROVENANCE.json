@@ -1,0 +1,105 @@
+{
+  "reference": "source/stable-near-far@b724289",
+  "originalLicense": "MIT",
+  "helpers": [
+    {
+      "path": "src/shell-quote.js",
+      "sha256": "c0f971614abb497c8bc4cf79b691d1cb675c46dcf98e477cddef6590de86aca8"
+    },
+    {
+      "path": "src/profile-loader.js",
+      "sha256": "a61370e8312ea83ba26181934e9eddcd02539db8644f16a9c654e9132fe4e930"
+    },
+    {
+      "path": "src/command-aliases.js",
+      "sha256": "9d1d4c3d38be9f2077c6401aa40d3b05aa05e37333fefe23d5fb3ac6e2ff1293"
+    },
+    {
+      "path": "src/server-aliases.js",
+      "sha256": "fee8cd6a77097aa332c1f42a0c8304783ee7f10328e808ea4305e3454f1a936b"
+    },
+    {
+      "path": "src/server-groups.js",
+      "sha256": "acd4e143ec6c1158c45fdbd3880f07a1447ada05ba03594cf6b705841f77da97"
+    },
+    {
+      "path": "src/tool-registry.js",
+      "sha256": "9acac1d515d1f7a636f25b5cbf7e56444fe839ab55717131eff6c6a94f75afc6"
+    },
+    {
+      "path": "src/policy.js",
+      "sha256": "9cc36ea5819e552ce2258eb9a56dcfa171e65e03b45d99061e585fdf72d64259"
+    }
+  ],
+  "catalog": "Tool schemas/descriptions extracted from original src/index.js; runtime rewritten for current public relay.",
+  "modifications": "Application state paths and runtime adapters modified; see git diff and MCP manual.",
+  "catalogOriginalSha256": "896ae003ad8978ca5b8c29147d43b2a27be8b2e533f28a802255f10b2255e874",
+  "profiles": [
+    {
+      "path": "profiles/README.md",
+      "sha256": "62a1b722ff7c96b7a24f8e0ba4bb26403ac78f99b10617f8c59abde746399d61"
+    },
+    {
+      "path": "profiles/default.json",
+      "sha256": "9b1248d216265da35ad3eabcc89048f505b72e287353300d239d57080ec49ace"
+    },
+    {
+      "path": "profiles/docker.json",
+      "sha256": "a65022e05ff2f367de4f820fb03fea792b9406dede351f2a8d0cce2cfed4e7cb"
+    },
+    {
+      "path": "profiles/frappe.json",
+      "sha256": "387ecf0e756c703cb68d24789a124b059748f0752777322201ca2611c9a895a2"
+    },
+    {
+      "path": "profiles/nodejs.json",
+      "sha256": "fc33328c948a45fd291484f9bd91cd69f9e488ed4d343528c1b2f7753e75f90a"
+    }
+  ],
+  "newAdaptationModules": [
+    "src/mcp/transport.js",
+    "src/mcp/config.js",
+    "src/mcp/handlers.js",
+    "src/mcp/sessions.js",
+    "src/mcp/tunnels.js",
+    "src/mcp/files.js",
+    "src/mcp/jobs.js",
+    "src/mcp/jobs/",
+    "src/mcp/hooks.js",
+    "src/mcp/prompts.js",
+    "src/mcp/server.js",
+    "src/forwarding.cjs",
+    "profiles/windows.json"
+  ],
+  "excludedLegacyModules": {
+    "ssh-manager.js": "replaced by current public-relay transport",
+    "config-loader.js": "replaced by verified connection report loader",
+    "server-config-manager.js": "replaced by verified connection report loader",
+    "session-manager.js": "replaced by platform-aware persistent sessions",
+    "tunnel-manager.js": "replaced by loopback-only current relay forwarding",
+    "backup-manager.js": "replaced by current cross-platform backup jobs",
+    "database-manager.js": "replaced by argument-array based cross-platform database jobs",
+    "health-monitor.js": "replaced by current platform health/process/service adapters"
+  },
+  "formatting": "Original hashes identify source materials before LF normalization, formatting and runtime-path adaptation.",
+  "stabilityAdaptation": {
+    "base": "recovery/current-public-relay-mcp@7546fa3",
+    "relay": "src/relay.cjs: new endpoint-acknowledged reliability layer over the existing public relay protocol; not recovered original source",
+    "diagnostics": "src/diagnostics.cjs: new bounded metadata logging",
+    "verification": "tests/ contains verification helpers, separate from src/ application code"
+  },
+  "proUpgrade": {
+    "base": "recovery/current-public-relay-mcp@4c05038",
+    "applicationCode": [
+      "src/pro/",
+      "desktop/"
+    ],
+    "origin": "New implementation in this upgrade, not recovered original source. Existing public MQTT/SSH protocol and MCP adapters retained.",
+    "dependencies": {
+      "pairing": "@serenity-kit/opaque 1.1.0: OPAQUE key exchange; production dependency",
+      "desktopAndRuntime": "Electron 44.8.0 with built-in Node 24.22.0; upstream binaries pinned in assets/pro-runtime-inputs.json",
+      "windowsServiceHost": "WinSW 2.12.0 .NET Framework 4 variant (included Windows OS framework), bundled only for Windows pre-login services"
+    },
+    "verification": "tests/pro/ is separate verification code; private states and raw logs stay outside Git."
+  }
+}

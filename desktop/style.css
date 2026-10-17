@@ -1,0 +1,141 @@
+:root {
+  font-family: system-ui, "Microsoft YaHei", sans-serif;
+  color: #1c3048;
+  background: #f1f5fa;
+  font-size: 15px;
+}
+body {
+  margin: 0;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #123557;
+  color: white;
+  padding: 24px 34px;
+}
+header h1 {
+  font-size: 24px;
+  margin: 0;
+}
+header p {
+  margin: 5px 0 0;
+  color: #c2d4e7;
+}
+.mark {
+  font: 700 35px monospace;
+  color: #66e0ad;
+}
+#refreshState {
+  margin-left: auto;
+  font-size: 13px;
+}
+main {
+  max-width: 960px;
+  margin: 20px auto;
+  padding: 0 22px;
+}
+section {
+  background: white;
+  border: 1px solid #dce5ef;
+  border-radius: 13px;
+  padding: 22px;
+  margin: 16px 0;
+}
+h2 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+h2 span {
+  font-size: 12px;
+  color: #637b96;
+  margin-left: 8px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+input:not([type="checkbox"]) {
+  padding: 11px;
+  border: 1px solid #bacbdd;
+  border-radius: 7px;
+  min-width: 260px;
+  flex: 1;
+}
+button {
+  border: 0;
+  border-radius: 7px;
+  background: #1766bd;
+  color: white;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.secondary {
+  background: #e9f0f8;
+  color: #23496f;
+}
+.muted {
+  color: #63758a;
+  font-size: 13px;
+  line-height: 1.7;
+}
+label {
+  display: block;
+  margin-bottom: 8px;
+}
+select {
+  padding: 9px;
+  border: 1px solid #bacbdd;
+  border-radius: 6px;
+}
+pre {
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 220px;
+  background: #f5f8fc;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+}
+.device {
+  border-bottom: 1px solid #e7edf5;
+  padding: 14px 0;
+}
+.device strong {
+  margin-right: 12px;
+}
+.device p {
+  font-size: 12px;
+  color: #63758a;
+  margin: 7px 0;
+}
+.device button {
+  margin: 5px 6px 0 0;
+}
+.pair-code {
+  font-size: 24px;
+  letter-spacing: 2px;
+  font-family: monospace;
+  margin: 18px 0;
+  color: #1766bd;
+}
+#message {
+  position: sticky;
+  bottom: 12px;
+  background: #173958;
+  color: white;
+  border-radius: 8px;
+  padding: 12px;
+  display: none;
+}
+form > .row {
+  margin: 10px 0 20px;
+}

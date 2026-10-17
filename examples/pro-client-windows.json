@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "pro-remote": {
+      "command": "C:\\Users\\YOUR_USER\\AppData\\Local\\SSHRelayPro\\SSHRelayPro.exe",
+      "env": {
+        "ELECTRON_RUN_AS_NODE": "1"
+      },
+      "args": [
+        "C:\\Users\\YOUR_USER\\AppData\\Local\\SSHRelayPro\\resources\\app\\src\\mcp.cjs",
+        "--connection",
+        "C:\\Users\\YOUR_USER\\.ssh-relay-pro\\near\\devices\\DEVICE_ID\\connection.json",
+        "--name",
+        "computer",
+        "--state-dir",
+        "C:\\Users\\YOUR_USER\\.relay-mcp-state"
+      ]
+    }
+  }
+}

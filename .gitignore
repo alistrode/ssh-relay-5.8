@@ -1,8 +1,16 @@
-# Runtime credentials and private connection state
-**/data/
-**/logs/
-**/node_modules/
-**/__pycache__/
+node_modules/
+dist/
+data/
+*.log
+
+.mcp-state/
+.relay-mcp/
+*.log
+
+# Diagnostic metadata stays in private runtime state.
+*-events.jsonl*
+
+.node-runtime-cache/
+.runtime-cache/
+__pycache__/
 *.pyc
-/work/
-/ssh-relay-state/

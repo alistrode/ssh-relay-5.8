@@ -1,0 +1,143 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { catalog } from "./catalog.js";
+import { invoke, handlers } from "./handlers.js";
+import { registerPrompts, instructions } from "./prompts.js";
+import { closeAll } from "./transport.js";
+import { closeSessions } from "./sessions.js";
+import { tunnels, closeTunnel } from "./tunnels.js";
+import { arg, servers } from "./config.js";
+import { TOOL_GROUPS } from "./tool-registry.js";
+const server = new McpServer(
+  { name: "current-public-relay-mcp", version: "1.1.0" },
+  { instructions },
+);
+const mode = arg("--tools") || "all";
+const enabled =
+  mode === "all"
+    ? new Set(catalog.map((t) => t.name))
+    : new Set(
+        mode === "minimal"
+          ? [
+              ...TOOL_GROUPS.core,
+              ...TOOL_GROUPS.sessions,
+              "ssh_connection_status",
+              "ssh_tail",
+              "ssh_history",
+            ]
+          : mode.split(","),
+      );
+for (const tool of enabled)
+  if (!handlers[tool]) throw new Error("Unknown selected tool " + tool);
+const notes = {
+  ssh_sync:
+    " Uses portable SFTP with dry-run, exclusion, checksum and delete; no rsync or wire compression. Symlinks are refused.",
+  ssh_tail:
+    " follow=true returns a bounded five-second observation, not a background tail. follow=false returns a snapshot. Output is returned in the MCP result.",
+  ssh_execute_sudo:
+    " Linux uses sudo; Windows checks the existing administrator token and never invokes UAC or accepts a sudo password.",
+  ssh_backup_create:
+    " Explicit paths required for files/full; uses tar on both platforms. Default backup directory is ~/.relay-mcp/backups.",
+  ssh_backup_restore:
+    " File restore requires explicit non-root targetPath and verifies the manifest checksum. Link-containing archives are refused.",
+  ssh_backup_schedule:
+    " Numeric cron schedule uses crontab on Linux or a current-user minute task on Windows. No elevation or hidden scheduler installation.",
+  ssh_tunnel_create:
+    " Only loopback bindings and destinations are supported. Remote must advertise forwarding capability; no LAN or general-purpose proxy.",
+  ssh_key_manage:
+    " Operates on application pins/revocations only. accept never trusts a changed key; a new verified connection block is required.",
+  ssh_session_send:
+    " Preserves real shell state on Windows PowerShell and Linux sh without a PTY. Returns the actual exit code, stderr and cwd.",
+  ssh_history:
+    " Bounded in-memory command metadata; does not persist history across restart.",
+  ssh_hooks:
+    " Hooks run only when enabled in the selected profile; notifications become structured local events rather than interpolated shell commands.",
+  ssh_profile:
+    " Profile switch applies immediately to aliases and hooks; presets are platform-specific. No automatic remote configuration.",
+  ssh_deploy:
+    " Uses staged SFTP replacement; multi-file deployments are not transactional. sudoPassword is not accepted; Unix owner/mode options are not Windows ACLs.",
+};
+function sanitized(value, args) {
+  const secrets = [
+    args.password,
+    args.dbPassword,
+    args.options?.sudoPassword,
+  ].filter((s) => typeof s === "string" && s.length);
+  const scrub = (v) => {
+    if (typeof v === "string") {
+      for (const secret of secrets)
+        for (const form of new Set([secret, encodeURIComponent(secret)]))
+          v = v.split(form).join("[REDACTED]");
+      return v;
+    }
+    if (Array.isArray(v)) return v.map(scrub);
+    if (v && typeof v === "object")
+      return Object.fromEntries(
+        Object.entries(v).map(([k, x]) => [k, scrub(x)]),
+      );
+    return v;
+  };
+  return JSON.stringify(scrub(value), null, 2);
+}
+for (const { name, config } of catalog) {
+  if (!enabled.has(name)) continue;
+  server.registerTool(
+    name,
+    {
+      ...config,
+      description: notes[name]
+        ? name + ": " + notes[name].trim()
+        : config.description,
+    },
+    async (args) => {
+      try {
+        const result = await invoke(name, args);
+        const isError =
+          result?.success === false ||
+          (result?.code !== undefined && result.code !== 0);
+        return {
+          content: [{ type: "text", text: sanitized(result, args) }],
+          isError,
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: sanitized(
+                { success: false, error: error.message, tool: name },
+                args,
+              ),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+}
+registerPrompts(server);
+let closing = false;
+async function shutdown() {
+  if (closing) return;
+  closing = true;
+  closeSessions();
+  for (const t of [...tunnels.keys()]) await closeTunnel(t).catch(() => {});
+  closeAll();
+  await server.close();
+}
+process.once("SIGINT", () => shutdown().finally(() => process.exit(0)));
+process.once("SIGTERM", () => shutdown().finally(() => process.exit(0)));
+process.stdin.once("end", () => shutdown());
+process.stdin.once("close", () => shutdown());
+// Configuration errors fail startup before any tool claims a usable target.
+servers();
+await server.connect(new StdioServerTransport());
+console.error(
+  `Current public relay MCP ready: ${enabled.size}/37 tools; private application state; fixed host fingerprints`,
+);
+
+// Managed profiles remain discoverable while the background repairs their connection.
+const { recoverManaged } = await import("./transport.js");
+for (const config of Object.values(servers())) recoverManaged(config);

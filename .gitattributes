@@ -1,7 +1,0 @@
-# Preserve release snapshots byte-for-byte, including upstream license whitespace.
-# scripts/verify-release.py checks these files against the archives.
-remote/** -text -whitespace
-# Python helpers and repository documentation use LF on every checkout.
-*.py text eol=lf
-README.md text eol=lf
-docs/*.md text eol=lf

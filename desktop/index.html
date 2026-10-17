@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'"
+    />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SSH Relay Pro</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <span class="mark">›_</span>
+      <div>
+        <h1>SSH Relay Pro</h1>
+        <p>配对一次，自动连接你的电脑</p>
+      </div>
+      <span id="refreshState">正在读取后台状态</span>
+    </header>
+    <main>
+      <section>
+        <h2>连接我的电脑 <span>近端</span></h2>
+        <form id="pair">
+          <label for="code">输入远端显示的配对码</label>
+          <div class="row">
+            <input
+              id="code"
+              placeholder="XXXXXXXXXX-XXXXXXXXXX"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="30"
+            /><button id="pairButton">配对并记住</button>
+          </div>
+        </form>
+        <div id="devices" class="devices"></div>
+        <button id="retry" class="secondary">立即重试所有已启用电脑</button>
+      </section>
+      <section>
+        <h2>让这台电脑被连接 <span>远端</span></h2>
+        <div class="row">
+          <span id="farState">正在启动</span
+          ><button id="farToggle" class="secondary">暂停远端</button>
+        </div>
+        <p class="muted">
+          仅首次配对需要分享短码。断线后自动使用已保存的设备授权重连。
+        </p>
+        <button id="offer">生成一次性配对码</button>
+        <div id="pairCode" class="pair-code"></div>
+        <button id="copyCode" class="secondary">复制配对码</button>
+        <button id="cancelCode" class="secondary">取消本次配对码</button>
+        <div id="authorized"></div>
+      </section>
+      <section>
+        <h2>启动与后台</h2>
+        <div class="row">
+          <label><input type="checkbox" id="autoStart" /> 自动启动</label
+          ><select id="startMode">
+            <option value="login">登录后启动界面与后台</option>
+            <option value="boot">开机启动后台，登录后显示托盘</option></select
+          ><button id="saveStartup" class="secondary">应用设置</button>
+        </div>
+        <p id="startupStatus" class="muted">正在核对系统实际设置</p>
+        <p class="muted">
+          关闭窗口后保持后台连接。可从托盘重新打开，或明确停止本版本后台。
+        </p>
+      </section>
+      <section>
+        <div class="row">
+          <h2>连接日志</h2>
+          <button id="export" class="secondary">导出脱敏日志</button>
+        </div>
+        <pre id="logs"></pre>
+      </section>
+      <p id="message" role="status"></p>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

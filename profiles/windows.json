@@ -1,0 +1,11 @@
+{
+  "name": "windows",
+  "description": "Windows PowerShell commands; no implicit configuration changes",
+  "commandAliases": {
+    "check-memory": "Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory",
+    "check-disk": "Get-PSDrive -PSProvider FileSystem | Select-Object Name,Used,Free,Root",
+    "check-processes": "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Id,ProcessName,WorkingSet64",
+    "system-info": "Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture"
+  },
+  "hooks": {}
+}

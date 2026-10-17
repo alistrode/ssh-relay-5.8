@@ -1,31 +1,73 @@
-# 公网 SSH 近远端
+# SSH Relay Pro：公网近远端、自动重连与 MCP
 
-主分支仅维护当前 `SSH_RELAY_CONNECT` 方案。AI 近端通过公网中继连接 Linux 或 Windows 远端，直接使用 SSH；不依赖 MCP SSH Manager 或 Cloudflare。
+当前交付状态：用户随后明确要求立即上传完整源码、运行时并登记本地项目管理器，不再等待最终源码的一小时验收。本次按此最新要求交付；PRO-VALIDATION.json 如实保留最终轮次未完成状态，历史 3631 秒通过不能替代最终源码验收。
 
-| 路径 | 用途 |
+升级工作分支为 `recovery/current-public-relay-pro`，基于 `recovery/current-public-relay-mcp@4c05038`。沿用已经连通的公共 MQTT 中继与 SSH，新增一次配对、记住设备、后台守护、自动恢复、托盘界面和自启动设置；无需自行部署服务器。新版本使用独立状态与通道，不替换旧版本。本次仓库整理已将 Pro 提升为 main，并保留原维护分支。
+
+下载和操作请先读 [Pro 说明](docs/PRO-MANUAL.md) 与 [Pro 交付目录](deliverables/pro/README.md)。Pro 的应用代码位于 `src/pro/`、`desktop/`，属于本次新增实现，不能称为找回的原始源码。原有 37 个 MCP 工具、5 个提示词和连接 Skill 保留。
+
+验证以 [Pro 验收记录](docs/PRO-VALIDATION.json) 为准；旧版的 660 秒记录不能代替 Pro 的连续一小时测试。云端 Linux 自测不代表用户电脑、Windows 双击或实际重启验收。
+
+## 仓库版本导航
+
+`main` 维护 SSH Relay Pro 2.0。以下 1.0～4.0 是分支分类编号，不改变应用自身版本号。
+
+| 分支 | 内容 |
 |---|---|
-| `.agents/skills/connect-linux-public-ssh/` | Linux 连接 skill、Python 导入程序和近端 `near.cjs` |
-| `.agents/skills/connect-win10-public-ssh/` | Windows 连接 skill、Python 导入程序和近端 `near.cjs` |
-| `remote/linux/`、`remote/win10/` | 从当前发布包原样展开的远端 JavaScript、启动脚本、许可和验证记录 |
-| `downloads/` | 含 Node 运行时的完整远端包、可导入的 skill 包、Linux 桌面入口及 SHA-256 |
-| `scripts/verify-release.py` | 校验发布包、源码副本和 skill 包的一致性 |
+| [versions/1.0](https://github.com/trlstdin/rororororo/tree/versions/1.0) | 原始 MCP SSH Manager 3.8.5；仅确认近端原始源码 |
+| [versions/2.0](https://github.com/trlstdin/rororororo/tree/versions/2.0) | 纯公网中继近远端源码 |
+| [versions/3.0](https://github.com/trlstdin/rororororo/tree/versions/3.0) | 公网中继 + MCP |
+| [versions/4.0](https://github.com/trlstdin/rororororo/tree/versions/4.0) | SSH Relay Pro 2.0，与本次整理后的 main 相同 |
+| [archive/main-before-pro-20261017](https://github.com/trlstdin/rororororo/tree/archive/main-before-pro-20261017) | 切换前 main 的完整快照 |
 
-## 使用
+旧 main 的四个 skill 均已保留。Linux/Windows 连接 skill 使用 Pro 更新版及仓库 `src/near.cjs`；补回 project-backup-dev、xxm-workspace-governance 与旧连接附件。旧附件仅用于兼容保留，不替代 Pro 连接入口。历史 recovery 分支继续保留。
 
-1. 从 `downloads/` 下载对应远端包并完整解压。Linux x64 运行 `bash start.sh`；Windows x64 双击 `START.cmd`。运行包已含 Node。
-2. 将远端打印的完整连接块交给可信 AI；AI 按对应 `.agents/skills/` 中的 `SKILL.md` 连接。近端需要 Python 3.10+、Node.js 22+ 和 OpenSSH。
-3. 核验主机指纹和实际远端身份后执行任务。连接期间保持远端窗口运行。
+## 源码开发与 Pro 启动
 
-运行后生成的 `data/` 含凭据，不提交 Git。连接块、私钥、日志和导入状态均不属于源码。
+```sh
+npm ci --ignore-scripts
+node src/pro/cli.cjs start --role near
+node src/pro/cli.cjs start --role far
+```
 
-## 源码与运行包
+图形界面使用 Electron；源码开发环境需准备与 lockfile 一致的 Electron 运行时，再运行 `npm run pro:ui`。交付包已内置 Electron 和 Node 运行时，不需要用户安装 npm/Node。无桌面的 AI 云端使用 CLI，按对应连接 Skill 的 Pro 章节操作。
 
-近端可执行源码位于 skill 的 `scripts/`；远端可执行 JavaScript 位于 `remote/<平台>/app/start.cjs`。这些 `.cjs` 是包含依赖的打包源码，目前未找到生成它们的原始模块工程和构建配置；不将旧 MCP SSH Manager 冒充其源码。
+## 保留的旧版入口
 
-`remote/` 为可审阅副本，不重复展开 Node 二进制。直接运行请使用 `downloads/` 完整包。修改 skill 或远端文件后，须同步对应发布包和 `downloads/SHA256SUMS.txt`。
+以下是保留的旧版入口和源码使用方法；完整新设备记忆与后台恢复请使用上述 Pro 入口。保留当前 MQTT 公网连接，复现稳定版 MCP SSH Manager 的全部 37 个工具，补齐提示词、连接 Skill 和操作说明；不引入局域网功能。
 
-验证：`python3 scripts/verify-release.py`。当前仓库整理只做完整性与语法检查；没有重新执行所有平台端到端测试。包内 `VALIDATION.json` 是原有发布验证记录。
+免安装运行包（内置 Node.js）和桌面图标：见 [下载与双击启动](deliverables/README.md)，Windows、Linux 分开下载。以下 npm 步骤用于源码开发。
 
-## 历史归档
+## 运行
 
-旧 MCP SSH Manager、Cloudflare 方案、恢复压缩包及无关附件保存在分支 [`archive/legacy-mcp-ssh-manager-2026-10-16`](https://github.com/trlstdin/rororororo/tree/archive/legacy-mcp-ssh-manager-2026-10-16)。主分支中不再保留这些历史目录；Git 历史仍可追溯。
+需要 Node.js 22+。完整仓库根目录：
+
+```sh
+npm ci --ignore-scripts
+npm start
+```
+
+Windows 也可使用 `START-REMOTE.cmd`。远端保持运行，将打印的完整私密连接块交给可信 AI，按 [Windows Skill](.agents/skills/connect-win10-public-ssh/SKILL.md) 或 [Linux Skill](.agents/skills/connect-linux-public-ssh/SKILL.md) 导入。连接块、data/ 和私钥不可上传。
+
+导入得到已核验的私密 connection.json 后，在近端启动 MCP：
+
+```sh
+node /absolute/repo/src/mcp.cjs --connection /private/connection.json \
+  --name remote --state-dir /private/mcp-state
+```
+
+默认提供全部 37 个工具、5 个 prompts 和手册资源，使用 stdio，不自动改客户端配置。多目标、工具选择和客户端配置示例见 [完整操作手册](docs/MCP-MANUAL.md) 与 examples/。
+
+## 功能
+
+命令执行、双向文件传输和同步、持久会话、日志、监控、服务和进程操作、备份还原与计划、三种数据库、部署、提权执行、别名、Profiles、Hooks、分组批量、连接管理、固定指纹、历史及回环端口转发。各平台依赖与行为差异必须按 [功能清单](docs/MCP-REPRODUCTION.md) 和手册判断，不能从工具名称推断可用权限。
+
+远程命令继承远端进程权限，Windows 管理员启动可传递提升令牌，不能突破所有系统文件保护。详见 [权限说明](docs/PERMISSIONS.md)。当前远端新增 SFTP 属性修复、进程树终止和回环转发；旧远端仍可提供原有命令/SFTP，但新增能力需停止旧实例后启动新版。
+
+公网稳定性修复采用接收端确认、丢包重传与发送节流；近远端都需更新并确认协议 2 才生效。日志位置、升级及断线处理见 [连接排查](docs/troubleshooting.md)。
+
+## 来源与验证
+
+源代码来源见 [来源清单](docs/MCP-SOURCE-PROVENANCE.json)，稳定版辅助模块按 MIT 许可保留。当前实现和旧连接层分别处理，不将重建或新适配代码冒称原始工程。
+
+验证结果与明确限制见 [验证说明](docs/MCP-VALIDATION.md)。`npm run build` 只生成被忽略的派生 dist/，不提交运行包、依赖目录、测试状态或凭据。
