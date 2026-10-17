@@ -6,7 +6,7 @@
 
 仓库：`https://github.com/trlstdin/rororororo`，必须使用私有分支 `recovery/current-public-relay-pro`。禁止向 main 推送、合并或切换到 main 开发。基线旧维护分支为 `recovery/current-public-relay-mcp@4c05038`，本次应用版本 2.0.0。交付提交号以实际分支 HEAD 和本次交付回复为准。
 
-阅读顺序：AGENTS.md、README.md、docs/PRO-MANUAL.md、docs/PRO-VALIDATION.json、deliverables/pro/README.md、对应连接 Skill、docs/MCP-MANUAL.md。
+阅读顺序：AGENTS.md、README.md、.agents/skills/ssh-relay-pro/SKILL.md、.agents/skills/workspace-backup-dev/SKILL.md、docs/PRO-MANUAL.md、docs/PRO-VALIDATION.json、docs/MCP-MANUAL.md。
 
 ## 项目与交付
 

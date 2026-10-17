@@ -19,7 +19,13 @@ def inspect(archive,prefix,platform):
  checked=json.loads(payload('resources/app/docs/PRO-VALIDATION.json'));assert checked==evidence
  for name in ['ssh2','mqtt','@serenity-kit/opaque','@modelcontextprotocol/sdk']:
   payload('resources/app/node_modules/'+name+'/package.json')
- payload('LICENSE');payload('LICENSES.chromium.html');payload('resources/app/.agents/skills/connect-win10-public-ssh/SKILL.md')
+ payload('LICENSE');payload('LICENSES.chromium.html')
+ # Accept the published historical snapshot and future Pro-only skill packages.
+ skill_root='resources/app/.agents/skills/'
+ if prefix+skill_root+'ssh-relay-pro/SKILL.md' in members:
+  payload(skill_root+'ssh-relay-pro/SKILL.md');payload(skill_root+'workspace-backup-dev/SKILL.md')
+ else:
+  payload(skill_root+'connect-win10-public-ssh/SKILL.md')
  exe=payload('SSHRelayPro.exe'if platform=='win32'else'ssh-relay-pro')
  assert exe[:2]==(b'MZ'if platform=='win32'else b'\x7fE')
  if platform=='win32':

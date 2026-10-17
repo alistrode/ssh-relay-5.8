@@ -2,7 +2,7 @@
 
 ## Pro 升级入口与恢复纪律
 
-`recovery/current-public-relay-pro` 新增一次配对、记住设备、独立守护、自动重连与托盘自启动，保留本手册全部 37 个工具和 5 个提示词。Pro 首次连接与包内 CLI/MCP 启动见 [Pro 手册](PRO-MANUAL.md)。交付包已内置 Node，无需执行下面的源码环境安装步骤；旧入口继续保留。
+当前 `main` 的 SSH Relay Pro 2.0 提供一次配对、记住设备、独立守护、自动重连与托盘自启动，保留本手册全部 37 个工具和 5 个提示词。Pro 首次连接与包内 CLI/MCP 启动见 [Pro 手册](PRO-MANUAL.md)。交付包已内置 Node，无需执行下面的源码环境安装步骤；当前 skill 仅使用 Pro。
 
 已配对 Pro 设备断线时，先复用原私密状态和固定指纹，不索要密码、新连接块或用户批准重连。必须先自行实际恢复三次，失败后按 2、4、8、16、30、60 秒退避继续；程序在后台执行这一流程，AI 必须核对实际身份和结果。不要为“重连”启动重复通道，不终止未知进程，不将 ssh_execute、部署、上传、数据库导入等写入放进恢复循环。恢复后先核对之前操作是否已完成。
 
@@ -12,26 +12,17 @@
 
 ## 安装和连接
 
-近端需要 Node.js 22+、Python 3.10+、OpenSSH 客户端和本仓库。根目录运行 `npm ci --ignore-scripts`。远端运行 `npm start`；Windows 可用 `START-REMOTE.cmd`，需要管理员操作时由用户从管理员终端启动。连接权限继承远端启动令牌，MCP 不触发 UAC、不关闭保护、不自动修改 ACL。
-
-将远端完整私密连接块保存到仓库外 0600 文件，通过对应连接 Skill 导入：
+使用 [SSH Relay Pro skill](../.agents/skills/ssh-relay-pro/SKILL.md)，优先复用已有配对。运行包包含 Node 与生产依赖；源码开发需要 Node.js 22+，在根目录执行 `npm ci --ignore-scripts`。不再使用旧 Python 连接块导入器。
 
 ```sh
-python .agents/skills/connect-win10-public-ssh/scripts/connect.py \
-  --platform win10 --info-file /private/incoming.txt \
-  --state-dir /private/relay-state > /private/connection.json
+node src/pro/cli.cjs start --role near
+node src/pro/cli.cjs devices --role near
+node src/mcp.cjs --connection "<devices返回的connectionReport>" --name remote --state-dir "<私密MCP状态目录>"
 ```
 
-Linux 使用 connect-linux-public-ssh、`--platform linux`。检查 JSON 中 connected、remote_user、remote_hostname、host_fingerprint，并删除 incoming.txt。connection.json 和整个 state_directory 都是私密材料，不上传 Git。近端中继进程必须继续运行。
+首次配对、Windows/Linux 包内入口和自定义目录见 Pro skill 与 [Pro 手册](PRO-MANUAL.md)。核验真实指纹、账户、主机名和 cloud_self_test；状态、凭据及报告不提交 Git。权限继承远端实际启动令牌，不自动提升权限。
 
-独立启动 MCP：
-
-```sh
-node /absolute/repo/src/mcp.cjs --connection /private/connection.json \
-  --name win10 --state-dir /private/mcp-state
-```
-
-MCP 使用 stdio；stdout 只有协议，诊断写 stderr。客户端工具超时应留足连接和操作时间，Codex 示例为 480 秒；命令自身超时仍最多 300 秒。只对建立连接和只读身份探测做一次网络错误重试，不重放用户命令。它读取已核验的连接报告，SSH 实际再次固定指纹并核验主机名与账户，不执行报告中的 ssh_argv、不信任任意 shell 参数。它不会安装或注册自己。客户端配置示例见 examples/。不得对用户电脑使用云端自测豁免开关。
+MCP 使用 stdio；stdout 只有协议，诊断写 stderr。客户端工具超时应留足连接和操作时间，Codex 示例为 480 秒；命令自身超时仍最多 300 秒。连接恢复与只读身份探测使用当前实现的退避机制，不重放用户命令。它读取已核验的连接报告，SSH 实际再次固定指纹并核验主机名与账户，不执行报告中的 ssh_argv、不信任任意 shell 参数。它不会安装或注册自己。客户端配置示例见 examples/。不得对用户电脑使用云端自测豁免开关。
 
 多台电脑用 `--connections /private/servers.json`，格式：
 

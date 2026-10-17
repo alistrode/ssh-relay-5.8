@@ -20,7 +20,7 @@
 | [versions/4.0](https://github.com/trlstdin/rororororo/tree/versions/4.0) | SSH Relay Pro 2.0，与本次整理后的 main 相同 |
 | [archive/main-before-pro-20261017](https://github.com/trlstdin/rororororo/tree/archive/main-before-pro-20261017) | 切换前 main 的完整快照 |
 
-旧 main 的四个 skill 均已保留。Linux/Windows 连接 skill 使用 Pro 更新版及仓库 `src/near.cjs`；补回 project-backup-dev、xxm-workspace-governance 与旧连接附件。旧附件仅用于兼容保留，不替代 Pro 连接入口。历史 recovery 分支继续保留。
+当前只保留两个 skills：[Pro 连接](.agents/skills/ssh-relay-pro/SKILL.md) 与 [工作区、备份及开发](.agents/skills/workspace-backup-dev/SKILL.md)。原两个连接 skills 及其旧附件已删除；原备份和工作区规范已合并。历史版本仍可从原分支及 Git 历史查阅。
 
 ## 源码开发与 Pro 启动
 
@@ -32,42 +32,12 @@ node src/pro/cli.cjs start --role far
 
 图形界面使用 Electron；源码开发环境需准备与 lockfile 一致的 Electron 运行时，再运行 `npm run pro:ui`。交付包已内置 Electron 和 Node 运行时，不需要用户安装 npm/Node。无桌面的 AI 云端使用 CLI，按对应连接 Skill 的 Pro 章节操作。
 
-## 保留的旧版入口
+## AI 连接与开发规范
 
-以下是保留的旧版入口和源码使用方法；完整新设备记忆与后台恢复请使用上述 Pro 入口。保留当前 MQTT 公网连接，复现稳定版 MCP SSH Manager 的全部 37 个工具，补齐提示词、连接 Skill 和操作说明；不引入局域网功能。
+连接统一使用 [SSH Relay Pro skill](.agents/skills/ssh-relay-pro/SKILL.md)：优先复用已配对电脑，首次才使用一次性配对码，取得真实 connectionReport 后启动 MCP 并核验身份。Windows/Linux 桌面及无桌面近端均支持，不限云端。
 
-免安装运行包（内置 Node.js）和桌面图标：见 [下载与双击启动](deliverables/README.md)，Windows、Linux 分开下载。以下 npm 步骤用于源码开发。
+项目整理与代码修改遵循 [工作区、备份与开发 skill](.agents/skills/workspace-backup-dev/SKILL.md)，优先已有 xxm，保留配对目录并在修改代码前备份。
 
-## 运行
+工具操作见 [MCP 手册](docs/MCP-MANUAL.md)，Pro 操作见 [Pro 手册](docs/PRO-MANUAL.md)。旧连接块入口不再作为本分支 skill 提供；历史材料从归档或旧版本分支读取，不与 Pro 状态混用。
 
-需要 Node.js 22+。完整仓库根目录：
-
-```sh
-npm ci --ignore-scripts
-npm start
-```
-
-Windows 也可使用 `START-REMOTE.cmd`。远端保持运行，将打印的完整私密连接块交给可信 AI，按 [Windows Skill](.agents/skills/connect-win10-public-ssh/SKILL.md) 或 [Linux Skill](.agents/skills/connect-linux-public-ssh/SKILL.md) 导入。连接块、data/ 和私钥不可上传。
-
-导入得到已核验的私密 connection.json 后，在近端启动 MCP：
-
-```sh
-node /absolute/repo/src/mcp.cjs --connection /private/connection.json \
-  --name remote --state-dir /private/mcp-state
-```
-
-默认提供全部 37 个工具、5 个 prompts 和手册资源，使用 stdio，不自动改客户端配置。多目标、工具选择和客户端配置示例见 [完整操作手册](docs/MCP-MANUAL.md) 与 examples/。
-
-## 功能
-
-命令执行、双向文件传输和同步、持久会话、日志、监控、服务和进程操作、备份还原与计划、三种数据库、部署、提权执行、别名、Profiles、Hooks、分组批量、连接管理、固定指纹、历史及回环端口转发。各平台依赖与行为差异必须按 [功能清单](docs/MCP-REPRODUCTION.md) 和手册判断，不能从工具名称推断可用权限。
-
-远程命令继承远端进程权限，Windows 管理员启动可传递提升令牌，不能突破所有系统文件保护。详见 [权限说明](docs/PERMISSIONS.md)。当前远端新增 SFTP 属性修复、进程树终止和回环转发；旧远端仍可提供原有命令/SFTP，但新增能力需停止旧实例后启动新版。
-
-公网稳定性修复采用接收端确认、丢包重传与发送节流；近远端都需更新并确认协议 2 才生效。日志位置、升级及断线处理见 [连接排查](docs/troubleshooting.md)。
-
-## 来源与验证
-
-源代码来源见 [来源清单](docs/MCP-SOURCE-PROVENANCE.json)，稳定版辅助模块按 MIT 许可保留。当前实现和旧连接层分别处理，不将重建或新适配代码冒称原始工程。
-
-验证结果与明确限制见 [验证说明](docs/MCP-VALIDATION.md)。`npm run build` 只生成被忽略的派生 dist/，不提交运行包、依赖目录、测试状态或凭据。
+本次仅更新仓库 skills、文档与包校验兼容逻辑，未重新构建已发布运行包或源码 ZIP；它们仍是历史交付快照，内嵌 skills 可能较旧。当前规则以本仓库 main 为准。
