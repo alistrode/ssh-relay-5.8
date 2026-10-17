@@ -25,7 +25,7 @@ def inspect(archive,prefix,platform):
  if platform=='win32':
   inputs=json.loads((repo/'assets/pro-runtime-inputs.json').read_text());assert hashlib.sha256(payload('resources/app/vendor/WinSW-x64.exe')).hexdigest()==inputs['winsw']['sha256'];payload('relay-cli.cmd');payload('MCP.cmd')
  else:
-  assert members[prefix+'ssh-relay-pro'].mode&0o111;payload('relay-cli');payload('mcp');payload('libEGL.so');payload('libGLESv2.so')
+  assert members[prefix+'ssh-relay-pro'].mode&0o111;payload('relay-cli');payload('mcp');payload('libffmpeg.so');payload('libvk_swiftshader.so');payload('libvulkan.so.1')
  forbidden={'connection.json','connection-private.json','client_key','host_key','agent-runtime.json','guardian-runtime.json'}
  assert not any(PurePosixPath(n).name in forbidden for n in members)
  return {'platform':platform,'archiveMembers':len(members),'measuredApplicationFiles':len(expected),'validationIncluded':True,'productionDependenciesIncluded':True}

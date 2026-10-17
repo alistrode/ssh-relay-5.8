@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "packages": [
+    {
+      "file": "ssh-relay-pro-linux-x64.tar.xz",
+      "platform": "linux",
+      "archiveMembers": 5300,
+      "measuredApplicationFiles": 43,
+      "validationIncluded": true,
+      "productionDependenciesIncluded": true,
+      "bytes": 88546792,
+      "sha256": "bb861a03dc44bc563a1a6106811869d8884f9be2df4a38d04965d669209e3584"
+    },
+    {
+      "file": "ssh-relay-pro-windows-x64.zip",
+      "platform": "win32",
+      "archiveMembers": 5304,
+      "measuredApplicationFiles": 43,
+      "validationIncluded": true,
+      "productionDependenciesIncluded": true,
+      "bytes": 104506822,
+      "sha256": "aa0542bc522279218678d1de7de2f7cc554d47686e8575405b81f09145f0b4b6"
+    },
+    {
+      "file": "ssh-relay-pro-linux-amd64.deb",
+      "measuredApplicationFiles": 43,
+      "rootOwnershipAndSandboxModeVerified": true,
+      "bytes": 89896864,
+      "sha256": "1c035f5349fae0af2bc8d49d669ab9ae7fcbeed97bd4120d3766c22c222c07ea"
+    }
+  ]
+}
