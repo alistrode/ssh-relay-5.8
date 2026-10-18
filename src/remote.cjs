@@ -266,7 +266,7 @@ server.listen(config.sshPort, "127.0.0.1", () => {
   });
   relay.on("peer", peer => {
     if (admission && peer.controllerProbe && config.clientKeysFile) {
-      const request = verifyProbe(peer.controllerProbe, JSON.parse(fs.readFileSync(config.clientKeysFile,"utf8")));
+      const request = verifyProbe(peer.controllerProbe, JSON.parse(fs.readFileSync(config.clientKeysFile,"utf8")), Date.now(), value => admission.acceptsChallenge(value));
       if (request) admission.request(request);
     }
     publishStatus();

@@ -46,3 +46,15 @@ test("revoking another controller preserves the current owner and sessions", () 
   gate.request({controllerId:b,requestId:id()});gate.revoke(b);assert(gate.canStart(token));assert.equal(gate.snapshot().pending.length,0);
   gate.revoke(a);assert.equal(gate.canStart(token),false);assert.equal(gate.snapshot().ownerId,null);
 });
+
+test("server challenges admit skewed clocks and reject expired or foreign challenge replays", () => {
+  let now = 1000;
+  const state = new Admission({now:()=>now}), keys=keyPair(), controller=crypto.randomUUID(), request=crypto.randomUUID();
+  const authorized={[controller]:{publicKey:keys.publicKey,label:"skewed near"}}, challenge=state.snapshot().challenge;
+  const signed=probe(keys.privateKey,controller,request,challenge);
+  assert(verifyProbe(signed,authorized,Date.now()+7*3600000,v=>state.acceptsChallenge(v)));
+  assert.equal(verifyProbe(probe(keys.privateKey,controller,request,"0".repeat(32)),authorized,Date.now(),v=>state.acceptsChallenge(v)),null);
+  now+=60001;assert.notEqual(state.snapshot().challenge,challenge);
+  assert(verifyProbe(signed,authorized,Date.now()-7*3600000,v=>state.acceptsChallenge(v)));
+  now+=60000;assert.equal(verifyProbe(signed,authorized,Date.now(),v=>state.acceptsChallenge(v)),null);
+});

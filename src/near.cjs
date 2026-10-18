@@ -10,10 +10,10 @@ var configPath = path.resolve(process.argv[2]);
 var config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 var recordTrace = createTraceWriter(path.dirname(configPath), "near");
 var relay = createRelay(config, "near");
-var requestId = crypto.randomUUID();
+var requestId = crypto.randomUUID(), remoteChallenge;
 function announce() {
-  const controllerProbe = config.controllerId && config.controllerKeyPath
-    ? probe(fs.readFileSync(config.controllerKeyPath), config.controllerId, requestId) : undefined;
+  const controllerProbe = config.controllerId && config.controllerKeyPath && remoteChallenge
+    ? probe(fs.readFileSync(config.controllerKeyPath), config.controllerId, requestId, remoteChallenge) : undefined;
   relay.status({ near:true, controllerProbe }).catch(() => {});
 }
 process.on("message", message => {
@@ -43,6 +43,9 @@ relay.on("peer", (status) => {
       "WARNING: unexpected remote SSH fingerprint; SSH client must reject it.",
     );
   console.log("Authenticated remote status:", JSON.stringify(status));
+  if (status.fingerprint === config.fingerprint && /^[a-f0-9]{32}$/.test(status.admission?.challenge || "") && remoteChallenge !== status.admission.challenge) {
+    remoteChallenge = status.admission.challenge; announce();
+  }
   if (config.statusPath && status.fingerprint === config.fingerprint) {
     writePrivate(config.statusPath, { ...status, receivedAt: Date.now() });
   }

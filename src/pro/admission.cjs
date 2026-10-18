@@ -2,20 +2,21 @@
 const crypto = require("node:crypto");
 const { utils } = require("ssh2");
 const validId = value => typeof value === "string" && /^[a-f0-9-]{36}$/.test(value);
-function probe(privateKey, controllerId, requestId) {
+function probe(privateKey, controllerId, requestId, challenge) {
   if (!validId(controllerId) || !validId(requestId)) throw Error("Invalid admission request");
-  const payload = JSON.stringify({ controllerId, requestId, time: Date.now() });
+  const payload = JSON.stringify({ controllerId, requestId, time: Date.now(), ...(challenge ? {challenge} : {}) });
   const key = utils.parseKey(privateKey);
   if (key instanceof Error) throw key;
   const signature = key.sign(Buffer.from(payload));
   if (signature instanceof Error) throw signature;
   return { payload, signature: signature.toString("base64") };
 }
-function verifyProbe(envelope, authorized, now = Date.now()) {
+function verifyProbe(envelope, authorized, now = Date.now(), acceptChallenge = null) {
   try {
     if (typeof envelope?.payload !== "string" || envelope.payload.length > 512 || typeof envelope.signature !== "string" || envelope.signature.length > 256) return null;
     const value = JSON.parse(envelope.payload);
-    if (!validId(value.controllerId) || !validId(value.requestId) || !Number.isSafeInteger(value.time) || Math.abs(now - value.time) > 120000) return null;
+    if (!validId(value.controllerId) || !validId(value.requestId) || !Number.isSafeInteger(value.time) ) return null;
+    if (acceptChallenge ? !acceptChallenge(value.challenge) : Math.abs(now - value.time) > 120000) return null;
     const entry = authorized[value.controllerId];
     if (!entry) return null;
     const key = utils.parseKey(entry.publicKey);
@@ -28,7 +29,18 @@ class Admission {
     this.now = now; this.onChange = onChange; this.ttl = ttl;
     this.owner = null; this.pending = new Map(); this.denied = new Map();
     this.sessions = new Map(); this.reservations = new Map(); this.approved = null;
+    this.challenges = new Map(); this.challenge = null; this.challengeAt = -Infinity;
   }
+  currentChallenge() {
+    const now = this.now();
+    for (const [value,until] of this.challenges) if (until <= now) this.challenges.delete(value);
+    if (now - this.challengeAt >= 60000 || !this.challenges.has(this.challenge)) {
+      this.challenge = crypto.randomBytes(16).toString("hex"); this.challengeAt = now;
+      this.challenges.set(this.challenge, now + 120000);
+    }
+    return this.challenge;
+  }
+  acceptsChallenge(value) { this.currentChallenge(); return typeof value === "string" && this.challenges.has(value); }
   emit() { this.onChange(this.snapshot()); }
   expire() {
     const now = this.now(); let changed = false;
@@ -91,7 +103,7 @@ class Admission {
     this.expire(); this.emit();
   }
   snapshot() {
-    return { ownerId:this.owner, activeConnections:this.sessions.size, drainingConnections:[...this.sessions.values()].filter(s=>s.controllerId!==this.owner).length, approvedId:this.approved?.controllerId || null, pending:[...this.pending.values()] };
+    return { challenge:this.currentChallenge(), ownerId:this.owner, activeConnections:this.sessions.size, drainingConnections:[...this.sessions.values()].filter(s=>s.controllerId!==this.owner).length, approvedId:this.approved?.controllerId || null, pending:[...this.pending.values()] };
   }
 }
 module.exports = { Admission, probe, verifyProbe };
