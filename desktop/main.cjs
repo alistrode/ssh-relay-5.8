@@ -327,12 +327,13 @@ app.whenReady().then(async () => {
     const switchTimer = setInterval(checkSwitch, 1500);
     app.once("will-quit", () => clearInterval(switchTimer));
   }
+  let diagnosticTimer;
   if (args.includes("--diagnostic-check")) {
     if (!args.includes("--observe-only") || !args.includes("--no-shortcuts")) throw Error("Diagnostic check requires an isolated read-only launch");
-    setTimeout(() => {
-      quitting = true;
-      app.exit(fs.existsSync(path.join(profile, "gui-status.json")) ? 0 : 1);
-    }, 12000);
+    diagnosticTimer = setTimeout(() => {
+      diagnostic.record("startup_failed");
+      quitting = true; app.exit(1);
+    }, 120000);
   }
   if (
     !args.includes("--ui-smoke") &&
@@ -360,11 +361,14 @@ app.whenReady().then(async () => {
             ...status,
           }),
         );
-        if (!fs.existsSync(path.join(profile, "observer.png")))
+        if (args.includes("--diagnostic-check") || !fs.existsSync(path.join(profile, "observer.png")))
           fs.writeFileSync(
             path.join(profile, "observer.png"),
             (await window.webContents.capturePage()).toPNG(),
           );
+        if (args.includes("--diagnostic-check")) {
+          clearTimeout(diagnosticTimer); quitting = true; app.exit(0);
+        }
       } catch (error) {
         fs.appendFileSync(
           path.join(profile, "gui-errors.log"),

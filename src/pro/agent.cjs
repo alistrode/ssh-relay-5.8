@@ -149,6 +149,7 @@ class Agent {
       testHooks: this.testHooks,
       clientKeysFile: clients,
       connectionAdmission: true,
+      clockSkewCorrection: true,
     });
   }
   registry() {
@@ -425,6 +426,7 @@ class Agent {
         const config = {
           ...info,
           localPort: 0,
+          clockSkewCorrection: true,
           reconnectPolicy: true,
           testHooks: this.testHooks,
           statusPath: path.join(t.dir, "peer.json"),

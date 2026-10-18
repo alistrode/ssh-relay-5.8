@@ -63,18 +63,18 @@ test("autostart service descriptors use isolated profiles, explicit account, and
 });
 
 test("service descriptors supervise the background agent", () => {
-  const value = linuxUnit({
+  const value = (process.platform === "win32" ? windowsXml : linuxUnit)({
     executable: "/app/runtime",
     appRoot: "/app",
     profile: "/state",
     role: "far",
     user: "owner",
   });
-  assert(value.includes("src/pro/guardian.cjs"));
+  assert(value.includes(path.join("src", "pro", "guardian.cjs")));
 });
-test("a PID left by another OS boot is never mistaken for the saved agent", () => {
+test("a PID left by another OS boot is never mistaken for the saved agent", t => {
   const { ownedProcess, systemBootId } = require("../../src/pro/store.cjs");
-  if (systemBootId())
+  if (!systemBootId()) { t.skip("OS boot identity is unavailable on this fixture"); return; }
     assert.equal(
       ownedProcess(process.pid, "/irrelevant", "agent", "different-boot"),
       false,

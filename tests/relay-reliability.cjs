@@ -9,7 +9,7 @@ const path = require("node:path");
 const repo = path.resolve(__dirname, "..");
 const source = fs.readFileSync(path.join(repo, "src/relay.cjs"), "utf8");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function test(name, filter) {
+async function test(name, filter, options = {}) {
   const peers = [],
     faults = [];
   let drops = 0;
@@ -21,7 +21,12 @@ async function test(name, filter) {
         cb();
       };
       client.publish = (topic, payload, options, cb) => {
-        const f = JSON.parse(JSON.parse(payload).body);
+        const envelope=JSON.parse(payload),f=JSON.parse(envelope.body);
+        if(options.shiftNearTime && f.role === "near") {
+          f.time+=options.shiftNearTime;envelope.body=JSON.stringify(f);
+          envelope.mac=crypto.createHmac("sha256",Buffer.from(config.secret,"hex")).update(envelope.body).digest("base64");
+          payload=JSON.stringify(envelope);
+        }
         const decision = filter(f, drops);
         if (decision === "drop") {
           drops++;
@@ -60,6 +65,7 @@ async function test(name, filter) {
     secret: crypto.randomBytes(32).toString("hex"),
     broker: "wss://test.invalid/mqtt",
     sshPort: echo.address().port,
+    clockSkewCorrection: !!options.clockProof,
   };
   const far = module.exports.createRelay(config, "far"),
     near = module.exports.createRelay(config, "near");
@@ -271,7 +277,8 @@ async function test(name, filter) {
     await test("permanent-data-loss", (f) =>
       f.type === "data" ? "drop" : null),
   );
-  assert.equal(results.length, 7);
+  results.push(await test("clock-skew-proof",()=>null,{clockProof:true,shiftNearTime:-7*3600000}));
+  assert.equal(results.length, 8);
   console.log(
     "PASS: reliable transport fault injection (in-memory MQTT, real TCP)",
   );

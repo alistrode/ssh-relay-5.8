@@ -5,6 +5,7 @@ const crypto = require("node:crypto");
 const net = require("node:net");
 const { EventEmitter } = require("node:events");
 const { proxyForWebSocket } = require("./pro/network.cjs");
+const { ClockProof } = require("./pro/clock-proof.cjs");
 
 // QoS 1 confirms receipt by the broker, not delivery to our opposite endpoint.
 // Version 2 retains stream frames until that endpoint acknowledges them.
@@ -33,6 +34,13 @@ function createRelay(config, role) {
     wsOptions: proxy ? { agent: new HttpsProxyAgent(proxy) } : {},
   });
   const instance = crypto.randomBytes(8).toString("hex");
+  const clock = config.clockSkewCorrection ? new ClockProof() : null;
+  let lastClockProbe = -Infinity, lastStatus, peerSwitchedAt = -Infinity;
+  const retiredPeers = new Set();
+  function clockProbe() {
+    if (!clock || !ready || performance.now()-lastClockProbe<1000) return;
+    lastClockProbe=performance.now();control({type:"clock_probe",nonce:clock.begin()});
+  }
   const connections = new Map();
   const closed = new Map();
   let brokerFailures = 0,
@@ -431,6 +439,7 @@ function createRelay(config, role) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
       epoch++;
+      if (clock) { clock.reset();lastClockProbe=-Infinity;clockProbe(); }
       trace("mqtt_subscribed", null, { epoch });
       events.emit("ready");
     }),
@@ -498,25 +507,41 @@ function createRelay(config, role) {
       )
         return reject("authentication");
       const frame = JSON.parse(envelope.body);
-      if (
-        frame.role !== opposite ||
-        !Number.isSafeInteger(frame.time) ||
-        Math.abs(Date.now() - frame.time) > 120000
-      )
+      if (frame.role !== opposite || !Number.isSafeInteger(frame.time)) return reject("role_or_time");
+      const origin = frame.relayEpoch || frame.status?.relayEpoch || frame.status?.relayInstance;
+      if (clock && frame.type === "clock_probe") {
+        if (clock.shouldReply(origin,frame.nonce)) {
+          control({type:"clock_reply",nonce:frame.nonce,challenge:clock.begin()});
+        }
+        return;
+      }
+      if (clock && frame.type === "clock_reply") {
+        if (clock.accept(origin,frame.nonce,frame.time)) {
+          trace("clock_proof_verified");
+          if (typeof frame.challenge === "string" && /^[a-f0-9]{32}$/.test(frame.challenge)) control({type:"clock_reply",nonce:frame.challenge});
+          if (lastStatus) events.status(lastStatus);
+        }
+        return;
+      }
+      if (clock ? !clock.validTime(origin,frame.time) : Math.abs(Date.now()-frame.time)>120000) {
+        if (clock) clockProbe();
         return reject("role_or_time");
-      const origin =
-        frame.relayEpoch ||
-        frame.status?.relayEpoch ||
-        frame.status?.relayInstance;
+      }
       // Admission-enabled far ends can hear several authorized near ends.
       // A status probe from a different controller must never reset live streams.
       if (origin && typeof origin === "string" && !(role === "far" && config.connectionAdmission)) {
         if (peerInstance && origin !== peerInstance) {
-          if (frame.time < lastPeerStatus) return;
+          if (clock) {
+            if (retiredPeers.has(origin)) return reject("retired_peer_epoch");
+            if (!clock.provenAfter(origin,peerSwitchedAt)) { clockProbe();return reject("unproven_peer_restart"); }
+            retiredPeers.add(peerInstance);
+            while(retiredPeers.size>128)retiredPeers.delete(retiredPeers.values().next().value);
+          } else if (frame.time < lastPeerStatus) return;
           trace("peer_instance_changed");
           for (const state of [...connections.values()])
             reset(state, "peer_restarted", false);
         }
+        if (peerInstance !== origin) peerSwitchedAt=performance.now();
         peerInstance = origin;
         lastPeerStatus = Math.max(lastPeerStatus, frame.time);
       }
@@ -701,8 +726,13 @@ function createRelay(config, role) {
     );
     state.openTimer.unref();
   };
-  events.status = (status) =>
-    publish({
+  const clockTimer = clock ? setInterval(() => {
+    if (!clock.peers.size || performance.now()-lastClockProbe>=30000) clockProbe();
+  },5000) : null;
+  clockTimer?.unref();
+  events.status = (status) => {
+    lastStatus=status;
+    return publish({
       type: "status",
       status: {
         ...status,
@@ -711,6 +741,7 @@ function createRelay(config, role) {
         relayEpoch: instance + ":" + epoch,
       },
     });
+  };
   events.snapshot = () => ({
     ...stats,
     active: [...connections.values()].filter((s) => !s.socket.destroyed).length,
@@ -731,6 +762,7 @@ function createRelay(config, role) {
     if (config.testHooks) process.removeListener("message", testDrop);
     ready = false;
     clearInterval(retransmitter);
+    if(clockTimer)clearInterval(clockTimer);
     clearTimeout(reconnectTimer);
     clearTimeout(wireTimer);
     wireTimer = null;

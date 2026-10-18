@@ -49,7 +49,7 @@ function inspectPermissions() {
  const user=os.userInfo();
  const context={platform:process.platform,hostname:os.hostname(),account:user.username,home:user.homedir,pid:process.pid};
  if(process.platform==='win32') {
-  const result=spawnSync('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(windowsProbe,'utf16le').toString('base64')],{encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:1024*1024});
+  const result=spawnSync('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(windowsProbe,'utf16le').toString('base64')],{encoding:'utf8',windowsHide:true,timeout:120000,maxBuffer:1024*1024});
   if(result.error || result.status!==0) throw new Error('Windows token inspection failed: '+(result.error ? result.error.message : result.stderr.trim()));
   let token;
   try {token=JSON.parse(result.stdout.replace(/^\uFEFF/,'').trim());} catch {throw new Error('Windows token inspection returned invalid JSON');}
