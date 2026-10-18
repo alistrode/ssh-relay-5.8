@@ -1,0 +1,51 @@
+{
+  "applicationVersion": "2.0.1",
+  "branch": "fix/ssh-pro-startup-20261019",
+  "passed": false,
+  "status": "candidate; Windows GUI and final-package validation incomplete",
+  "recordedAtUtc": "2026-10-18T17:34:45.997958+00:00",
+  "checks": {
+    "nodeTests": {
+      "passed": true,
+      "count": 11
+    },
+    "bootstrapFailureRetainsLogsAndNonzeroExit": true,
+    "javascriptSyntax": true,
+    "pythonPackagingSyntax": true,
+    "diffCheck": true,
+    "nativeWindowsPowerShellParser": null,
+    "nativeWindowsOfflineExport": null,
+    "nativeWindowsGuiStartup": null,
+    "uacConsentAndCancellation": null,
+    "finalDownloadedPackage": null,
+    "finalSourceOneHour": null
+  },
+  "windowsTokenEvidence": {
+    "initialIntegrityRid": 4096,
+    "initialWorkspaceWritesDenied": true,
+    "afterUserRestartIntegrityRid": 12288,
+    "sameTargetIdentityVerified": true,
+    "historicalGpuFailureUniqueCauseProven": false
+  },
+  "recovery": {
+    "reusedExistingCredentials": true,
+    "hostFingerprintVerificationDisabled": false,
+    "nearEndRestartedAfterRepeatedHandshakeFailures": true,
+    "remoteWritesReplayed": false
+  },
+  "sourceSha256": {
+    "desktop/main.cjs": "aa4f844d54a4fa66016241f173648438325d5bf2b4fc7bed0e993c7d230ca216",
+    "src/pro/gui-diagnostics.cjs": "31afe2b13cf55c4eb4afc5a6798b275e9af2521c18ef1c0a44a55d65859738b1",
+    "launchers/Start-Pro.ps1": "2b78ccaeb86749e5cc0f427444d5967b2436edb830ffaf4460c20ad313d10b18",
+    "scripts/package-pro.py": "88eddd398e7584c4df39f37bfd469acc2f8004fa75ad93c4f96cf735ccee37a1",
+    "package.json": "686c69f3daa40772efff680ed558a484c13d7b4426aa45553cad5d4b9e119e41",
+    "package-lock.json": "1f4745da731f625632ade6c116ec5b137044685658a8fa809500e9b24ca80ddc",
+    "scripts/package-pro-source.py": "38934e1e67bd6dccf13e4cb0901182ada79267c48a0d21a6caf59aae76d81ab0"
+  },
+  "limitations": [
+    "No Windows GUI pass has been established for these candidate sources.",
+    "No current-candidate runtime package is published; baseline 2.0.0 runtime archives are historical.",
+    "Raw Chromium logs remain local; export includes only fixed error-code counts.",
+    "Default UAC launch is user-requested; no UAC/ACL/autostart policy was changed."
+  ]
+}

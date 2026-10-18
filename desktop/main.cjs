@@ -1,4 +1,24 @@
 "use strict";
+const diagnostics = require("../src/pro/gui-diagnostics.cjs");
+const startupPath = require("node:path"), startupOs = require("node:os");
+const startupArgs = process.argv.slice(1), profileIndex = startupArgs.indexOf("--profile-dir");
+const startupProfile = startupPath.resolve(profileIndex >= 0 && startupArgs[profileIndex + 1] ? startupArgs[profileIndex + 1] : startupPath.join(startupOs.homedir(), ".ssh-relay-pro"));
+const diagnosticDirectory = startupPath.join(startupProfile, "logs");
+const diagnostic = diagnostics.create(diagnosticDirectory);
+diagnostics.installPipeGuards(diagnostic.record);
+diagnostic.record("main_enter", { pid: process.pid, platform: process.platform });
+// Monitor without swallowing fatal exceptions or changing Node's exit behavior.
+process.on("uncaughtExceptionMonitor", () => diagnostic.record("uncaught_exception"));
+process.on("exit", code => diagnostic.record("process_exit", { exitCode: code }));
+if (process.platform === "win32") {
+  const token = require("node:child_process").spawnSync("whoami.exe", ["/groups", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true, timeout: 10000 });
+  const integrity = /S-1-16-(\d+)/.exec(token.stdout || "");
+  if (token.error || token.status !== 0 || !integrity || Number(integrity[1]) < 8192) {
+    diagnostic.record(integrity ? "startup_permission_rejected" : "permission_check_failed");
+    process.stderr.write("Windows startup token is unavailable or low-integrity. Open Start.cmd from a normal desktop terminal.\n");
+    process.exit(2);
+  }
+}
 const {
   app,
   BrowserWindow,
@@ -15,7 +35,6 @@ const fs = require("node:fs"),
   os = require("node:os"),
   http = require("node:http"),
   cp = require("node:child_process"),
-  zlib = require("node:zlib"),
   { folder, read } = require("../src/pro/store.cjs"),
   startup = require("../src/pro/autostart.cjs");
 const root = path.resolve(__dirname, ".."),
@@ -28,6 +47,9 @@ let window,
   tray,
   quitting = false;
 app.setName("SSH Relay Pro");
+diagnostic.record("electron_loaded", { version: app.getVersion() });
+app.on("child-process-gone", (_event, details) => diagnostic.record("child_process_gone", details));
+app.on("render-process-gone", (_event, _contents, details) => diagnostic.record("render_process_gone", details));
 if (process.platform === "win32") app.setAppUserModelId("rororo.ssh-relay.pro");
 if (process.platform === "linux") {
   app.setDesktopName("ssh-relay-pro.desktop");
@@ -133,6 +155,7 @@ function show() {
   }
 }
 function create() {
+  diagnostic.record("window_create");
   window = new BrowserWindow({
     width: 1060,
     height: 780,
@@ -147,7 +170,13 @@ function create() {
       sandbox: true,
     },
   });
-  window.loadFile(path.join(__dirname, "index.html"));
+  window.webContents.on("did-finish-load", () => diagnostic.record("window_loaded"));
+  window.webContents.on("did-fail-load", (_e, errorCode) => diagnostic.record("window_load_failed", { errorCode }));
+  window.on("show", () => diagnostic.record("window_shown"));
+  window.loadFile(path.join(__dirname, "index.html")).catch(() => {
+    diagnostic.record("window_load_rejected");
+    app.exit(1);
+  });
   window.on("close", (event) => {
     if (!quitting) {
       event.preventDefault();
@@ -243,33 +272,24 @@ ipcMain.handle("startup-set", async (event, value) => {
   return startup.apply(options(), value);
 });
 ipcMain.handle("logs-export", async () => {
-  const logs = await Promise.all(
-    ["near", "far"].map((role) =>
-      request(role, "/logs").catch(() => ({ events: [] })),
-    ),
-  );
   const d = await dialog.showSaveDialog(window, {
-    defaultPath: "ssh-relay-pro-diagnostics.json.gz",
+    defaultPath: "ssh-relay-pro-diagnostics-" + Date.now() + ".json.gz",
   });
-  if (!d.canceled)
-    fs.writeFileSync(
-      d.filePath,
-      zlib.gzipSync(
-        JSON.stringify({
-          version: app.getVersion(),
-          createdAt: new Date().toISOString(),
-          near: logs[0],
-          far: logs[1],
-        }),
-      ),
-      { mode: 0o600 },
-    );
+  if (!d.canceled) diagnostics.exportDiagnostics(diagnosticDirectory, d.filePath);
   return !d.canceled;
 });
-app.on("before-quit", () => (quitting = true));
+app.on("before-quit", () => { diagnostic.record("before_quit"); quitting = true; });
 app.whenReady().then(async () => {
+  diagnostic.record("app_ready");
   folder(profile);
   create();
+  if (args.includes("--diagnostic-check")) {
+    if (!args.includes("--observe-only") || !args.includes("--no-shortcuts")) throw Error("Diagnostic check requires an isolated read-only launch");
+    setTimeout(() => {
+      quitting = true;
+      app.exit(fs.existsSync(path.join(profile, "gui-status.json")) ? 0 : 1);
+    }, 12000);
+  }
   if (
     !args.includes("--ui-smoke") &&
     !args.includes("--no-shortcuts") &&
@@ -453,5 +473,8 @@ app.whenReady().then(async () => {
       app.quit();
     }, 5000);
   }
+}).catch(() => {
+  diagnostic.record("startup_failed");
+  app.exit(1);
 });
 app.on("window-all-closed", () => {});
