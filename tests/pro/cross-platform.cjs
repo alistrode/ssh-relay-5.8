@@ -1,7 +1,8 @@
 "use strict";
 // Two independently paired directions, cloud fixtures only. No existing reports.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),crypto=require('node:crypto');
-const {Agent}=require('../../src/pro/agent.cjs'),{request}=require('../../src/pro/cli.cjs'),{Client}=require('ssh2');
+const appRoot=process.env.RELAY_TEST_APP_ROOT||path.resolve(__dirname,'../..');
+const {Agent}=require(path.join(appRoot,'src/pro/agent.cjs')),{request}=require(path.join(appRoot,'src/pro/cli.cjs')),{Client}=require(path.join(appRoot,'node_modules/ssh2'));
 const windows=process.argv[2]==='--windows',root=path.resolve(process.argv[windows?4:2]),share=path.resolve(process.argv[3]);
 if(fs.existsSync(root))throw Error('Use an isolated new cross-platform directory');fs.mkdirSync(root,{recursive:true});
 const brokerUrl='wss://test.mosquitto.org:8081/mqtt',wait=ms=>new Promise(r=>setTimeout(r,ms));let far,near;

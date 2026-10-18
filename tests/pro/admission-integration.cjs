@@ -1,7 +1,8 @@
 "use strict";
 // Own near/far identities only. Never accepts an existing connection report.
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os"), crypto = require("node:crypto"), assert = require("node:assert/strict");
-const { Client } = require("ssh2"), { Agent } = require("../../src/pro/agent.cjs"), { request } = require("../../src/pro/cli.cjs");
+const appRoot = process.env.RELAY_TEST_APP_ROOT || path.resolve(__dirname,"../..");
+const { Client } = require(path.join(appRoot,"node_modules/ssh2")), { Agent } = require(path.join(appRoot,"src/pro/agent.cjs")), { request } = require(path.join(appRoot,"src/pro/cli.cjs"));
 const root = process.argv[2] || path.join(os.tmpdir(), "relay-admission-" + crypto.randomUUID());
 if (fs.existsSync(root)) throw Error("An isolated integration test requires a new directory");
 fs.mkdirSync(root, { recursive:true, mode:0o700 });

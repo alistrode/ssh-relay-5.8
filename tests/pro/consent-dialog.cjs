@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),
 if(process.platform!=='win32')throw Error('Native Windows GUI required');
 const exe=path.resolve(process.argv[2]),root=path.resolve(process.argv[3]);
 if(fs.existsSync(root))throw Error('Use a new private test directory');fs.mkdirSync(root,{recursive:true});
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),results=[];
 (async()=>{for(const approve of [false,true]){
  const profile=path.join(root,approve?'approve':'decline'),far=path.join(profile,'far');fs.mkdirSync(far,{recursive:true});const token=crypto.randomBytes(32).toString('hex'),requestId=crypto.randomUUID();let decision;
  const pending={requestId,controllerId:crypto.randomUUID(),label:'Isolated competing controller',expiresAt:Date.now()+120000};
@@ -19,6 +19,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   for(let i=0;i<40&&!decision;i++)await wait(250);assert.deepEqual(decision,{requestId,approve});
   for(let i=0;i<40&&!exited;i++)await wait(250);assert(exited,'Consent helper must exit');
   const events=fs.readFileSync(path.join(profile,'logs/gui.jsonl'),'utf8');assert(events.includes('switch_prompt_shown'));assert(events.includes(approve?'switch_prompt_approved':'switch_prompt_declined'));
+  results.push({approve,passed:true});fs.writeFileSync(path.join(root,'results.json'),JSON.stringify(results));
   console.log('PASS native Windows dialog '+(approve?'approve':'retain')+' posts authenticated decision and exits');
  }finally{if(!exited)child.kill();await new Promise(r=>server.close(r));}
-}})().catch(e=>{console.error(e.stack);process.exitCode=1;});
+}})().catch(e=>{fs.writeFileSync(path.join(root,'failure.txt'),e.stack);console.error(e.stack);process.exitCode=1;});

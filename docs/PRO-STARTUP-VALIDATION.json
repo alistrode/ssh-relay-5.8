@@ -2,8 +2,8 @@
   "applicationVersion": "2.0.1",
   "branch": "fix/ssh-pro-startup-20261019",
   "passed": false,
-  "status": "candidate: Linux functional checks passed; cloud Windows local staging and final-package acceptance pending",
-  "recordedAtUtc": "2026-10-18T18:56:49.353536+00:00",
+  "status": "candidate: Linux checks passed; cloud Win10 deployment hashes verified, native GUI/dialog and final downloaded package checks ongoing",
+  "recordedAtUtc": "2026-10-18T19:20:03.037924+00:00",
   "checks": {
     "nodeTests": {
       "passed": true,
@@ -59,6 +59,28 @@
         7
       ],
       "foreignAndExpiredChallengesRejected": true
+    },
+    "nativeWindowsDeploymentHashes": {
+      "passed": true,
+      "files": 4625
+    },
+    "nativeWindowsGuiWindowLoad": {
+      "observed": true,
+      "privateDesktop": true,
+      "inputDesktopSwitched": false,
+      "gpuError18Observed": false,
+      "diagnosticCheckExit": 1,
+      "finalGuiAcceptance": false
+    },
+    "packageArchiveIntegrity": {
+      "passed": true,
+      "measuredRuntimeSourceFiles": 52,
+      "nativeAcceptanceImplied": false
+    },
+    "mcpIntegration": {
+      "passed": true,
+      "tools": 37,
+      "calls": 54
     }
   },
   "windowsTokenEvidence": {

@@ -1,7 +1,8 @@
 "use strict";
 // Isolated identities only; sample real SSH/SFTP and recover this fixture's worker.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),os=require('node:os'),assert=require('node:assert/strict');
-const {Agent}=require('../../src/pro/agent.cjs'),{request}=require('../../src/pro/cli.cjs'),{Client}=require('ssh2');
+const appRoot=process.env.RELAY_TEST_APP_ROOT||path.resolve(__dirname,'../..');
+const {Agent}=require(path.join(appRoot,'src/pro/agent.cjs')),{request}=require(path.join(appRoot,'src/pro/cli.cjs')),{Client}=require(path.join(appRoot,'node_modules/ssh2'));
 const root=path.resolve(process.argv[2]||path.join(os.tmpdir(),'relay-soak-'+crypto.randomUUID())),seconds=Number(process.argv[3]||3600);
 if(fs.existsSync(root)||!Number.isFinite(seconds)||seconds<60)throw Error('Use a new isolated directory and at least 60 seconds');
 fs.mkdirSync(root,{recursive:true,mode:0o700});const wait=ms=>new Promise(r=>setTimeout(r,ms));let far,near,samples=0,recovered=0;const started=Date.now();let sourceHash;
@@ -19,7 +20,7 @@ async function sample(report){
  }finally{client.destroy();}
 }
 (async()=>{try{
- const hash=crypto.createHash('sha256');for(const dir of ['src','desktop','launchers']){const walk=d=>{for(const name of fs.readdirSync(d).sort()){const p=path.join(d,name);if(fs.statSync(p).isDirectory())walk(p);else{hash.update(path.relative(path.resolve(__dirname,'../..'),p));hash.update(fs.readFileSync(p));}}};walk(path.resolve(__dirname,'../..',dir));}sourceHash=hash.digest('hex');
+ const hash=crypto.createHash('sha256');for(const dir of ['src','desktop','launchers']){const walk=d=>{for(const name of fs.readdirSync(d).sort()){const p=path.join(d,name);if(fs.statSync(p).isDirectory())walk(p);else{hash.update(path.relative(appRoot,p));hash.update(fs.readFileSync(p));}}};walk(path.join(appRoot,dir));}sourceHash=hash.digest('hex');
  for(const role of ['far','near']){const a=new Agent({role,dir:path.join(root,role),allowCloudSelfTest:true,brokerUrl:process.env.RELAY_LAB_BROKER});await a.start();if(role==='far')far=a;else near=a;}
  const offer=await request(path.join(root,'far'),'/pair/create',{});await request(path.join(root,'near'),'/pair/connect',{code:offer.code});
  const online=()=>{const d=near.status().devices[0];return d?.state==='online'&&d;};

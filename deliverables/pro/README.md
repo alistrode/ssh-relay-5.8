@@ -1,22 +1,12 @@
-> 仓库整理更新（2026-10-17）：用户已明确授权 Pro 成为 main；当前开发主分支为 main，版本分类分支为 versions/4.0。下文关于禁止修改 main、仅在 recovery 分支开发的历史限制不再适用于本次整理及后续 main 维护。其他连接、安全和验收要求保留。旧 main 已完整归档至 archive/main-before-pro-20261017。
+# SSH Relay Pro 2.0.1 修复候选
 
-# SSH Relay Pro 2.0 私有交付
+当前仍未通过最终双平台验收。包的结构、52 个运行源码文件散列、内置运行时和生产依赖检查通过，不代表 Windows GUI、连接切换或一小时验收已经通过。实际范围见 `VALIDATION.json` 与 `docs/PRO-STARTUP-VALIDATION.json`。
 
-当前交付状态：用户随后明确要求立即上传完整源码、运行时并登记本地项目管理器，不再等待最终源码的一小时验收。本次按此最新要求交付；PRO-VALIDATION.json 如实保留最终轮次未完成状态，历史 3631 秒通过不能替代最终源码验收。
+- `ssh-relay-pro-windows-x64.zip`：Windows 10 1803+ / Windows 11 x64。解压后运行 `Setup.cmd`，再从单一应用目录启动；`Start.cmd` 默认通过 Windows UAC 请求管理员启动，取消则停止。`Diagnostics.cmd` 离线导出脱敏诊断，不要求提权。完整运行时与生产依赖已内置，无需系统 Node/npm。
+- `ssh-relay-pro-linux-amd64.deb`：Linux x64，需支持包声明的系统桌面库。安装包提供由包管理器设置所有者的 Chromium 沙箱。
+- `ssh-relay-pro-linux-x64.tar.xz`：Linux x64 单文件夹运行包；系统需具备声明的桌面库和受支持的用户命名空间沙箱。
+- `source.zip`：该候选的完整项目源码、测试、依赖清单和构建说明；`SOURCE-MANIFEST.json` 记录源码提交与文件散列。
 
-工作分支 `recovery/current-public-relay-pro`。不要切换 main；这些是 Pro 包，原维护版本的包仍保留在上一级目录。新旧版本的状态和通道隔离。
+升级采用独立身份、配置目录和中继会话。先探测占用，再发起 SSH；其他控制器占用时拒绝抢占，并由远端决定是否切换。批准后，已有命令、已打开文件句柄和 TCP 转发继续完成，新操作交给新控制器。不重放业务写入，不关闭指纹或 TLS 检查。
 
-| 平台 | 下载文件 | 打开方式 |
-| --- | --- | --- |
-| Windows 10 1803+ / 11 x64 | [Windows Pro ZIP](ssh-relay-pro-windows-x64.zip) | 解压后双击 `Setup.cmd`，安装并打开原生 GUI |
-| Linux x64，Debian/Ubuntu | [Linux Pro DEB](ssh-relay-pro-linux-amd64.deb) | 用系统包安装器安装，应用菜单启动 |
-| Linux x64，可移植 | [Linux Pro TAR.XZ](ssh-relay-pro-linux-x64.tar.xz) | 解压，双击无扩展名原生 `ssh-relay-pro` |
-| 应用源码与构建说明 | [Pro 源码 ZIP](source.zip) | 源码开发需要依赖安装；不是双击包 |
-
-两平台包含 Electron 与内置 Node.js 24，无需另装 Node/npm。Linux 仍需常规桌面系统库；TAR 依赖系统用户命名空间沙箱支持。Windows 解包只使用系统自带 tar.exe，不下载运行时。系统服务包装器仅 Windows 使用包内 WinSW。
-
-完整操作见 [Pro 手册](../../docs/PRO-MANUAL.md)，验证范围见 [验收记录](../../docs/PRO-VALIDATION.json)。校验：`sha256sum -c SHA256SUMS`；运行时来源见 `RUNTIME-PROVENANCE.json`。Windows 已在独立目录以相同应用源码和锁定运行时完成实机连接、MCP、1 MiB 文件往返、界面渲染及后台崩溃恢复检查。下载 ZIP 的 Setup.cmd 双击、物理托盘菜单点击及系统重启未实测。
-
-程序设置、配对授权和日志不在下载包里。它们保存在当前用户 `.ssh-relay-pro`，不可上传公开仓库。原始源码、发布包重建代码和本次新增应用代码的来源须按仓库来源说明区分。
-
-Windows 开机服务包装器使用 WinSW 2.12.0 的 .NET Framework 4 版本；受支持的 Windows 10/11 自带该框架。包内逻辑文件名为 `vendor/WinSW-x64.exe`，实际上游文件及 SHA256 在运行时来源清单中明确记录；它不是另一份 Node 运行时。
+配对状态、私钥、连接报告和原始日志不随交付包上传。旧的 2.0.0 记录，以及 `repair-2.0.1` 中更早的源码快照，不作为当前包的通过证明。
