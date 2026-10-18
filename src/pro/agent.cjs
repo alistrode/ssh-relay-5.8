@@ -148,6 +148,7 @@ class Agent {
       reconnectPolicy: true,
       testHooks: this.testHooks,
       clientKeysFile: clients,
+      connectionAdmission: true,
     });
   }
   registry() {
@@ -280,7 +281,14 @@ class Agent {
       },
     );
     const item = { child, dir, failures: 0 };
+    if (key === "far") this.admission = null;
     this.children.set(key, item);
+    child.on("message", message => {
+      if (key === "far" && this.children.get(key) === item && message?.type === "admission-status") {
+        this.admission = message.value;
+        this.notifyConsent();
+      }
+    });
     this.stats.workerRestarts++;
     this.log("worker_started", { worker: key, pid: child.pid });
     const lines = (stream) => {
@@ -347,6 +355,20 @@ class Agent {
       item.child.kill("SIGTERM");
     }
   }
+  notifyConsent() {
+    if (!process.versions.electron || this.stopping || this.role !== "far") return;
+    this.notifiedRequests ||= new Set();
+    const pending = this.admission?.pending?.find(p => p.expiresAt > Date.now() && !this.notifiedRequests.has(p.requestId));
+    if (!pending) return;
+    this.notifiedRequests.add(pending.requestId);
+    if (this.notifiedRequests.size > 128) this.notifiedRequests.delete(this.notifiedRequests.values().next().value);
+    const appRoot = path.resolve(__dirname, "../..");
+    const packaged = fs.existsSync(path.join(path.dirname(process.execPath), "resources/app"));
+    const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
+    const child = cp.spawn(process.execPath, [ ...(packaged ? [] : [appRoot]), "--consent-only", "--far-state-dir", this.dir, "--profile-dir", path.dirname(this.dir), "--no-shortcuts" ], { env, detached:true, stdio:"ignore", windowsHide:false });
+    child.on("error", () => this.log("consent_notification_unavailable"));
+    child.unref();
+  }
   targetFor(device) {
     let t = this.targets.get(device.id);
     if (!t) {
@@ -407,6 +429,8 @@ class Agent {
           testHooks: this.testHooks,
           statusPath: path.join(t.dir, "peer.json"),
           runtimePath: path.join(t.dir, "runtime.json"),
+          controllerId: this.identity.deviceId,
+          controllerKeyPath: path.join(t.dir, "client_key"),
         };
         write(path.join(t.dir, "near.json"), config);
         try {
@@ -479,6 +503,12 @@ class Agent {
         Date.now() - peer.receivedAt > 45000
       )
         throw Error("Waiting for current authenticated protocol-2 peer");
+      if (!peer.admission) {
+        t.state = "unsupported_remote"; t.connecting = false; t.nextAt = Date.now() + 2000; return;
+      }
+      if (peer.admission.ownerId && peer.admission.ownerId !== this.identity.deviceId && peer.admission.approvedId !== this.identity.deviceId) {
+        t.state = "remote_busy"; t.connecting = false; t.nextAt = Date.now() + 1000; return;
+      }
     } catch (e) {
       t.connecting = false;
       t.nextAt = Date.now() + 500;
@@ -675,6 +705,7 @@ class Agent {
         ? { active: true, expiresAt: this.offer.expiresAt }
         : null,
       workerPid: this.children.get("far")?.child.pid || null,
+      admission: this.role === "far" ? this.admission || null : undefined,
       logDirectory: this.dir,
     };
   }
@@ -735,6 +766,13 @@ class Agent {
         this.offer?.cancel();
       } else if (req.method === "POST" && req.url === "/pair/connect")
         value = await this.joinPair(data.code);
+      else if (req.method === "POST" && req.url === "/connection/decision") {
+        if (this.role !== "far" || typeof data.approve !== "boolean" || !this.admission?.pending?.some(p => p.requestId === data.requestId && p.expiresAt > Date.now())) throw Error("Unknown or expired switch request");
+        const worker = this.children.get("far");
+        if (!worker?.child.connected) throw Error("Far worker is not available");
+        worker.child.send({ type:"control-decision", requestId:data.requestId, approve:data.approve });
+        value = { queued:true };
+      }
       else if (req.method === "POST" && req.url === "/settings") {
         if (typeof data.enabled === "boolean") {
           this.settings.enabled = data.enabled;
@@ -763,6 +801,7 @@ class Agent {
         write(this.file("settings.json"), this.settings);
         const t = this.targets.get(key);
         if (data.retry && t) {
+          this.children.get(key)?.child.send({ type:"request-control" });
           t.nextAt = 0;
           t.failures = 0;
           if (t.state === "identity_error") t.state = "waiting";
@@ -783,12 +822,12 @@ class Agent {
             clients = read(file, {});
           delete clients[key];
           write(file, clients);
-          this.stopWorker("far");
-          this.farNextAt = 0;
+          this.children.get("far")?.child.send({ type:"revoke-controller", controllerId:key });
         }
         this.log("device_unpaired", { deviceId: key });
       } else if (req.method === "POST" && req.url === "/retry") {
         for (const t of this.targets.values()) {
+          this.children.get(t.id)?.child.send({ type:"request-control" });
           t.failures = 0;
           t.nextAt = 0;
         }

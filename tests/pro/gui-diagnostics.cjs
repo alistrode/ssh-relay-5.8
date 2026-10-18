@@ -17,13 +17,13 @@ test("offline export excludes secrets, corrupted lines and untrusted fields", t 
   assert.deepEqual(JSON.parse(data).native, [{ previous:false, gpuLaunchFailures:{18:1}, gpuUnavailable:true }]);
   assert.equal(JSON.parse(data).background[0].pid, 42);
   assert.throws(() => exportDiagnostics(p, dest));
-  assert.equal(fs.statSync(dest).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(fs.statSync(dest).mode & 0o777, 0o600);
 });
 test("rotation bounds storage and keeps files private", t => {
   const p = fixture(t), d = create(p, { limit: 150 });
   for (let i=0;i<50;i++) d.record("main_enter", { pid: i });
   assert.equal(fs.readdirSync(p).length, 4);
-  for (const f of fs.readdirSync(p)) { assert.ok(fs.statSync(path.join(p,f)).size < 400); assert.equal(fs.statSync(path.join(p,f)).mode & 0o777, 0o600); }
+  for (const f of fs.readdirSync(p)) { assert.ok(fs.statSync(path.join(p,f)).size < 400); if (process.platform !== "win32") assert.equal(fs.statSync(path.join(p,f)).mode & 0o777, 0o600); }
 });
 test("symlinks, unavailable logs and corrupt files do not mask startup", t => {
   const p = fixture(t), target = path.join(p,"target"), logs = path.join(p,"logs");

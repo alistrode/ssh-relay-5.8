@@ -5,6 +5,7 @@ const mqtt = require("mqtt"),
   opaque = require("@serenity-kit/opaque"),
   { utils } = require("ssh2");
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const { proxyForWebSocket } = require("./network.cjs");
 function random(n) {
   return Array.from(
     crypto.randomBytes(n),
@@ -12,7 +13,7 @@ function random(n) {
   ).join("");
 }
 function connect(broker) {
-  const proxy = process.env.https_proxy || process.env.HTTPS_PROXY;
+  const proxy = proxyForWebSocket(broker);
   return mqtt.connect(broker, {
     clientId: "relay-pro-pair-" + crypto.randomBytes(12).toString("hex"),
     clean: true,
@@ -60,7 +61,7 @@ function open(key, value, aad) {
     ]).toString(),
   );
 }
-async function offer({ broker, info, authorize, log, ttl = 300000 }) {
+async function offer({ broker, info, authorize, log, ttl = 300000, reusable = false }) {
   await opaque.ready;
   const room = random(10),
     password = random(10),
@@ -109,16 +110,19 @@ async function offer({ broker, info, authorize, log, ttl = 300000 }) {
       const p = JSON.parse(raw);
       if (p.side !== "near" || !/^\w{32}$/.test(p.sid)) return;
       if (p.type === "hello") {
-        if (consumed && consumed !== p.sid) return;
+        if (!reusable && consumed && consumed !== p.sid) return;
         if (!attempts.has(p.sid)) {
-          if (attempts.size >= 10) return;
+          for (const [sid, entry] of attempts) {
+            if (!entry.busy && Date.now() - entry.createdAt > 120000) attempts.delete(sid);
+          }
+          if (attempts.size >= 128) return;
           const login = opaque.server.startLogin({
             serverSetup: setup,
             registrationRecord,
             userIdentifier: room,
             startLoginRequest: p.request,
           });
-          attempts.set(p.sid, { login });
+          attempts.set(p.sid, { login, createdAt: Date.now() });
         }
         send({
           type: "challenge",
@@ -131,7 +135,7 @@ async function offer({ broker, info, authorize, log, ttl = 300000 }) {
           !entry ||
           entry.failed ||
           entry.busy ||
-          (consumed && consumed !== p.sid)
+          (!reusable && consumed && consumed !== p.sid)
         )
           return;
         if (entry.answer) {
@@ -157,11 +161,11 @@ async function offer({ broker, info, authorize, log, ttl = 300000 }) {
           const key = utils.parseKey(who.publicKey);
           if (key instanceof Error || key.type !== "ssh-ed25519")
             throw Error("Invalid device key");
-          if (consumed && consumed !== p.sid) return;
-          consumed = p.sid;
-          await authorize(who);
+          if (!reusable && consumed && consumed !== p.sid) return;
+          if (!reusable) consumed = p.sid;
+          const assigned = await authorize(who);
           entry.key = sessionKey;
-          entry.answer = seal(sessionKey, info, "far:" + room + ":" + p.sid);
+          entry.answer = seal(sessionKey, assigned || info, "far:" + room + ":" + p.sid);
           send({ type: "paired", sid: p.sid, envelope: entry.answer });
           log?.("pair_authorized", { deviceId: who.deviceId });
         } catch {
@@ -178,7 +182,7 @@ async function offer({ broker, info, authorize, log, ttl = 300000 }) {
             p.envelope,
             "receipt:" + room + ":" + p.sid,
           );
-          if (v.deviceId === info.deviceId) {
+          if (!reusable && v.deviceId === info.deviceId) {
             receiptTimer = setTimeout(cancel, 3000);
             receiptTimer.unref();
           }

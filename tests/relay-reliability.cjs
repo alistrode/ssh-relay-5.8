@@ -58,7 +58,7 @@ async function test(name, filter) {
   const config = {
     session: crypto.randomBytes(16).toString("hex"),
     secret: crypto.randomBytes(32).toString("hex"),
-    broker: "test-only",
+    broker: "wss://test.invalid/mqtt",
     sshPort: echo.address().port,
   };
   const far = module.exports.createRelay(config, "far"),

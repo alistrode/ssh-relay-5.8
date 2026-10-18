@@ -10,6 +10,7 @@ var { createTraceWriter } = require("./diagnostics.cjs");
 var { serveSftp } = require("./sftp.cjs");
 var { attachForwarding } = require("./forwarding.cjs");
 var { inspectPermissions, requireUsableContext } = require("./permissions.cjs");
+var { Admission, verifyProbe } = require("./pro/admission.cjs");
 var executionContext = inspectPermissions();
 requireUsableContext(executionContext);
 var root = path.resolve(process.argv[2] || path.join(__dirname, "config"));
@@ -20,22 +21,20 @@ var allowed = utils.parseKey(
   fs.readFileSync(path.join(root, "client_key.pub")),
 );
 if (allowed instanceof Error) throw allowed;
-function authorizedKey(ctx) {
+function authorizedController(ctx) {
   try {
     const keys = config.clientKeysFile
-      ? Object.values(
-          JSON.parse(fs.readFileSync(config.clientKeysFile, "utf8")),
-        ).map((v) => utils.parseKey(v.publicKey))
-      : [allowed];
-    return keys.some(
-      (key) =>
+      ? Object.entries(JSON.parse(fs.readFileSync(config.clientKeysFile, "utf8"))).map(([id,v]) => ({ id, label:v.label, key:utils.parseKey(v.publicKey) }))
+      : [{ id:null, key:allowed }];
+    return keys.find(
+      ({ key }) =>
         !(key instanceof Error) &&
         ctx.key.data.equals(key.getPublicSSH()) &&
         (!ctx.signature ||
           key.verify(ctx.blob, ctx.signature, ctx.hashAlgo) === true),
     );
   } catch {
-    return false;
+    return null;
   }
 }
 var hostKey = fs.readFileSync(path.join(root, "host_key"));
@@ -50,8 +49,27 @@ var fingerprint =
     .replace(/=+$/, "");
 var children = /* @__PURE__ */ new Set();
 var clients = /* @__PURE__ */ new Set();
+var clientStates = new Map();
 var recordTrace = createTraceWriter(root, "far");
 var nextSshId = 0;
+var relay, status;
+function publishStatus() {
+  if (relay && status) relay.status({ ...status, ...(admission ? { admission:{ ...admission.snapshot(), pending:undefined } } : {}) }).catch(() => {});
+}
+var admission = config.connectionAdmission ? new Admission({ onChange:value => {
+  if (process.connected) process.send({ type:"admission-status", value });
+  for (const state of clientStates.values()) state.drain();
+  publishStatus();
+} }) : null;
+if (admission) process.on("message", message => {
+  if (message?.type === "revoke-controller") {
+    for (const [client,state] of clientStates) if (admission.controllerFor(state.token()) === message.controllerId) client.end();
+    admission.revoke(message.controllerId); return;
+  }
+  if (message?.type !== "control-decision") return;
+  try { admission.decide(message.requestId, message.approve); }
+  catch { traceSsh("switch_decision_rejected"); }
+});
 var traceSsh = (event, details = {}) => {
   const entry = {
     time: new Date().toISOString(),
@@ -63,6 +81,21 @@ var traceSsh = (event, details = {}) => {
 };
 var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
   const sshId = ++nextSshId;
+  let leaseToken;
+  const channels = new Set();
+  let forwarding;
+  const canStart = () => !admission || admission.canStart(leaseToken);
+  const drain = () => {
+    if (!admission || !admission.sessions.has(leaseToken) || canStart()) return;
+    forwarding?.drain();
+    if (!channels.size && !forwarding?.active()) client.end();
+  };
+  const trackChannel = channel => {
+    channels.add(channel);
+    channel.once("close", () => { channels.delete(channel); drain(); });
+    return channel;
+  };
+  clientStates.set(client, { drain, token:() => leaseToken });
   traceSsh("accepted", { sshId, sourcePort: info.port });
   client.on("handshake", () => traceSsh("handshake", { sshId }));
   client.on("end", () => traceSsh("end", { sshId }));
@@ -73,26 +106,39 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
   client.on("close", () => {
     traceSsh("close", { sshId });
     clients.delete(client);
+    clientStates.delete(client);
+    if (admission && leaseToken) admission.closed(leaseToken);
   });
   client.on("authentication", (ctx) => {
+    const controller = authorizedController(ctx);
     if (
       ctx.username !== config.user ||
       ctx.method !== "publickey" ||
-      !authorizedKey(ctx)
+      !controller
     ) {
       return ctx.reject(["publickey"]);
+    }
+    if (admission && ctx.signature) {
+      leaseToken = admission.reserve(controller.id, controller.label);
+      if (!leaseToken) {
+        admission.request({ controllerId:controller.id, requestId:crypto.randomUUID(), label:controller.label });
+        traceSsh("busy_rejected", { sshId });
+        return ctx.reject(["publickey"]);
+      }
     }
     traceSsh("authenticated", { sshId });
     ctx.accept();
   });
   client.on("ready", () => {
+    if (admission && !admission.connected(leaseToken)) return client.end();
     console.log("SSH public-key authentication succeeded.");
     traceSsh("ready", { sshId });
-    attachForwarding(client);
-    client.on("session", (accept) => {
+    forwarding = attachForwarding(client, canStart, drain);
+    client.on("session", (accept, reject) => {
+      if (!canStart()) return reject();
       const session = accept();
       function start(accept2, command) {
-        const stream = accept2();
+        const stream = trackChannel(accept2());
         const windows = process.platform === "win32";
         const shell = windows ? process.env.ComSpec || "cmd.exe" : "/bin/sh";
         const args =
@@ -177,11 +223,9 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
           if (!finished) child.terminate();
         });
       }
-      session.on("exec", (accept2, reject, info2) =>
-        start(accept2, info2.command),
-      );
-      session.on("shell", (accept2) => start(accept2));
-      session.on("sftp", (accept2) => serveSftp(accept2()));
+      session.on("exec", (accept2, reject, info2) => canStart() ? start(accept2, info2.command) : reject());
+      session.on("shell", (accept2, reject) => canStart() ? start(accept2) : reject());
+      session.on("sftp", (accept2, reject) => canStart() ? serveSftp(trackChannel(accept2()), canStart) : reject());
     });
   });
 });
@@ -189,7 +233,6 @@ server.on("error", (error) => {
   console.error("SSH server:", error.message);
   process.exit(1);
 });
-var relay;
 var heartbeat;
 server.listen(config.sshPort, "127.0.0.1", () => {
   config.sshPort = server.address().port;
@@ -197,7 +240,7 @@ server.listen(config.sshPort, "127.0.0.1", () => {
     "SSH service ready on loopback. Host fingerprint: " + fingerprint,
   );
   relay = createRelay(config, "far");
-  const status = {
+  status = {
     capabilities: {
       nodeExecutable: process.execPath,
       nodeMode: process.versions.electron ? "electron" : "node",
@@ -219,9 +262,15 @@ server.listen(config.sshPort, "127.0.0.1", () => {
     console.log(
       "Public encrypted relay subscribed; waiting for near-end verification.",
     );
-    relay.status(status).catch(() => {});
+    publishStatus();
   });
-  relay.on("peer", () => relay.status(status).catch(() => {}));
+  relay.on("peer", peer => {
+    if (admission && peer.controllerProbe && config.clientKeysFile) {
+      const request = verifyProbe(peer.controllerProbe, JSON.parse(fs.readFileSync(config.clientKeysFile,"utf8")));
+      if (request) admission.request(request);
+    }
+    publishStatus();
+  });
   relay.on("offline", () =>
     console.log("Public relay disconnected; reconnecting."),
   );
@@ -230,7 +279,7 @@ server.listen(config.sshPort, "127.0.0.1", () => {
     recordTrace(entry);
     console.error("RELAY_TRACE " + JSON.stringify(entry));
   });
-  heartbeat = setInterval(() => relay.status(status).catch(() => {}), 15e3);
+  heartbeat = setInterval(() => { if (admission?.expire()) admission.emit(); publishStatus(); }, 15e3);
 });
 function close() {
   clearInterval(heartbeat);

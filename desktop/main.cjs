@@ -68,7 +68,8 @@ function options() {
 }
 function request(role, route, body) {
   return new Promise((resolve, reject) => {
-    const runtime = read(path.join(profile, role, "agent-runtime.json"), null);
+    const roleDirectory = role === "far" && args.includes("--far-state-dir") ? arg("--far-state-dir") : path.join(profile, role);
+    const runtime = read(path.join(roleDirectory, "agent-runtime.json"), null);
     if (!runtime) return reject(Error("Background is not running"));
     const req = http.request(
       {
@@ -229,6 +230,7 @@ const routes = new Set([
   "/device",
   "/unpair",
   "/retry",
+  "/connection/decision",
 ]);
 ipcMain.handle("relay", async (event, role, route, body) => {
   if (
@@ -279,10 +281,52 @@ ipcMain.handle("logs-export", async () => {
   return !d.canceled;
 });
 app.on("before-quit", () => { diagnostic.record("before_quit"); quitting = true; });
+async function switchPrompt(pending) {
+  const label = String(pending.label || "已授权近端").replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g, "").slice(0,80);
+  const cancel = new AbortController();
+  const timer = setTimeout(() => cancel.abort(), Math.max(1, pending.expiresAt - Date.now()));
+  try {
+    diagnostic.record("switch_prompt_shown");
+    const response = await dialog.showMessageBox({
+      title:"SSH Relay Pro — 连接切换", type:"question", buttons:["保留当前连接", "允许切换"], defaultId:0, cancelId:0, signal:cancel.signal,
+      message:"远端正在被连接，已拒绝新的连接请求。",
+      detail:"请求近端：" + label + "（" + pending.controllerId.slice(-8) + "）。允许后，旧连接正在执行的任务继续完成；后续新操作交给新连接。没有响应或关闭提示将保留当前连接。",
+    });
+    await request("far", "/connection/decision", { requestId:pending.requestId, approve:response.response === 1 });
+    diagnostic.record(response.response === 1 ? "switch_prompt_approved" : "switch_prompt_declined");
+  } finally { clearTimeout(timer); }
+}
 app.whenReady().then(async () => {
   diagnostic.record("app_ready");
+  if (args.includes("--consent-only")) {
+    try {
+      const status = await request("far", "/status");
+      const pending = status.admission?.pending?.find(p => p.expiresAt > Date.now());
+      if (pending) await switchPrompt(pending);
+    } catch { diagnostic.record("switch_prompt_unavailable"); }
+    quitting = true; app.quit(); return;
+  }
   folder(profile);
   create();
+  if (!args.includes("--observe-only")) {
+    let prompting = false;
+    const seen = new Set();
+    const checkSwitch = async () => {
+      if (prompting || quitting) return;
+      try {
+        const status = await request("far", "/status");
+        const pending = status.admission?.pending?.find(p => p.expiresAt > Date.now() && !seen.has(p.requestId));
+        if (!pending) return;
+        prompting = true; seen.add(pending.requestId);
+        if (seen.size > 128) seen.delete(seen.values().next().value);
+        show();
+        await switchPrompt(pending);
+      } catch { diagnostic.record("switch_prompt_unavailable"); }
+      finally { prompting = false; }
+    };
+    const switchTimer = setInterval(checkSwitch, 1500);
+    app.once("will-quit", () => clearInterval(switchTimer));
+  }
   if (args.includes("--diagnostic-check")) {
     if (!args.includes("--observe-only") || !args.includes("--no-shortcuts")) throw Error("Diagnostic check requires an isolated read-only launch");
     setTimeout(() => {

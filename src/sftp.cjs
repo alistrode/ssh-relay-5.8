@@ -5,7 +5,12 @@ var os = require("node:os");
 var crypto = require("node:crypto");
 var { utils } = require("ssh2");
 var S = utils.sftp.STATUS_CODE;
-function serveSftp(stream) {
+function serveSftp(stream, canStart = () => true) {
+  const continuation = new Set(["READ", "WRITE", "CLOSE", "FSTAT", "FSETSTAT", "READDIR"]);
+  const on = (name, listener) => stream.on(name, (id, ...args) => {
+    if (!continuation.has(name) && !canStart()) return stream.status(id, S.PERMISSION_DENIED);
+    return listener(id, ...args);
+  });
   const handles = /* @__PURE__ */ new Map();
   function local(p) {
     if (p.includes("\0")) throw new Error("Invalid path");
@@ -28,7 +33,7 @@ function serveSftp(stream) {
     }
     return value;
   }
-  stream.on("OPEN", (id, p, flags, attrs) => {
+  on("OPEN", (id, p, flags, attrs) => {
     let target;
     try {
       target = local(p);
@@ -48,7 +53,7 @@ function serveSftp(stream) {
       (e, fd) => e ? fail(id, e) : stream.handle(id, handle("file", { fd }))
     );
   });
-  stream.on("READ", (id, key, offset, length) => {
+  on("READ", (id, key, offset, length) => {
     const h = lookup(id, key, "file");
     if (!h) return;
     if (!Number.isSafeInteger(offset) || offset < 0 || length > 262144) return stream.status(id, S.FAILURE);
@@ -59,7 +64,7 @@ function serveSftp(stream) {
       else stream.data(id, b.subarray(0, n));
     });
   });
-  stream.on("WRITE", (id, key, offset, data2) => {
+  on("WRITE", (id, key, offset, data2) => {
     const h = lookup(id, key, "file");
     if (!h) return;
     if (!Number.isSafeInteger(offset) || offset < 0 || data2.length > 262144) return stream.status(id, S.FAILURE);
@@ -74,14 +79,14 @@ function serveSftp(stream) {
     if (!data2.length) stream.status(id, S.OK);
     else write(0);
   });
-  stream.on("CLOSE", (id, key) => {
+  on("CLOSE", (id, key) => {
     const h = lookup(id, key);
     if (!h) return;
     handles.delete(key.toString("hex"));
     if (h.type === "file") fs.close(h.fd, (e) => e ? fail(id, e) : stream.status(id, S.OK));
     else stream.status(id, S.OK);
   });
-  for (const name of ["STAT", "LSTAT"]) stream.on(name, (id, p) => {
+  for (const name of ["STAT", "LSTAT"]) on(name, (id, p) => {
     let target;
     try {
       target = local(p);
@@ -90,12 +95,12 @@ function serveSftp(stream) {
     }
     fs[name === "STAT" ? "stat" : "lstat"](target, (e, attrs) => e ? fail(id, e) : stream.attrs(id, attrs));
   });
-  stream.on("FSTAT", (id, key) => {
+  on("FSTAT", (id, key) => {
     const h = lookup(id, key, "file");
     if (!h) return;
     fs.fstat(h.fd, (e, attrs) => e ? fail(id, e) : stream.attrs(id, attrs));
   });
-  stream.on("REALPATH", (id, p) => {
+  on("REALPATH", (id, p) => {
     let target;
     try {
       target = local(p);
@@ -109,7 +114,7 @@ function serveSftp(stream) {
       stream.name(id, [{ filename, longname: filename, attrs: {} }]);
     });
   });
-  stream.on("OPENDIR", (id, p) => {
+  on("OPENDIR", (id, p) => {
     let target;
     try {
       target = local(p);
@@ -118,7 +123,7 @@ function serveSftp(stream) {
     }
     fs.readdir(target, (e, names) => e ? fail(id, e) : stream.handle(id, handle("dir", { path: target, names, offset: 0 })));
   });
-  stream.on("READDIR", (id, key) => {
+  on("READDIR", (id, key) => {
     const h = lookup(id, key, "dir");
     if (!h) return;
     const names = h.names.slice(h.offset, h.offset + 32);
@@ -137,7 +142,7 @@ function serveSftp(stream) {
       else stream.status(id, S.EOF);
     }).catch((e) => fail(id, e));
   });
-  for (const [name, method] of [["REMOVE", "unlink"], ["RMDIR", "rmdir"]]) stream.on(name, (id, p) => {
+  for (const [name, method] of [["REMOVE", "unlink"], ["RMDIR", "rmdir"]]) on(name, (id, p) => {
     let target;
     try {
       target = local(p);
@@ -146,7 +151,7 @@ function serveSftp(stream) {
     }
     fs[method](target, (e) => e ? fail(id, e) : stream.status(id, S.OK));
   });
-  stream.on("MKDIR", (id, p, attrs) => {
+  on("MKDIR", (id, p, attrs) => {
     let target;
     try {
       target = local(p);
@@ -155,7 +160,7 @@ function serveSftp(stream) {
     }
     fs.mkdir(target, { mode: attrs.mode === void 0 ? 448 : attrs.mode }, (e) => e ? fail(id, e) : stream.status(id, S.OK));
   });
-  stream.on("RENAME", (id, from, to) => {
+  on("RENAME", (id, from, to) => {
     try {
       from = local(from);
       to = local(to);
@@ -177,18 +182,18 @@ function serveSftp(stream) {
       fail(id, e);
     }
   }
-  stream.on("SETSTAT", (id, p, attrs) => {
+  on("SETSTAT", (id, p, attrs) => {
     try {
       setAttrs(id, local(p), attrs, false);
     } catch (e) {
       fail(id, e);
     }
   });
-  stream.on("FSETSTAT", (id, key, attrs) => {
+  on("FSETSTAT", (id, key, attrs) => {
     const h = lookup(id, key, "file");
     if (h) setAttrs(id, h.fd, attrs, true);
   });
-  stream.on("READLINK", (id, p) => {
+  on("READLINK", (id, p) => {
     let target;
     try {
       target = local(p);
@@ -197,7 +202,7 @@ function serveSftp(stream) {
     }
     fs.readlink(target, (e, value) => e ? fail(id, e) : stream.name(id, [{ filename: value, longname: value, attrs: {} }]));
   });
-  stream.on("SYMLINK", (id, target, link) => {
+  on("SYMLINK", (id, target, link) => {
     try {
       target = local(target);
       link = local(link);
@@ -206,7 +211,7 @@ function serveSftp(stream) {
     }
     fs.symlink(target, link, (e) => e ? fail(id, e) : stream.status(id, S.OK));
   });
-  stream.on("EXTENDED", (id) => stream.status(id, S.OP_UNSUPPORTED));
+  on("EXTENDED", (id) => stream.status(id, S.OP_UNSUPPORTED));
   stream.on("end", () => stream.end());
   stream.on("error", () => {
   });

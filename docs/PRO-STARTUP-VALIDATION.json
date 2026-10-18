@@ -2,12 +2,12 @@
   "applicationVersion": "2.0.1",
   "branch": "fix/ssh-pro-startup-20261019",
   "passed": false,
-  "status": "candidate; Windows GUI and final-package validation incomplete",
-  "recordedAtUtc": "2026-10-18T17:34:45.997958+00:00",
+  "status": "candidate: Linux functional checks passed; cloud Windows local staging and final-package acceptance pending",
+  "recordedAtUtc": "2026-10-18T18:47:19.615727+00:00",
   "checks": {
     "nodeTests": {
       "passed": true,
-      "count": 11
+      "count": 19
     },
     "bootstrapFailureRetainsLogsAndNonzeroExit": true,
     "javascriptSyntax": true,
@@ -18,7 +18,39 @@
     "nativeWindowsGuiStartup": null,
     "uacConsentAndCancellation": null,
     "finalDownloadedPackage": null,
-    "finalSourceOneHour": null
+    "finalSourceOneHour": null,
+    "linuxNativeGuiStartup": true,
+    "linuxGuiEnvironment": "Debian 12 container, Xvfb, non-root Electron with sandbox; not physical desktop/tray acceptance",
+    "linuxAdmissionIntegration": {
+      "passed": true,
+      "checks": 9,
+      "covers": [
+        "signed occupancy probe before SSH",
+        "refusal preserves existing controller",
+        "decline",
+        "approved handover",
+        "SFTP draining",
+        "new operations refused on old connection",
+        "long command finishes",
+        "old transport refused",
+        "revoke another controller without restarting far"
+      ]
+    },
+    "linuxShortRecovery": {
+      "passed": true,
+      "seconds": 60,
+      "samples": 3,
+      "workerRecovery": 1
+    },
+    "reusableShortInvitation": {
+      "passed": true,
+      "simultaneousClients": 3,
+      "uniqueChannels": 3,
+      "originalManagementConnectionPreserved": true
+    },
+    "nativeWindowsAdmissionIntegration": null,
+    "nativeWindowsConsentDialog": null,
+    "crossPlatformPairing": null
   },
   "windowsTokenEvidence": {
     "initialIntegrityRid": 4096,
@@ -34,8 +66,8 @@
     "remoteWritesReplayed": false
   },
   "sourceSha256": {
-    "desktop/main.cjs": "aa4f844d54a4fa66016241f173648438325d5bf2b4fc7bed0e993c7d230ca216",
-    "src/pro/gui-diagnostics.cjs": "31afe2b13cf55c4eb4afc5a6798b275e9af2521c18ef1c0a44a55d65859738b1",
+    "desktop/main.cjs": "04e9639729dda3b6525cbd3749b32d39a44448d39ca6139505c59a05c0fb4e21",
+    "src/pro/gui-diagnostics.cjs": "201cf9fd67b3781d64536b85c0e1572ee94c5b4afa1eb2689e2f0e8c960f581d",
     "launchers/Start-Pro.ps1": "2b78ccaeb86749e5cc0f427444d5967b2436edb830ffaf4460c20ad313d10b18",
     "scripts/package-pro.py": "88eddd398e7584c4df39f37bfd469acc2f8004fa75ad93c4f96cf735ccee37a1",
     "package.json": "686c69f3daa40772efff680ed558a484c13d7b4426aa45553cad5d4b9e119e41",
@@ -44,8 +76,14 @@
   },
   "limitations": [
     "No Windows GUI pass has been established for these candidate sources.",
-    "No current-candidate runtime package is published; baseline 2.0.0 runtime archives are historical.",
     "Raw Chromium logs remain local; export includes only fixed error-code counts.",
-    "Default UAC launch is user-requested; no UAC/ACL/autostart policy was changed."
-  ]
+    "Default UAC launch is user-requested; no UAC/ACL/autostart policy was changed.",
+    "Cloud Windows staging via per-file SMB copy timed out; failed fixture runs are not application passes. Archive extraction is being validated."
+  ],
+  "isolation": {
+    "mainBranchEdited": false,
+    "repairBranch": "fix/ssh-pro-startup-20261019",
+    "userTunnelTouchedDuringCloudValidation": false,
+    "fixtures": "fresh profiles, keys, relay sessions; isolated TLS broker and separate cloud Win10 VM"
+  }
 }

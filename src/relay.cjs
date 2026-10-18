@@ -4,6 +4,7 @@ const { HttpsProxyAgent } = require("https-proxy-agent");
 const crypto = require("node:crypto");
 const net = require("node:net");
 const { EventEmitter } = require("node:events");
+const { proxyForWebSocket } = require("./pro/network.cjs");
 
 // QoS 1 confirms receipt by the broker, not delivery to our opposite endpoint.
 // Version 2 retains stream frames until that endpoint acknowledges them.
@@ -21,7 +22,7 @@ function createRelay(config, role) {
   const events = new EventEmitter();
   const opposite = role === "near" ? "far" : "near";
   const prefix = `ssh-public-relay/v1/${config.session}/`;
-  const proxy = process.env.https_proxy || process.env.HTTPS_PROXY;
+  const proxy = proxyForWebSocket(config.broker);
   const client = mqtt.connect(config.broker, {
     clientId: `ssh-${role}-${crypto.randomBytes(10).toString("hex")}`,
     clean: true,
@@ -507,7 +508,9 @@ function createRelay(config, role) {
         frame.relayEpoch ||
         frame.status?.relayEpoch ||
         frame.status?.relayInstance;
-      if (origin && typeof origin === "string") {
+      // Admission-enabled far ends can hear several authorized near ends.
+      // A status probe from a different controller must never reset live streams.
+      if (origin && typeof origin === "string" && !(role === "far" && config.connectionAdmission)) {
         if (peerInstance && origin !== peerInstance) {
           if (frame.time < lastPeerStatus) return;
           trace("peer_instance_changed");
@@ -576,7 +579,7 @@ function createRelay(config, role) {
         const reliable = frame.protocol === 2;
         if (
           [...connections.values()].filter((s) => !s.socket.destroyed).length >=
-          8
+          (config.connectionAdmission ? 16 : 8)
         ) {
           stats.rejected++;
           trace("open_rejected", null, { cid: frame.cid, reason: "capacity" });

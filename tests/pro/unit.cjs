@@ -24,7 +24,7 @@ test("private atomic state survives replacement and refuses symlinks", () => {
     write(p, { counter: 1 });
     write(p, { counter: 2 });
     assert.deepEqual(read(p), { counter: 2 });
-    assert.equal(fs.statSync(p).mode & 0o777, 0o600);
+    if (process.platform !== "win32") assert.equal(fs.statSync(p).mode & 0o777, 0o600);
     fs.symlinkSync(p, path.join(r, "link"));
     assert.throws(() => write(path.join(r, "link"), {}));
   } finally {

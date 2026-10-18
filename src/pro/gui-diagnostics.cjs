@@ -5,7 +5,7 @@ const fs = require("node:fs"), path = require("node:path"), crypto = require("no
 const fields = new Set(["pid", "exitCode", "errorCode", "type", "reason", "version", "platform", "code"]);
 const enums = new Set(["GPU", "Utility", "Renderer", "Browser", "Zygote", "Sandbox helper", "clean-exit", "abnormal-exit", "killed", "crashed", "oom", "launch-failed", "integrity-failure", "win32", "linux", "darwin", "EPIPE", "ERR_STREAM_DESTROYED"]);
 const eventNames = new Set(["main_enter", "electron_loaded", "uncaught_exception", "process_exit", "child_process_gone", "render_process_gone", "window_create", "window_loaded", "window_load_failed", "window_shown", "window_load_rejected", "before_quit", "app_ready", "output_pipe_closed", "launcher_enter", "runtime_missing", "process_started", "launcher_child_exit", "launcher_failed", "startup_permission_rejected", "permission_check_failed"]);
-for (const event of ["elevation_requested", "elevated_launcher_exit", "elevation_not_completed", "startup_failed"]) eventNames.add(event);
+for (const event of ["elevation_requested", "elevated_launcher_exit", "elevation_not_completed", "startup_failed", "switch_prompt_unavailable", "switch_prompt_shown", "switch_prompt_approved", "switch_prompt_declined"]) eventNames.add(event);
 function metadata(input = {}) {
   const out = {};
   for (const [key, value] of Object.entries(input)) {

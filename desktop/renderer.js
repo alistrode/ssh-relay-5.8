@@ -9,6 +9,8 @@ const $ = (id) => document.getElementById(id),
     identity_error: "设备身份或授权需要核对",
     starting: "后台启动中",
     running: "后台运行中",
+    remote_busy: "远端正在被连接，等待远端确认切换",
+    unsupported_remote: "远端不支持占用探测，已阻止自动连接",
   };
 let farEnabled = true,
   busy = false,

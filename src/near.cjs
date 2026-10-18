@@ -1,6 +1,8 @@
 var fs = require("node:fs");
 var path = require("node:path");
 var net = require("node:net");
+var crypto = require("node:crypto");
+var { probe } = require("./pro/admission.cjs");
 var { createRelay } = require("./relay.cjs");
 var { write: writePrivate } = require("./pro/store.cjs");
 var { createTraceWriter } = require("./diagnostics.cjs");
@@ -8,6 +10,16 @@ var configPath = path.resolve(process.argv[2]);
 var config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 var recordTrace = createTraceWriter(path.dirname(configPath), "near");
 var relay = createRelay(config, "near");
+var requestId = crypto.randomUUID();
+function announce() {
+  const controllerProbe = config.controllerId && config.controllerKeyPath
+    ? probe(fs.readFileSync(config.controllerKeyPath), config.controllerId, requestId) : undefined;
+  relay.status({ near:true, controllerProbe }).catch(() => {});
+}
+process.on("message", message => {
+  if (message?.type === "request-control") { requestId = crypto.randomUUID(); announce(); }
+});
+var heartbeat = setInterval(announce, 15000);
 var server = net.createServer({ allowHalfOpen: true }, (socket) =>
   relay.open(socket),
 );
@@ -23,7 +35,7 @@ server.listen(config.localPort, "127.0.0.1", () => {
 });
 relay.on("ready", () => {
   console.log("Near-end public relay subscribed.");
-  relay.status({ near: true }).catch(() => {});
+  announce();
 });
 relay.on("peer", (status) => {
   if (status.fingerprint !== config.fingerprint)
@@ -44,6 +56,7 @@ relay.on("trace", (entry) => {
   console.error("RELAY_TRACE " + JSON.stringify(entry));
 });
 function close() {
+  clearInterval(heartbeat);
   relay.close();
   server.close();
   setTimeout(() => process.exit(0), 500).unref();
