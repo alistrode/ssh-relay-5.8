@@ -2,6 +2,17 @@
 
 日期：2026-10-19。状态：拟实施设计，接口及新文件尚未实现。一端可同时连接 1～5 台不同目标主机，每台独立配对、认证、执行和恢复。保留原有 37 个工具的能力；允许一份简单接入 skill，不再用 skill 实现连接、恢复或故障排查。
 
+## 优先约束：原 MCP 和工具尽可能原样保留
+
+这次是把现有软件接起来，不是重写 MCP：
+- 原 37 个工具名、schema、server 参数、默认值、主要返回结构和 handlers 尽可能保留。
+- 一端最多五台，继续通过原 server/组参数指定目标，不新增所有工具必填的 deviceId。
+- 不用通用 invoke 工具替换原工具，不整体迁移 handlers 到 Agent。
+- 配对入口确实缺失时才少量新增工具；现有 ssh_list_servers 直接接入设备列表。
+- 旧 --connection/--connections 模式继续兼容，新模式自动发现同账户 Agent。
+- 简单 skill 只说明入口，不负责内部恢复。持久任务/续传在原接口后渐进实现。
+- 原有业务逻辑先保留，主要改 config provider、transport 连接入口与 Agent API。
+
 ## 0. 固定拓扑：一端同时连接最多五台主机
 
 这是本方案的基本要求，不是后续扩展。一个近端安装实例服务一个用户，可同时保有最多五个目标主机连接；不是一个主机只能选另一个主机，也不是全局只能有一个活动目标。
@@ -55,43 +66,31 @@ ConnectionBroker 用 Map<deviceId, DeviceRuntime> 管理，不能用单一 curre
 | 现状 | 具体改造 |
 |---|---|
 | pro/agent.cjs 已提供 /pair/create、/pair/connect、/status、/device、/unpair，并维护 targets、probe、tick | 以 Agent 为连接权威，新增设备 API 与任务 API，不再写一套连接系统 |
-| Agent 已用 ssh2.Client 建立探测连接；mcp/transport.js 又自行建立连接、维护 pool/pending/recovery | 业务连接统一复用 Agent 的已验证 SSH Client；MCP 不再持有连接或执行恢复循环 |
+| Agent 有探测 SSH，MCP transport 有业务 SSH 和恢复循环 | 保留业务连接池；Agent 管设备/worker/relay 恢复，transport 建连前查询 Agent，不再拥有独立后台恢复。两类 SSH 可以并存，避免为合并连接重写工具 |
 | mcp/config.js 要求外部传 --connection 报告路径，读取 runtime.json、peer.json 和私钥 | 托管模式改为调用 Agent；报告仅作内部兼容输出，正常使用不再传路径 |
-| MCP handlers 已实现原有工具，但直接 import transport/config/files/jobs 等 | 保留 handlers，整体放到 Agent 内的业务引擎执行；MCP 只做代理 |
+| MCP handlers 已实现全部业务工具 | 保留执行位置和调用关系，在 config/transport 接入 AgentProvider，不整体迁移业务引擎 |
 | remote.cjs 在 SSH stream close 时终止对应命令进程 | 增加远端任务管理和结果存储；任务生命周期与 SSH 通道分离 |
 | 最新分支已有 Admission、remote_busy、控制权切换审批 | 保留该语义；同一控制方复用连接，其他控制方进入审批，不自动抢占 |
 | CLI、GUI 各自组织服务启动与请求 | 提取同一 SDK，由 CLI、MCP、GUI 共用 |
 
 不替换现有 OPAQUE、SSH 和 MQTT 可靠传输协议。先补齐应用层整合与任务语义，避免连传输层一起重写。
 
-## 2. 最终调用链
+## 2. 最小改动调用链
 
 ```text
-AI
- ├─ 已接入 MCP → src/mcp.cjs → agent-client.cjs
- └─ shell      → relay-cli   → agent-client.cjs
-                                       │ 本机回环 HTTP + Bearer
-                                       ▼
-                        近端 Agent（唯一连接管理者）
-                        ├─ DeviceManager / ensureReady
-                        ├─ BusinessEngine / 原 37 个 handlers
-                        ├─ OperationStore
-                        └─ targets[deviceId].client：已验证 SSH
-                                       │
-                        near worker → MQTT → far worker
-                                       │
-                        SSH relay-control-v1 subsystem（新增）
-                                       │ 已认证 controllerId + 进程 IPC
-                                       ▼
-                             远端 Agent / TaskManager
-                             ├─ OperationStore
-                             ├─ 独立任务 runner
-                             └─ 原有远端作业、Shell、SFTP
+AI → 原 MCP server → 原 catalog / handlers
+                              ↓
+                  原 config + AgentProvider
+                              ↓
+                  原 transport + AgentClient
+                     ├─ ensureReady → Agent → 原 worker/relay/恢复
+                     └─ 原 SSH 业务连接池 → near/MQTT/far
+                                                ↓
+                                        原 exec/shell/sftp
+                                        + 后续任务 subsystem
 ```
 
-远端 GUI 启动原 guardian → Agent → worker，不需要安装 Codex CLI，也不要求用户操作自定义 CLI。无桌面部署仍可使用项目自己的启动入口。
-
-MCP stdio 退出只结束适配器，不关闭设备服务和远端任务。用户明确停止软件或撤销授权时再执行对应停止策略。
+MCP 保留业务执行，Agent 提供设备发现、配对、连接就绪与设备级恢复。原文件路径仍指 MCP server 所在机器。MCP 退出关闭自己的连接，不关闭设备 Agent；不能把未来独立任务随适配器退出杀死。
 
 ## 3. 本机服务入口：复用 HTTP，不再让 AI 找文件
 
@@ -118,7 +117,7 @@ AgentClient.request(method, path, json, { timeoutMs, signal })
 | POST /v1/connections | requestId、code 或 deviceId、waitMs | connectionTaskId、deviceId、state、verifiedIdentity |
 | GET /v1/connections/:id | 无 | 当前阶段、最终结果或错误 |
 | GET /v1/devices | 无 | 设备 ID、名称、状态、能力、槽位使用情况 |
-| POST /v1/invoke | requestId、deviceId、tool、args、waitMs | 已完成结果或 operationId |
+| GET /v1/devices/:id/connection | 无 | 仅本机适配器读取的已验证连接描述符 |
 | GET /v1/operations/:id | stdoutOffset、stderrOffset、limitBytes | 状态、结果、下一偏移 |
 | POST /v1/operations/:id/cancel | requestId | cancel_requested 或最终状态 |
 | POST /v1/devices/:id/disconnect | requestId | 暂停自动连接 |
@@ -141,7 +140,7 @@ AgentClient.request(method, path, json, { timeoutMs, signal })
 
 错误结构为 {ok:false,error:{code,phase,message,retryable},operationId?}。HTTP 202 表示仍在处理，400 参数错误、403 权限、409 ID 内容冲突、503 临时不可用；SDK 同时读取结构化 code，不能将所有非 200 都当作启动失败。
 
-connect 和 invoke 最多同步等待 20 秒，之后返回任务 ID；服务继续处理。AI 查询任务即可，不负责执行恢复步骤。
+connect 最多同步等待 20 秒，之后返回连接任务 ID。原业务工具继续由原 MCP handler 执行，保持现有等待和返回约定；新增持久任务按需提供兼容查询扩展。
 
 ## 4. 设备状态、配对和唯一连接
 
@@ -178,68 +177,61 @@ devices.json 为每设备增加 schemaVersion、autoConnect、permissionSnapshot
 
 连接码仍用现有 OPAQUE 格式，第一阶段不改码长/协议。每设备持久保存预期主机密钥；主机名仅展示，不能替代密钥身份。账户变化作为权限上下文变化处理，不自行把新账户当成原授权范围。
 
-### 4.3 一处管理连接与恢复
+### 4.3 保留业务连接，接入 Agent 就绪能力
 
-新增 ConnectionBroker：
-
-```js
-ensureReady(deviceId, { deadline, signal }) -> VerifiedHandle
-withConnection(deviceId, fn) -> fn({ client, generation, identity, capabilities })
-pause(deviceId)
-invalidate(deviceId, { generation, code })
-```
-
-句柄仅在 Agent 进程内部使用，不能序列化 SSH 对象给 MCP。withConnection 不自动重新执行 fn；只允许在执行前恢复连接。连接中途失败交给操作协议查询结果。
-
-transport.js 的 connect 在托管引擎中改为 broker 适配器；不再 new Client，不再执行 recoverManaged。pool 作为对现有 handlers 的兼容视图，close 变为释放该工具通道/租约；禁止单个工具 timeout 关闭共享 SSH Client，影响其他工具。需要断开整个设备必须走 Broker 明确方法。
-
-已有 sync 超时等调用 conn.close 的位置逐一改为取消自己的 channel/operation。隧道、SFTP、session 各自登记句柄并在 generation 失效时转换为准确状态。
-
-失败分类改为代码而非仅正则判断：WORKER_NOT_READY、RELAY_OFFLINE、PEER_STALE 可恢复；REMOTE_BUSY 等审批；IDENTITY_MISMATCH、AUTH_REVOKED 停止业务恢复。普通 AUTH_FAILED 先识别 Admission 和授权状态，不能一律索要新码。
-
-继续使用现有 retryDelay，叠加 ±20% 抖动，每设备只有一个 timer/inflight；guardian 管 Agent 进程、Agent 管 worker 和 SSH、relay 管底层消息重传，各层不重复重启对方。
-
-## 5. MCP 和原有工具如何接入，不重写 37 个工具
-
-### 5.1 把业务执行从 MCP server 移进 Agent
-
-新增 business-engine.js，动态加载现有 handlers.js；server.js 保留工具 schema 和 MCP 结果封装，回调改为 AgentClient.invoke。Agent /v1/invoke 按固定 catalog 白名单分发，不能 import 用户提供的模块名。
-
-handlers/config/transport 当前有静态 import。通过显式初始化函数安装 provider，而不是靠启动命令行和全局 process.argv 推断：
+SDK 增加 ensureReady(deviceId) 与 getConnection(deviceId)。内部描述符：
 
 ```js
-initializeEngine({
-  deviceProvider,    // devices / getConfig / resolveAlias
-  connectionBroker,
-  operationStore,
-  callerContext
-})
-invoke(toolName, normalizedArgs, context)
+{ deviceId, generation, host:"127.0.0.1", port, keyPath, fingerprint,
+  platform, remoteUser, hostname, capabilities, permissions }
 ```
 
-config.js 托管模式改为 provider；旧 --connection 模式单独保留 legacy provider。执行前异步 prepare(deviceId) 刷新能力快照，然后现有同步 serverConfig 读取本次快照；不能全局覆盖默认设备来处理并发请求。
+该描述符只通过本机认证 API 提供适配器，私密路径不返回 AI、不进入普通日志。复用现有报告作为兼容产物，新模式不用外部指定报告。
 
-现有 server 参数保持兼容：映射 UUID 或已绑定别名，禁止同时传 deviceId 和冲突 server。新增默认设备只允许显式配置，不能按“第一个在线设备”自动切换目标。
+transport.connect(server) 只做这些改动：
+1. 通过 provider 将原 server 名解析为固定设备 UUID。
+2. 等待 Agent.ensureReady，获取新描述符并转换成原 config 对象。
+3. 复用现有 pool/pending、主机密钥校验与真实账户探测；generation/端口变化时更新业务连接。
+4. 返回原 conn/client/sftp 接口，原 handlers 不用改成 RPC。
+5. recoverManaged 改为向 Agent 报告状态、等待统一设备恢复，不另起无限退避循环。已发出业务不能因此重放。
 
-所有原有配置型工具（别名、组、profile、hooks、历史）状态统一归属近端 Agent。MCP 重启不丢失持久配置，不再为每份适配器建立不同状态库。实际命令 hooks 仍受显式启用与原权限控制。
+Agent 管 worker/relay；MCP 管自己的业务 SSH。一个业务错误不等于 worker 故障，不能自动重启整机连接。旧 conn.close 和 sync 超时行为检查影响范围，确保不能关闭其他主机。别名归一化后同设备共享连接键，展示名称和调用参数保留。
 
-### 5.2 文件本地路径归属
+## 5. 原 MCP 和工具怎样接线
 
-MCP 适配器与近端 Agent 必须在同一执行环境和账户下，localPath 始终指这个环境。MCP 客户端可以在别处，但路径语义不随客户端机器变化。
+### 5.1 config provider：主要修改点
 
-上传时 Agent 打开本地文件、读 stat 并创建传输任务，HTTP 只传路径和元数据。跨机器 Agent 不接受任意 localPath；该用法需另行提供显式流式上传接口，不能假装路径共享。
+保留 servers()/serverConfig() 形状，新增两种 provider：
+- legacy：有 --connection/--connections 时继续读原报告，旧配置正常使用。
+- agent：无旧报告参数时发现本机 Agent，devices 转换为原 server 配置。
 
-### 5.3 无原生 MCP 接入的 harness
+新增 server-bindings.json 保存原 server 名到现有设备 UUID 的绑定，不能以主机名作为密钥身份：
 
-同一 CLI 提供：
-
-```sh
-relay-cli connect --code-stdin --json
-relay-cli call ssh_execute --args-stdin --json
-relay-cli operation get <operationId> --json
+```json
+{"schemaVersion":1,"servers":{"office":{"deviceId":"UUID-A"},"server-b":{"deviceId":"UUID-B"}}}
 ```
 
-CLI 只调用相同 Agent API，不另建 SSH。参数通过 stdin 传 JSON，敏感内容不拼命令行。MCP 接入配置固定为一个命令，不含连接报告和单设备路径。
+既有别名/组/profile 不迁移、不覆盖；冲突返回错误。新设备名必须稳定且符合原校验，不能每次在线顺序变化就换编号。
+
+原 config 是同步函数：provider 启动加载快照，每次工具 invoke 前异步 refresh/ensureReady；再让原 handler 读取本请求不可变快照。用显式上下文或 AsyncLocalStorage 隔离五台并发，不改全局默认主机。离线设备也列出状态，不能因报告未生成而消失。
+
+### 5.2 保留原工具调用
+
+server.js 保留 SDK 注册与 MCP 结果封装，catalog.js 保留原 schema。handlers.js 继续调用 transport/files/jobs/sessions，不整体搬到 Agent。
+
+仍然用 ssh_execute(server, command)、ssh_upload(server, localPath, remotePath) 等既有调用；不得给全部工具强加 deviceId 必填参数，不改成一套 connect/exec/files 新工具名。原成功结果保留，新增字段可选。真正失败或结果未知必须如实表达，不能为了兼容谎报成功。
+
+配置类工具（别名、组、profile、hooks、历史）保持原有状态归属和行为，第一阶段不迁移数据库/目录。
+
+### 5.3 只补缺少的入口
+
+首次配对没有 MCP 入口时增加 ssh_connect(code 或 server)。原 ssh_list_servers 继续列设备，状态工具沿用既有入口；持久任务完成后按需增加 ssh_operation_status(operationId)。
+
+只有一个 MCP server，不为五台目标各注册一份。没有原生 MCP 接入的 harness 可用 SDK 客户端调用原工具；可选薄 CLI 提供 call <原工具名> --args-stdin，共用工具 schema，不另外实现一套业务。
+
+### 5.4 文件路径与后续增强
+
+localPath 仍指 MCP server 所在执行环境，remotePath 指指定 server。第一阶段原 files.js 继续在 MCP 进程读取本地文件并传输，Agent 不接管这些业务参数。后续内部实现续传/任务查询，也不改变原工具的路径参数。
 
 ## 6. 远端任务协议：解决“断线就杀命令”
 
@@ -322,7 +314,7 @@ session 工具改为远端会话 runner 管理，sessionId 绑定 controllerId�
 
 保留最新 Admission 策略，不能未经用户选择改成多方同时控制：
 
-- 同一 controllerId 的 Agent 探测与业务共享 SSH，消除重复占用。
+- 同一 controllerId 的 Agent 探测与 MCP 业务连接可以并存，Admission 应识别同一控制方；不为强制合并 SSH 重写原工具。
 - 不同 controller 请求控制时，沿用远端已有审批；pending 返回 WAITING_APPROVAL，AI 不负责操作内部 admission。
 - 切换控制权时新操作被拒绝或排队；旧操作按现有 drain 语义处理，状态可查询。审批是用户授权，不得由自动恢复擅自批准。
 - 撤销时立即阻断该 controller 的新操作、关闭通道，默认取消该 controller 活动任务；取消是否成功逐项记录。
@@ -347,34 +339,35 @@ session 工具改为远端会话 runner 管理，sessionId 绑定 controllerId�
 
 ```text
 使用已配置的 SSH Relay MCP。
-先 devices；首次配对用 connect(code)，已有设备用 connect(deviceId)，一端最多同时连五台。
-原有工具指定返回的设备，不能猜目标。
-返回 operationId 时用 operation_status 查询；软件负责连接和内部恢复。
+先 ssh_list_servers；首次配对用新增 ssh_connect，一端最多同时连五台。
+原工具继续用原 server 参数指定目标，不能猜主机。
+支持持久任务的工具返回 operationId 时，用状态工具查询；软件负责连接和内部恢复。
 连接工具不可见时，用包内 relay-cli 的同等入口，参数从 stdin 传入。
 远端明确要求开机、授权或升级时，向用户说明最小动作。
 ```
 
 简单 skill 解决“入口在哪里、调用什么”，不承担连接状态机。MCP/CLI 的 schema 和 --help 足以单独完成流程，skill 只是便利入口。
 
-## 10. 按文件实施与检查
+## 10. 最小修改清单
 
-| 文件/新增模块 | 必须完成的改动 | 最小验证 |
+| 文件 | 修改 | 保留 |
 |---|---|---|
-| pro/agent-client.cjs（新增） | 提取 ensure/request，apiVersion、202、超时、幂等规则 | 并发启动只有一个 Agent；POST 响应丢失不重复业务 |
-| pro/agent.cjs | 新 API、generation、readyPromise、Broker 与引擎初始化 | 配对后无需路径即可 invoke；旧探测不能覆盖新状态 |
-| pro/connection-broker.cjs（新增） | 管已验证 SSH Client，通道租约与唯一恢复循环 | MCP/GUI/CLI 同时调用不重复连接、不互相 close |
-| mcp/config.js、transport.js | provider 注入；移除托管恢复与二次 SSH | 不传 --connection 仍能用全部既有工具 |
-| mcp/server.js、cli.cjs | 薄适配，connect/devices/status；业务转发 | 原生 MCP 与 CLI 相同请求得到等价结果 |
-| mcp/handlers.js、business-engine.js | 保留工具，绑定 request/device/context；拆近端编排和远端动作 | 37 工具能力清单逐项对照，依赖失败如实返回 |
-| remote.cjs、control-protocol.cjs | subsystem、限帧、认证 controller、IPC | 越权 get/cancel 被拒绝；错帧不拖垮服务 |
-| pro/tasks.cjs、task-runner.cjs | 落盘、去重、脱离 channel 的执行、查询取消 | 提交/确认/结果各阶段断线与进程崩溃注入 |
-| mcp/jobs.js、sessions.js、files.js | 任务化、会话 runner、分块校验与提交 | 非幂等动作不重放；续传结果 SHA-256 一致 |
-| desktop/main.cjs | 使用 SDK，保留生成码和控制权审批 | 远端全程无需 CLI，审批行为不退化 |
-| 简单 skill / README | 只保留最小入口，删除内部手工恢复要求 | 不读长文也能完成首次连接和实际任务 |
+| pro/agent-client.cjs（新增） | 提取 ensure/request，增加设备就绪/描述符查询 | 现有启动、锁和认证 |
+| pro/agent.cjs | 设备 API、generation、readyPromise、五台槽位 | 配对、tick/probe、worker、Admission |
+| mcp/agent-provider.js（新增） | devices 转原 config，稳定别名映射 | 原 server 参数 |
+| mcp/config.js | legacy/agent provider 分流 | 原 config 接口 |
+| mcp/transport.js | 建连前查询 Agent，去除重复后台恢复 | 原池、验证、执行和 SFTP 接口 |
+| mcp/server.js | invoke 前准备目标、少量新增连接入口 | SDK、注册、结果封装 |
+| catalog.js、handlers.js | 非必要不改；确需扩展时字段可选 | 原 37 工具和业务逻辑 |
+| remote.cjs、tasks/runner（后续） | 加控制 subsystem 与任务结果记录 | 原 exec/shell/sftp 兼容路径 |
+| files/jobs/sessions（后续） | 内部接恢复能力 | 原工具调用方式 |
+| desktop/main.cjs | 共用 SDK | 界面与审批 |
+
+第一阶段不新增 business-engine.js，不整体迁移 handlers，不强制所有业务走 /v1/invoke。
 
 ## 11. 实施顺序与验收线
 
-第一步：SDK + Broker + 五设备槽位管理 + MCP 薄适配，先打通“最多五台各自的码 → 各自设备 → 原有工具”，明确此时还没有持久任务保证。
+第一步：SDK + AgentProvider + 五设备槽位管理，在原 config/transport 接通 Agent；先保持原 MCP 与工具调用方式，打通“码 → 原 server → 原工具”。尚不宣称新增持久任务保证。
 
 第二步：control subsystem + TaskManager + runner，先打通 exec 的 submit/get/cancel，再把副作用业务和会话逐项接入；每项标记实际支持的恢复能力。
 
@@ -385,5 +378,7 @@ session 工具改为远端会话 runner 管理，sessionId 绑定 controllerId�
 五主机专项验收：同时连接五台真实目标并分别核对设备密钥、主机名、账户；五台并发执行并校验各自文件；第六台被拒绝且原五台不受影响；重复 connect 不占新槽位；断开 A 后可连接 F；B 断网恢复不打断其他主机；MCP 和 Agent 重启后恢复原五台；一台等待审批时其他四台继续工作；组操作只重查失败/未知子项，不重跑已成功项。Windows/Linux 混合目标与两种近端平台均按实际可用设备覆盖，未覆盖部分明确记录。
 
 验收必须包含：无旧状态首次配对；码过期与重复使用；Agent/MCP/worker 分别重启；提交前后及结果返回前断网；同 ID 冲突；共享通道取消隔离；控制权审批；撤销中执行；文件源变化与损坏块；远端缺依赖；结果未知和磁盘满。每种场景有明确输出，不把“自动恢复”作为空泛通过结论。
+
+兼容验收：旧 MCP 配置、原工具调用样例原样执行；名称、必填参数、默认行为和主要成功结果与基线逐项对照；旧报告/新 Agent 两模式验证；别名、组和 profile 保留；五台并发不串主机。不能以“功能还在但接口全换了”宣称兼容。
 
 最终交付行为：用户给码或设备，AI 调用工具；两端程序自动组织内部流程。能恢复的自行恢复，涉及新授权或无法确定的业务结果准确上报，内部操作步骤不再交给 AI 执行。
