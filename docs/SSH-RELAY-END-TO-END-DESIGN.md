@@ -1,6 +1,52 @@
 # SSH Relay 端到端整合技术方案
 
-日期：2026-10-19。状态：拟实施设计，接口及新文件尚未实现。保留原有 37 个工具的能力；允许一份简单接入 skill，不再用 skill 实现连接、恢复或故障排查。
+日期：2026-10-19。状态：拟实施设计，接口及新文件尚未实现。一端可同时连接 1～5 台不同目标主机，每台独立配对、认证、执行和恢复。保留原有 37 个工具的能力；允许一份简单接入 skill，不再用 skill 实现连接、恢复或故障排查。
+
+## 0. 固定拓扑：一端同时连接最多五台主机
+
+这是本方案的基本要求，不是后续扩展。一个近端安装实例服务一个用户，可同时保有最多五个目标主机连接；不是一个主机只能选另一个主机，也不是全局只能有一个活动目标。
+
+```text
+                         ┌─ 主机 A：独立身份 / worker / SSH / 任务
+                         ├─ 主机 B：独立身份 / worker / SSH / 任务
+AI → MCP/CLI → 近端 Agent ├─ 主机 C：独立身份 / worker / SSH / 任务
+                         ├─ 主机 D：独立身份 / worker / SSH / 任务
+                         └─ 主机 E：独立身份 / worker / SSH / 任务
+```
+
+目标不绑定固定五台机器：可以断开其中一台，再连接另一台。每台受支持且已安装、运行本项目远端 Agent 的 Windows/Linux 主机，均可独立配对；“任何主机”不意味着能无授权连接裸系统、绕过网络政策，或已支持未实现的操作系统。
+
+### 0.1 额度与设备记忆
+
+- 最多同时启用五个目标连接槽位；已记住的离线设备记录可超过五条。
+- 连接中、已连接、自动恢复中、等待该目标控制权审批的设备都占一个槽位，避免断线后偷偷挤入第六台。
+- 同一 deviceId 重复 connect 复用槽位、readyPromise 和连接，不重复计数。
+- 主动 disconnect 取消该设备恢复并释放槽位，保留配对。之后连接其他主机无需删除原设备。
+- 新连接需要第六个槽位时返回 DEVICE_LIMIT_REACHED 和已占用设备列表；不自动踢掉任一设备，不替用户选择要断开谁。
+- 新码指向未配对设备时，在进入配对前预留槽位；失败/过期释放，配对成功后原子转为设备槽位。同设备并发配对完成后合并槽位。
+- maxActiveDevices=5 是近端服务强制限制，不能只在 MCP 或 GUI 隐藏按钮。所有入口共用一个锁/队列执行槽位变更。
+
+devices.json 持久化 desiredConnected；服务重启按该集合恢复最多五台。旧配置超过五台时保留所有配对，先恢复明确标记优先级的五台，其余标记 suspended_limit 并返回说明，不删除授权。
+
+### 0.2 五台的隔离和并行
+
+ConnectionBroker 用 Map<deviceId, DeviceRuntime> 管理，不能用单一 currentConnection/currentDevice。每个 DeviceRuntime 独立维护 generation、worker、SSH、恢复 timer、请求队列和通道额度。
+
+所有单机业务请求必须绑定 deviceId；多机操作显式传 deviceIds（最多五个）并返回逐机结果。工具旧 server 别名必须解析到固定 UUID，批量执行禁止通过修改全局默认设备轮流调用。
+
+组操作在父 operation 下为每台创建 child operation；一台失败不重跑其他已成功主机。取消整组逐一报告结果，不能把一台失败当作五台全部失败。
+
+连接建立默认并行度 2，避免一次启动过多握手；建立后五台可以同时在线、并行操作。各设备命令默认并发 2，控制查询预留通道，实际 SSH/relay 通道上限按协商能力限制，不把“五台主机”误当“五条 SSH stream”。
+
+在读到的现有实现中可靠传输有通道容量限制；实施时核对它是每 relay 实例还是共享资源。每台分配独立 worker/session 状态；若某中继资源共用，必须加全局公平队列，容量不足只返回该操作排队/容量状态，不关闭其他主机。
+
+### 0.3 与远端控制权审批的关系
+
+五台连接额度控制的是“本端连多少台不同主机”；现有 Admission 控制的是“同一目标由哪个控制方操作”。两者不能混淆。
+
+同一近端连接 A、B、C、D、E 各台的 Agent，互不争用控制权。不允许用一份全局 ownerId 限制所有目标，只能在各远端独立判断。
+
+若其他近端正在控制其中某台，只有那台进入等待审批；另外四台继续操作。本次仍保留每目标现有控制策略，不把它当成一端只能连一台的理由。
 
 ## 1. 现有代码的问题与改造决定
 
@@ -71,7 +117,7 @@ AgentClient.request(method, path, json, { timeoutMs, signal })
 | GET /v1/health | 无 | apiVersion、profileId、bootId、role |
 | POST /v1/connections | requestId、code 或 deviceId、waitMs | connectionTaskId、deviceId、state、verifiedIdentity |
 | GET /v1/connections/:id | 无 | 当前阶段、最终结果或错误 |
-| GET /v1/devices | 无 | 设备 ID、名称、状态、能力 |
+| GET /v1/devices | 无 | 设备 ID、名称、状态、能力、槽位使用情况 |
 | POST /v1/invoke | requestId、deviceId、tool、args、waitMs | 已完成结果或 operationId |
 | GET /v1/operations/:id | stdoutOffset、stderrOffset、limitBytes | 状态、结果、下一偏移 |
 | POST /v1/operations/:id/cancel | requestId | cancel_requested 或最终状态 |
@@ -121,7 +167,7 @@ devices.json 为每设备增加 schemaVersion、autoConnect、permissionSnapshot
 
 ### 4.2 connect 实现顺序
 
-1. SDK ensureAgent；Agent 校验 requestId，code 与 deviceId 二选一。
+1. SDK ensureAgent；Agent 校验 requestId，code 与 deviceId 二选一；按第 0 节原子获取/复用连接槽位，超过五台拒绝。
 2. 有码时调用现有 joinPair；验证 safeInfo；原子保存授权材料并取得现有 UUID。
 3. 对设备调用 ensureReady(deviceId, deadline)；相同设备的并发调用共享 readyPromise。
 4. 由 tick 启动/复用 near worker，等待新鲜 peer 状态与协议能力。
@@ -301,7 +347,7 @@ session 工具改为远端会话 runner 管理，sessionId 绑定 controllerId�
 
 ```text
 使用已配置的 SSH Relay MCP。
-先 devices；首次配对用 connect(code)，已有设备用 connect(deviceId)。
+先 devices；首次配对用 connect(code)，已有设备用 connect(deviceId)，一端最多同时连五台。
 原有工具指定返回的设备，不能猜目标。
 返回 operationId 时用 operation_status 查询；软件负责连接和内部恢复。
 连接工具不可见时，用包内 relay-cli 的同等入口，参数从 stdin 传入。
@@ -328,13 +374,15 @@ session 工具改为远端会话 runner 管理，sessionId 绑定 controllerId�
 
 ## 11. 实施顺序与验收线
 
-第一步：SDK + Broker + MCP 薄适配，先用已有执行实现打通“码 → 设备 → 原有工具”，明确此时还没有持久任务保证。
+第一步：SDK + Broker + 五设备槽位管理 + MCP 薄适配，先打通“最多五台各自的码 → 各自设备 → 原有工具”，明确此时还没有持久任务保证。
 
 第二步：control subsystem + TaskManager + runner，先打通 exec 的 submit/get/cancel，再把副作用业务和会话逐项接入；每项标记实际支持的恢复能力。
 
 第三步：文件快照、块确认、完整校验、提交与清理；最后验证业务编排中的中断和阶段恢复。
 
 第四步：保留简单 skill，撤下手工管理连接的要求；对最终下载包做 Windows/Linux 实测，不能用本地 MCP 工具发现替代远端操作。
+
+五主机专项验收：同时连接五台真实目标并分别核对设备密钥、主机名、账户；五台并发执行并校验各自文件；第六台被拒绝且原五台不受影响；重复 connect 不占新槽位；断开 A 后可连接 F；B 断网恢复不打断其他主机；MCP 和 Agent 重启后恢复原五台；一台等待审批时其他四台继续工作；组操作只重查失败/未知子项，不重跑已成功项。Windows/Linux 混合目标与两种近端平台均按实际可用设备覆盖，未覆盖部分明确记录。
 
 验收必须包含：无旧状态首次配对；码过期与重复使用；Agent/MCP/worker 分别重启；提交前后及结果返回前断网；同 ID 冲突；共享通道取消隔离；控制权审批；撤销中执行；文件源变化与损坏块；远端缺依赖；结果未知和磁盘满。每种场景有明确输出，不把“自动恢复”作为空泛通过结论。
 
