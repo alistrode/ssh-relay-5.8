@@ -1,5 +1,3 @@
-> 文档状态（2026-10-20）：历史工作分工提纲：不能代替完整目标或最新进度；定时上传已有本轮配置，实际状态见 SSH-RELAY-DEVELOPMENT-HANDOFF.md。
-
 # SSH Relay 继续开发
 
 目标分支：fix/ssh-pro-startup-20261019

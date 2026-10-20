@@ -1,5 +1,3 @@
-> 文档状态（2026-10-20）：现有工具与旧报告模式参考：保留工具契约资料；手工 connectionReport/复杂连接 Skill 不是当前最终接入目标。当前目标与进度见 SSH-RELAY-DEVELOPMENT-HANDOFF.md。
-
 # 当前公网近远端 MCP 操作说明
 
 ## Pro 升级入口与恢复纪律

@@ -1,5 +1,3 @@
-> 文档状态（2026-10-20）：历史连接块排障资料：内文 connect-* Skill 已不在本分支，不再作为正常接入或 AI 排障流程依据。当前目标由软件内部处理连接与恢复，见 SSH-RELAY-DEVELOPMENT-HANDOFF.md。
-
 # 连接排查
 
 先读取目标平台的 `.agents/skills/connect-*/SKILL.md`，按其中指引检查环境网络策略、正常 HTTPS 代理和 CA 信任。不得绕过明确的网络拒绝。
