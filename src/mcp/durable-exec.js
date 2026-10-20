@@ -11,7 +11,7 @@ const FINAL = new Set(["completed", "failed", "cancelled", "unknown"]);
 export async function durableExec(name, command, { cwd, timeout }) {
   const conn = await connect(name), config = conn.config;
   if (!config.agentDeviceId || !config.capabilities.persistentExec || config.capabilities.taskProtocol !== 1)
-    return run(name, command, { cwd, timeout });
+    return { ...(await run(name, command, { cwd, timeout })), persistent: false, recovery: "legacy-ssh-channel" };
   let control = controls.get(conn);
   if (!control || control.channel.closed()) {
     control = await openControl(conn.client, config.agentDeviceId);

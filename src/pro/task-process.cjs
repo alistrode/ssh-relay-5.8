@@ -9,6 +9,10 @@ function processIdentity(pid) {
   if (!osBoot) return null;
   try {
     if (process.platform === "linux") {
+      // Some container runtimes virtualize process.pid without mounting a
+      // matching /proc. Such a namespace cannot prove ownership of any PID.
+      const self = fs.readFileSync("/proc/self/stat", "utf8");
+      if (Number(self.slice(0, self.indexOf(" "))) !== process.pid) return null;
       const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
       const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
       if (fields[0] === "Z") return null;

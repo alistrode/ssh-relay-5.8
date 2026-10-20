@@ -15,6 +15,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   let starts = 0;
   const options = { dir, deviceId, bootId: crypto.randomUUID(), authorized: () => true,
+    processIdentityProvider: () => ({ fixture: true }),
     spawn() { starts++; return Object.assign(new EventEmitter(), { unref() {} }); } };
   const manager = new TaskManager(options);
   manager.space = () => {}; // Disk policy is independent of identity/queue behavior.

@@ -6,18 +6,19 @@ const crypto = require("node:crypto");
 const { folder } = require("./store.cjs");
 const { durableWrite, privateJSON, syncDirectory } = require("./task-store.cjs");
 const { operationId, normalizeSpec, requestHash } = require("./task-spec.cjs");
-const { ownedRunner } = require("./task-process.cjs");
+const { ownedRunner, processIdentity } = require("./task-process.cjs");
 const FINAL = new Set(["completed", "failed", "cancelled", "unknown"]);
 function failure(code, message, retryable = false) {
   return Object.assign(Error(message), { code, retryable });
 }
 class TaskManager {
-  constructor({ dir, deviceId, bootId, authorized, spawn = cp.spawn }) {
+  constructor({ dir, deviceId, bootId, authorized, spawn = cp.spawn, processIdentityProvider = processIdentity }) {
     this.dir = folder(path.resolve(dir));
     this.deviceId = operationId(deviceId);
     this.bootId = bootId;
     this.authorized = authorized;
     this.spawn = spawn;
+    this.identityAvailable = !!processIdentityProvider(process.pid);
     this.records = new Map();
     this.active = new Set();
     this.corrupt = new Set();
@@ -91,6 +92,8 @@ class TaskManager {
   }
   submit(owner, params) {
     if (this.stopping) throw failure("AGENT_STOPPING", "Far Agent is stopping", true);
+    if (!this.identityAvailable)
+      throw failure("PROCESS_IDENTITY_UNAVAILABLE", "This runtime cannot prove process identity; persistent execution is unavailable");
     operationId(owner);
     if (!this.authorized(owner)) throw failure("AUTH_REVOKED", "Controller authorization is no longer valid");
     const key = operationId(params.operationId), kind = params.kind;
@@ -171,7 +174,7 @@ class TaskManager {
           this.unknown(record, "RUNNER_HEARTBEAT_LOST", true);
       } catch { this.corrupt.add(key); }
     }
-    if (this.active.size >= 2) return;
+    if (this.active.size >= 2 || !this.identityAvailable) return;
     const queued = [...this.records.values()].filter(record => record.state === "accepted")
       .sort((a, b) => a.createdAt - b.createdAt || a.operationId.localeCompare(b.operationId));
     for (const record of queued) {

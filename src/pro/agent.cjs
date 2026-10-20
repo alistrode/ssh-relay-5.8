@@ -170,6 +170,7 @@ class Agent {
       connectionAdmission: true,
       controlSubsystem: 1,
       taskProtocol: 1,
+      persistentTasks: this.taskManager?.identityAvailable === true,
       clockSkewCorrection: true,
     });
   }
@@ -303,7 +304,7 @@ class Agent {
             throw fault("AUTH_REVOKED", "Controller authorization is no longer valid");
           if (message.method === "hello" && message.params?.protocol === 1)
             return { protocol: 1, deviceId: this.identity.deviceId,
-              capabilities: { persistentExec: !!this.taskManager, taskProtocol: 1,
+              capabilities: { persistentExec: this.taskManager?.identityAvailable === true, taskProtocol: 1,
                 recovery: "verified-live-runner", maxFrameBytes: 1048576, maxConcurrent: 4,
                 maxOutputBytesPerStream: 67108864, maxPageBytesPerStream: 65536 } };
           if (!this.taskManager) throw fault("CONTROL_UNAVAILABLE", "Task manager is not ready", true);

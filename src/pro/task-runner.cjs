@@ -25,7 +25,16 @@ async function run(directory) {
   catch (error) { if (error.code === "EEXIST") return; throw error; }
   if (privateJSON(file("result.json"), null)) return;
   const identity = processIdentity(process.pid);
-  if (!identity) throw Error("Runner process identity is unavailable");
+  if (!identity) {
+    const finishedAt = Date.now();
+    durableWrite(file("result.json"), { operationId: key, owner: manifest.owner, state: "failed",
+      errorCode: "PROCESS_IDENTITY_UNAVAILABLE", exitCode: null, signal: null, finishedAt,
+      stdout: { bytes: 0, totalBytes: 0, truncated: false },
+      stderr: { bytes: 0, totalBytes: 0, truncated: false } });
+    durableWrite(file("manifest.json"), { ...manifest, state: "failed", updatedAt: finishedAt });
+    fs.unlinkSync(file("input.json"));
+    return;
+  }
   const runnerRecord = { ...identity, operationDir: directory, operationId: key, heartbeatAt: Date.now() };
   durableWrite(file("runner.json"), runnerRecord);
   const output = {
