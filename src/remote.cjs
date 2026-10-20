@@ -11,6 +11,8 @@ var { serveSftp } = require("./sftp.cjs");
 var { attachForwarding } = require("./forwarding.cjs");
 var { inspectPermissions, requireUsableContext } = require("./permissions.cjs");
 var { Admission, verifyProbe } = require("./pro/admission.cjs");
+var { serveControl } = require("./pro/control-channel.cjs");
+var { forwardControl } = require("./pro/control-worker.cjs");
 var executionContext = inspectPermissions();
 requireUsableContext(executionContext);
 var root = path.resolve(process.argv[2] || path.join(__dirname, "config"));
@@ -82,11 +84,14 @@ var traceSsh = (event, details = {}) => {
 var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
   const sshId = ++nextSshId;
   let leaseToken;
+  let controllerId = null;
+  const controlChannels = new Set();
   const channels = new Set();
   let forwarding;
   const canStart = () => !admission || admission.canStart(leaseToken);
   const drain = () => {
     if (!admission || !admission.sessions.has(leaseToken) || canStart()) return;
+    for (const control of controlChannels) control.drain();
     forwarding?.drain();
     if (!channels.size && !forwarding?.active()) client.end();
   };
@@ -127,6 +132,7 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
       }
     }
     traceSsh("authenticated", { sshId });
+    if (ctx.signature) controllerId = controller.id;
     ctx.accept();
   });
   client.on("ready", () => {
@@ -226,6 +232,16 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
       session.on("exec", (accept2, reject, info2) => canStart() ? start(accept2, info2.command) : reject());
       session.on("shell", (accept2, reject) => canStart() ? start(accept2) : reject());
       session.on("sftp", (accept2, reject) => canStart() ? serveSftp(trackChannel(accept2()), canStart) : reject());
+      session.on("subsystem", (accept2, reject2, subsystem) => {
+        if (subsystem.name !== "relay-control-v1" || config.controlSubsystem !== 1 ||
+            !process.connected || !controllerId || !canStart()) return reject2();
+        const stream = trackChannel(accept2());
+        const control = serveControl(stream,
+          (method, params) => forwardControl(controllerId, method, params),
+          { canStart: () => canStart() });
+        controlChannels.add(control);
+        stream.once("close", () => controlChannels.delete(control));
+      });
     });
   });
 });
@@ -250,6 +266,8 @@ server.listen(config.sshPort, "127.0.0.1", () => {
       pty: false,
       forwarding: "loopback-only",
       reliableRelay: true,
+      controlSubsystem: config.controlSubsystem === 1 && process.connected ? 1 : 0,
+      persistentExec: false,
       version: 3,
     },
     fingerprint,
@@ -291,3 +309,4 @@ function close() {
 }
 process.on("SIGINT", close);
 process.on("SIGTERM", close);
+

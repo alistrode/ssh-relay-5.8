@@ -159,6 +159,7 @@ class Agent {
       testHooks: this.testHooks,
       clientKeysFile: clients,
       connectionAdmission: true,
+      controlSubsystem: 1,
       clockSkewCorrection: true,
     });
   }
@@ -284,6 +285,24 @@ class Agent {
     if (key === "far") this.admission = null;
     this.children.set(key, item);
     child.on("message", message => {
+      if (key === "far" && this.children.get(key) === item && message?.type === "task-rpc") {
+        Promise.resolve().then(() => {
+          id(message.controllerId);
+          const authorized = read(this.file("far/authorized-clients.json"), {});
+          if (!authorized[message.controllerId])
+            throw fault("AUTH_REVOKED", "Controller authorization is no longer valid");
+          if (message.method === "hello" && message.params?.protocol === 1)
+            return { protocol: 1, deviceId: this.identity.deviceId,
+              capabilities: { persistentExec: false, maxFrameBytes: 1048576, maxConcurrent: 4 } };
+          throw fault("CONTROL_UNSUPPORTED_METHOD", "Control method is not available");
+        }).then(result => {
+          if (child.connected) child.send({ type: "task-rpc-result", rpcId: message.rpcId, ok: true, result }, () => {});
+        }, error => {
+          if (child.connected) child.send({ type: "task-rpc-result", rpcId: message.rpcId, ok: false,
+            error: { code: error.code || "CONTROL_FAILED", message: error.code ? error.message : "Control operation failed",
+              retryable: error.retryable === true } }, () => {});
+        });
+      }
       if (key === "far" && this.children.get(key) === item && message?.type === "admission-status") {
         this.admission = message.value;
         this.notifyConsent();

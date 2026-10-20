@@ -112,7 +112,9 @@
       "src/pro/pair-state.cjs",
       "src/mcp/agent-provider.js",
       "src/pro/private-state.cjs",
-      "src/mcp/command-queue.js"
+      "src/mcp/command-queue.js",
+      "src/pro/control-channel.cjs",
+      "src/pro/control-worker.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
@@ -122,7 +124,8 @@
       "src/mcp/transport.js",
       "src/mcp/server.js",
       "src/mcp/handlers.js",
-      "src/mcp/prompts.js"
+      "src/mcp/prompts.js",
+      "src/remote.cjs"
     ],
     "dependencies": "No new third-party dependency or replacement of OPAQUE, SSH or MQTT protocols.",
     "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run."

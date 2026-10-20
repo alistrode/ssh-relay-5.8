@@ -163,3 +163,12 @@
 - 真实身份探测持久保存 verifiedIdentity、lastVerifiedAt 和 permissionSnapshot。已核验设备的远端实际账户变化时停止自动采用新账户，返回 ACCOUNT_CONTEXT_CHANGED；明确重新配对才能建立新的账户上下文。离线列表显示上次核验时间与账户信息。
 - 上传节点不运行验证。上一成功远端提交：1f964bfd13d591516e75a75a8f25d9c2ee6520bb（更新 API 曾超时，但读取远端已确认成功）。
 - 第一阶段源码仍未经完整集成或平台实测。接着按设计第二阶段实现有界 control subsystem 和远端任务记录；不能把旧 SSH 命令宣称为已可跨断线持久执行。
+
+## 2026-10-21 01:12（北京时间）控制 subsystem 源码检查点
+
+- 新增 control-channel.cjs，实现四字节大端长度 + UTF-8 JSON 帧、1 MiB 帧上限、严格 UTF-8、有限并发与队列字节/数量上限、写入背压和 RPC ID 关联。流断开只结束订阅，不重发请求；超时提示用原 operation ID 查询结果。
+- remote.cjs 在原 exec/shell/sftp 旁新增 relay-control-v1 subsystem；沿用原公钥认证与 Admission，controllerId 从实际成功签名身份绑定，不采信请求 JSON 中的自报身份。控制通道在控制权 drain 时收尾。
+- 新增 control-worker.cjs，将控制请求经现有专属 IPC 转交 Far Agent；限制在途数量与字节，Agent 再核对当前授权记录，旧 worker 的请求不被新 worker 实例接管。
+- 当前仅 hello(protocol=1) 可用，明确返回 persistentExec=false；submit/get/cancel 仍返回未实现，旧 SSH 命令仍会随原通道终止，不能称已完成持久任务。下一步接 TaskManager 与独立 runner。
+- 新增控制通道检查源码，覆盖拆帧/合帧、UTF-8、超长帧、结构化错误、容量与断线未知结果；本批未执行检查、测试、构建或远端操作。
+- 上一成功远端提交：3a8a0a970025a95ff7d556c1311194839d070942。
