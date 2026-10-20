@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { servers, serverConfig, setAgentConnection } from "./config.js";
 import { connect, run, pool, sftp, sftpCall, psQuote } from "./transport.js";
 import { upload, download, sync, remotePath } from "./files.js";
-import { job } from "./jobs.js";
+import { job, jobSourceHash } from "./jobs.js";
 import {
   sessions,
   startSession,
@@ -164,6 +164,19 @@ async function backupRestore(a) {
 }
 
 async function schedule(a) {
+  const target = serverConfig(a.server);
+  const moduleName = ["files", "full"].includes(a.type) ? "backup" : "database";
+  if (target.agentDeviceId && target.capabilities.persistentExec && target.capabilities.taskJobs?.schedule) {
+    const sourceHash = jobSourceHash(moduleName);
+    if (target.capabilities.taskJobs[moduleName] !== sourceHash)
+      throw Object.assign(Error("Scheduled job versions differ; use matching application packages"),
+        { code: "JOB_VERSION_MISMATCH" });
+    return job(a.server, "schedule", {
+      name: a.name, schedule: a.schedule,
+      controlledJob: { name: moduleName, sourceHash,
+        args: { ...a, action: moduleName === "backup" ? "create" : "backup" } },
+    }, 60000);
+  }
   const source = fs.readFileSync(
     new URL(
       "./jobs/" +

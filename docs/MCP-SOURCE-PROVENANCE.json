@@ -138,7 +138,8 @@
       "src/mcp/handlers.js",
       "src/mcp/prompts.js",
       "src/remote.cjs",
-      "src/mcp/jobs.js"
+      "src/mcp/jobs.js",
+      "src/mcp/jobs/schedule.cjs"
     ],
     "dependencies": "No new third-party dependency or replacement of OPAQUE, SSH or MQTT protocols.",
     "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run."

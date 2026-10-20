@@ -1,4 +1,4 @@
-module.exports = async function (ARGS) {
+module.exports = async function (ARGS, CONTEXT) {
   const fs = require("node:fs"),
     path = require("node:path"),
     os = require("node:os"),
@@ -36,7 +36,26 @@ module.exports = async function (ARGS) {
   const file = path.join(dir, ARGS.name + ".cjs");
   const match = `const now=new Date(),sets=${JSON.stringify(sets)},v=[now.getMinutes(),now.getHours(),now.getDate(),now.getMonth()+1,now.getDay()];const day=sets[2].includes(v[2]),week=sets[4].includes(v[4]);if(!sets[0].includes(v[0])||!sets[1].includes(v[1])||!sets[3].includes(v[3])||!(${JSON.stringify(fields[2] === "*" || fields[4] === "*")}?(day&&week):(day||week)))process.exit(0);`;
   const lock = `const fs=require('node:fs');const lock=__filename+'.lock';try{fs.mkdirSync(lock);}catch(e){if(e.code==='EEXIST')process.exit(0);throw e;}process.on('exit',()=>fs.rmSync(lock,{recursive:true,force:true}));`;
-  const runner = match + lock + ARGS.script;
+  let implementation = ARGS.script;
+  if (CONTEXT?.controlled) {
+    const registry = require("../../pro/task-jobs.cjs");
+    const { normalizeJobSpec } = require("../../pro/task-spec.cjs");
+    const spec = normalizeJobSpec(ARGS.controlledJob);
+    if (!["backup", "database"].includes(spec.name) || registry.jobHash(spec.name) !== spec.sourceHash)
+      throw new Error("Scheduled controlled job version mismatch");
+    if (ARGS.script !== undefined) throw new Error("Controlled schedules do not accept implementation source");
+    const configuration = file + ".json";
+    fs.writeFileSync(configuration, JSON.stringify(spec), { mode: 0o600 });
+    const registryPath = require.resolve("../../pro/task-jobs.cjs");
+    implementation =
+      "const spec=JSON.parse(require('node:fs').readFileSync(__filename+'.json','utf8'));" +
+      "const registry=require(" + JSON.stringify(registryPath) + ");" +
+      "const source=registry.jobSource(spec.name);" +
+      "if(registry.sourceHash(source)!==spec.sourceHash)throw Error('Scheduled module version changed; inspect and re-register the schedule');" +
+      "const container={exports:{}};new Function('module','require',source)(container,require('node:module').createRequire(registry.jobFile(spec.name)));" +
+      "Promise.resolve(container.exports(spec.args)).then(result=>process.stdout.write(JSON.stringify(result))).catch(error=>{process.stderr.write(error.message);process.exitCode=1;});";
+  } else if (typeof implementation !== "string") throw new Error("Missing legacy schedule implementation");
+  const runner = match + lock + implementation;
   fs.writeFileSync(file, runner, { mode: 0o600 });
   let result;
   if (process.platform === "win32") {
@@ -112,3 +131,4 @@ module.exports = async function (ARGS) {
     note: "Runs at matching minutes under the scheduler account; no permission elevation. Requires existing Node and tar/database clients. Remove the scoped task/crontab entry to cancel.",
   };
 };
+

@@ -14,7 +14,7 @@ async function execute(directory) {
   // Execute exactly the bundled bytes whose hash was checked, never code from
   // request JSON or a second filesystem read during an application upgrade.
   new Function("module", "require", source)(container, createRequire(jobFile(spec.name)));
-  const result = await container.exports(spec.args);
+  const result = await container.exports(spec.args, { controlled: true });
   process.stdout.write(JSON.stringify(result));
 }
 module.exports = { execute };

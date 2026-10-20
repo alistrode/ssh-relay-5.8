@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import { durableJob } from "./durable-exec.js";
 const { jobHash } = createRequire(import.meta.url)("../pro/task-jobs.cjs");
+export const jobSourceHash = jobHash;
 export async function job(server, name, args, timeout = 30000) {
   const target = serverConfig(server);
   if (target.agentDeviceId && target.capabilities.persistentExec &&
