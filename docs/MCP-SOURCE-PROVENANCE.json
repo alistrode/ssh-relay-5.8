@@ -126,7 +126,8 @@
       "src/pro/task-result.cjs",
       "src/pro/task-jobs.cjs",
       "src/pro/job-executor.cjs",
-      "src/pro/task-call.cjs"
+      "src/pro/task-call.cjs",
+      "src/mcp/group-targets.js"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
