@@ -3,10 +3,13 @@
 export function planGroupTargets(servers, resolve) {
   if (!Array.isArray(servers) || servers.length < 1 || servers.length > 5)
     throw new Error("Group execution requires between one and five targets");
-  const seen = new Set();
+  const seen = new Set(), names = new Set();
   for (const name of servers) {
     if (typeof name !== "string" || !name)
       throw new Error("Invalid group server name");
+    const alias = name.toLowerCase();
+    if (names.has(alias)) throw new Error("Group contains duplicate server names");
+    names.add(alias);
     let config;
     try { config = resolve(name); } catch { continue; }
     const identity = config?.agentDeviceId

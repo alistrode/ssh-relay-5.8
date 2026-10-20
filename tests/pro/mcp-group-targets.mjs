@@ -27,3 +27,9 @@ test("legacy aliases use canonical server names for duplicate protection", () =>
   assert.throws(() => planGroupTargets(["ALPHA", "alpha"], () => ({ name: "alpha" })),
     /duplicate target/);
 });
+
+test("unresolved repeated names cannot execute twice", () => {
+  assert.throws(() => planGroupTargets(["missing", "MISSING"], () => {
+    throw Error("offline");
+  }), /duplicate server names/);
+});
