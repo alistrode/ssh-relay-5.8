@@ -114,7 +114,11 @@
       "src/pro/private-state.cjs",
       "src/mcp/command-queue.js",
       "src/pro/control-channel.cjs",
-      "src/pro/control-worker.cjs"
+      "src/pro/control-worker.cjs",
+      "src/pro/task-store.cjs",
+      "src/pro/task-spec.cjs",
+      "src/pro/task-process.cjs",
+      "src/pro/task-runner.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

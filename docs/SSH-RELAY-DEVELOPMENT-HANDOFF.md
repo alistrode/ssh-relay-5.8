@@ -172,3 +172,12 @@
 - 当前仅 hello(protocol=1) 可用，明确返回 persistentExec=false；submit/get/cancel 仍返回未实现，旧 SSH 命令仍会随原通道终止，不能称已完成持久任务。下一步接 TaskManager 与独立 runner。
 - 新增控制通道检查源码，覆盖拆帧/合帧、UTF-8、超长帧、结构化错误、容量与断线未知结果；本批未执行检查、测试、构建或远端操作。
 - 上一成功远端提交：3a8a0a970025a95ff7d556c1311194839d070942。
+
+## 2026-10-21 01:15（北京时间）任务存储与 runner 源码检查点
+
+- 新增 task-store.cjs，任务 JSON/执行脚本使用文件 fsync、原子替换与目录 fsync；目录 fsync 不受平台支持时明确返回降级信息，不把 rename 当作全平台掉电保证。
+- 新增 task-spec.cjs，规范化 exec 的 command/shell/绝对 cwd/timeout，绑定目标设备和执行器计算 SHA-256；等待参数不参与请求摘要。新增 task-process.cjs，核对系统 boot 与进程启动标识，runner 所属路径也须匹配。
+- 新增独立 task-runner.cjs 源码：一次性执行锁、先记录 runner 身份再执行、输出写私有文件，每流最多 64 MiB，超限仍 drain；最终结果 fsync 后再清理私密 input/脚本。支持轮询取消文件，终止前核对执行进程身份；Windows 使用既有 token 和系统 PowerShell，不请求 UAC。
+- 目前 runner 尚未接入 TaskManager/submit/get/cancel，因此对外 hello 仍是 persistentExec=false；本批不是新增可用任务能力。Windows 宿主 Job Object 对 detached runner 的影响尚未原生验证，不能保证跨宿主退出存活。
+- 本批不执行验证、测试、构建或任何实际任务。下一步接 Far Agent 的 TaskManager，处理 accepted/starting/running 恢复、owner 隔离、输出分页和未知状态，不自动重启无法证明结果的操作。
+- 上一成功远端提交：b71ccb8b581f92ab22caf24a4f02f955137e1502。

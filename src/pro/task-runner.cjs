@@ -1,0 +1,136 @@
+"use strict";
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+const cp = require("node:child_process");
+const { durableWrite, durableText, privateJSON } = require("./task-store.cjs");
+const { operationId, normalizeSpec, requestHash } = require("./task-spec.cjs");
+const { processIdentity, sameProcess } = require("./task-process.cjs");
+const LIMIT = 64 * 1024 * 1024;
+async function run(directory) {
+  directory = path.resolve(directory);
+  const key = operationId(path.basename(directory));
+  if (fs.lstatSync(directory).isSymbolicLink()) throw Error("Invalid operation directory");
+  const file = name => path.join(directory, name);
+  let manifest = privateJSON(file("manifest.json"));
+  if (!manifest || manifest.operationId !== key || manifest.kind !== "exec" || manifest.state !== "starting")
+    throw Error("Operation is not authorized to start");
+  operationId(manifest.owner);
+  const input = privateJSON(file("input.json"));
+  const spec = normalizeSpec(input?.spec);
+  if (requestHash(manifest.deviceId, manifest.kind, spec) !== manifest.requestHash)
+    throw Error("Operation input does not match its accepted request");
+  try { fs.mkdirSync(file("execution.lock"), { mode: 0o700 }); }
+  catch (error) { if (error.code === "EEXIST") return; throw error; }
+  if (privateJSON(file("result.json"), null)) return;
+  const identity = processIdentity(process.pid);
+  if (!identity) throw Error("Runner process identity is unavailable");
+  durableWrite(file("runner.json"), { ...identity, operationDir: directory, operationId: key });
+  const output = {
+    stdout: { fd: fs.openSync(file("stdout.bin"), "wx", 0o600), bytes: 0, totalBytes: 0, truncated: false },
+    stderr: { fd: fs.openSync(file("stderr.bin"), "wx", 0o600), bytes: 0, totalBytes: 0, truncated: false },
+  };
+  let child, childIdentity, interval, timeout, killTimer, killer, finishing = false;
+  let reason = null, cancellationApplied = false, cancellationError = null, outputError = false;
+  const script = file(spec.shell === "powershell" ? "executor.ps1" : "executor.sh");
+  const windows = process.platform === "win32";
+  const source = windows
+    ? "\uFEFF$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);$global:LASTEXITCODE=0;try {\n" +
+      spec.command + "\n;if($LASTEXITCODE){exit $LASTEXITCODE}} catch {[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n"
+    : spec.command + "\n";
+  durableText(script, source);
+  function stop(why) {
+    if (why === "output_storage") outputError = true;
+    if (reason) return;
+    reason = why;
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    if (!childIdentity || !sameProcess(childIdentity)) {
+      cancellationError = "PROCESS_IDENTITY_UNCONFIRMED";
+      return;
+    }
+    if (windows) {
+      killer = new Promise(resolve => {
+        const proc = cp.spawn(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
+          ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+        proc.once("error", () => { cancellationError = "CANCEL_FAILED"; resolve(); });
+        proc.once("close", code => { cancellationApplied = code === 0; if (code !== 0) cancellationError = "CANCEL_FAILED"; resolve(); });
+      });
+    } else {
+      try { process.kill(-child.pid, "SIGTERM"); cancellationApplied = true; }
+      catch { cancellationError = "CANCEL_FAILED"; return; }
+      killTimer = setTimeout(() => {
+        if (sameProcess(childIdentity)) {
+          try { process.kill(-child.pid, "SIGKILL"); } catch {}
+        }
+      }, 3000);
+    }
+  }
+  function append(name, data) {
+    const stream = output[name];
+    stream.totalBytes += data.length;
+    const allowed = Math.max(0, Math.min(data.length, LIMIT - stream.bytes));
+    if (allowed < data.length) stream.truncated = true;
+    if (!allowed || outputError) return;
+    try {
+      let offset = 0;
+      while (offset < allowed) {
+        const written = fs.writeSync(stream.fd, data, offset, allowed - offset);
+        if (!written) throw Error("Output write stalled");
+        offset += written; stream.bytes += written;
+      }
+    } catch { outputError = true; stop("output_storage"); }
+  }
+  async function finish(code, signal, spawnError) {
+    if (finishing) return;
+    finishing = true;
+    clearInterval(interval); clearTimeout(timeout); clearTimeout(killTimer);
+    if (killer) await killer;
+    for (const stream of Object.values(output)) {
+      try { fs.fsyncSync(stream.fd); } catch { outputError = true; }
+      try { fs.closeSync(stream.fd); } catch { outputError = true; }
+    }
+    const state = outputError ? "unknown" : reason === "timeout" || spawnError ? "failed" :
+      reason === "cancel" && (!child || cancellationApplied) ? "cancelled" :
+      code === 0 ? "completed" : "failed";
+    const result = {
+      operationId: key, owner: manifest.owner, state, exitCode: code, signal,
+      finishedAt: Date.now(), cancelRequested: reason === "cancel", cancellationError,
+      errorCode: outputError ? "OUTPUT_STORAGE_FAILED" : spawnError ? "EXEC_SPAWN_FAILED" :
+        reason === "timeout" ? "EXEC_TIMEOUT" : null,
+      stdout: { bytes: output.stdout.bytes, totalBytes: output.stdout.totalBytes, truncated: output.stdout.truncated },
+      stderr: { bytes: output.stderr.bytes, totalBytes: output.stderr.totalBytes, truncated: output.stderr.truncated },
+    };
+    durableWrite(file("result.json"), result);
+    manifest = { ...manifest, state, updatedAt: result.finishedAt };
+    durableWrite(file("manifest.json"), manifest);
+    for (const name of ["input.json", path.basename(script)]) {
+      try { fs.unlinkSync(file(name)); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+  }
+  if (privateJSON(file("cancel.json"), null)) {
+    reason = "cancel"; await finish(null, null, false); return;
+  }
+  durableWrite(file("manifest.json"), { ...manifest, state: "running", startedAt: Date.now() });
+  const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
+  child = cp.spawn(windows
+    ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "/bin/sh",
+    windows ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script] : [script],
+    { cwd: spec.cwd || os.homedir(), env, windowsHide: true, detached: !windows,
+      stdio: ["ignore", "pipe", "pipe"] });
+  child.once("spawn", () => { childIdentity = processIdentity(child.pid); });
+  child.stdout.on("data", data => append("stdout", data));
+  child.stderr.on("data", data => append("stderr", data));
+  child.on("error", () => finish(null, null, true).catch(() => { process.exitCode = 1; }));
+  child.on("close", (code, signal) => finish(code, signal, false).catch(() => { process.exitCode = 1; }));
+  interval = setInterval(() => {
+    try {
+      const request = privateJSON(file("cancel.json"), null);
+      if (request && request.owner === manifest.owner) stop("cancel");
+    } catch { stop("output_storage"); }
+  }, 200);
+  timeout = setTimeout(() => stop("timeout"), spec.timeoutMs);
+  process.on("SIGTERM", () => stop("cancel"));
+  await new Promise(resolve => child.once("close", resolve));
+}
+module.exports = { run, LIMIT };
+if (require.main === module) run(process.argv[2]).catch(() => { process.exitCode = 1; });
