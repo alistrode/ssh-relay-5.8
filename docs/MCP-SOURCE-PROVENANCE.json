@@ -125,7 +125,8 @@
       "src/mcp/durable-exec.js",
       "src/pro/task-result.cjs",
       "src/pro/task-jobs.cjs",
-      "src/pro/job-executor.cjs"
+      "src/pro/job-executor.cjs",
+      "src/pro/task-call.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
@@ -136,7 +137,8 @@
       "src/mcp/server.js",
       "src/mcp/handlers.js",
       "src/mcp/prompts.js",
-      "src/remote.cjs"
+      "src/remote.cjs",
+      "src/mcp/jobs.js"
     ],
     "dependencies": "No new third-party dependency or replacement of OPAQUE, SSH or MQTT protocols.",
     "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run."

@@ -37,9 +37,10 @@ const bounded = (value, def, min, max) => {
 };
 const checked = (r) => {
   if (r.success === false || (r.code !== undefined && r.code !== 0))
-    throw new Error(
+    throw Object.assign(new Error(
       r.stderr || r.error || "Remote operation failed with exit code " + r.code,
-    );
+    ), { operationId: r.operationId, childOperationId: r.childOperationId,
+      state: r.state, completed: r.completed, code: r.errorCode });
   return r;
 };
 function policy(server, tool, command) {

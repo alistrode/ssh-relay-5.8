@@ -4,7 +4,19 @@ import { run, sftp, sftpCall, psQuote, powershell } from "./transport.js";
 import { serverConfig } from "./config.js";
 import { shellQuote } from "./shell-quote.js";
 import crypto from "node:crypto";
+import { createRequire } from "node:module";
+import { durableJob } from "./durable-exec.js";
+const { jobHash } = createRequire(import.meta.url)("../pro/task-jobs.cjs");
 export async function job(server, name, args, timeout = 30000) {
+  const target = serverConfig(server);
+  if (target.agentDeviceId && target.capabilities.persistentExec &&
+      target.capabilities.taskProtocol === 1 && target.capabilities.taskJobs?.[name]) {
+    const sourceHash = jobHash(name);
+    if (sourceHash !== target.capabilities.taskJobs[name])
+      throw Object.assign(Error("Controlled job versions differ; use matching application packages"),
+        { code: "JOB_VERSION_MISMATCH" });
+    return durableJob(server, name, args, timeout, sourceHash);
+  }
   const source = fs.readFileSync(
     new URL("./jobs/" + name + ".cjs", import.meta.url),
     "utf8",
@@ -60,7 +72,7 @@ export async function job(server, name, args, timeout = 30000) {
   } else result = await run(server, command, { timeout });
   if (!result.success) return result;
   try {
-    return { ...JSON.parse(result.stdout), code: result.code };
+    return { ...JSON.parse(result.stdout), code: result.code, persistent: false };
   } catch {
     throw new Error(
       "Remote job did not return valid JSON (exit " +
@@ -72,3 +84,4 @@ export async function job(server, name, args, timeout = 30000) {
     );
   }
 }
+

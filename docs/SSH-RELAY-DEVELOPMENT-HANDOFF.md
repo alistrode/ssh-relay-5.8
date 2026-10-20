@@ -231,3 +231,12 @@
 - 本批只接 Far 任务 kind；MCP jobs.js 仍是原路径，下一步切换到版本匹配的受控任务。sudo、session、部署多阶段和分组父子编排仍未完成。
 - 节点间受控 job/父操作组合五项通过；TaskManager/runner 组合四项通过、三个原生 runner 功能检查因本云端 PID 命名空间不一致跳过。runner 新分支通过语法检查，但未在 Windows 或原生 Linux 实际执行作业。
 - 上传节点不运行验证。上一成功远端提交：79e2aca4f969d0bd5993867b391c658e2f8db1b3。
+
+## 2026-10-21 01:45（北京时间）MCP 受控 job 接线检查点
+
+- MCP jobs.js 在目标明确支持任务、作业模块摘要匹配时走 durableJob；不再为这条新路径构造巨大 node -e 或临时上传实现。旧目标继续原兼容路径并返回 persistent=false。
+- 普通 exec 与受控 job 共用 task-call.cjs：先保存父/子 ID，submit 仅一次，之后只 get；未知结果原样返回保存的 ID。终结后仅查询少量元数据更新近端观察状态，日志仍按页远端读取。
+- 保留原作业 JSON 返回形状并增加 operationId/state/completed；多阶段 handlers 中 checked 抛错也保留操作 ID，不让调用方失去不确定阶段的查询入口。
+- 节点间六项相关检查通过：确认丢失不重发、跨字节页 UTF-8、精确内联输出游标、错设备结果拒绝、作业规范化和版本不匹配拒绝；本批修改的 MCP job/durable-exec/handlers 通过语法检查。仍未通过真实 SSH/MCP 或平台任务执行检查。
+- schedule 原有生成计划任务脚本的内部参数路径、多阶段部署/数据库组合的父操作编排、session runner 和分组父子操作仍需继续；文件恢复阶段尚未开始。
+- 上传节点只上传源码与交接。上一成功远端提交：1c3af6bce1af84c48635d7ae82fbf291fa4e301e。

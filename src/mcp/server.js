@@ -179,7 +179,8 @@ for (const { name, config } of catalog) {
               text: sanitized(
                 { success: false, error: error.message, tool: name,
                   code: error.code, retryable: error.retryable,
-                  connectionTaskId: error.connectionTaskId },
+                  connectionTaskId: error.connectionTaskId, operationId: error.operationId,
+                  childOperationId: error.childOperationId, state: error.state, completed: error.completed },
                 args,
               ),
             },
