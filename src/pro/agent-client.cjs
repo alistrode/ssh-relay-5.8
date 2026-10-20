@@ -165,6 +165,12 @@ async function ensureAgent(options = {}) {
   client.getConnection = (deviceId) => client.request("GET", "/v1/devices/" + encodeURIComponent(deviceId) + "/connection");
   client.disconnect = (deviceId, requestId) => client.request("POST",
     "/v1/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });
+  client.registerOperation = (input) => client.request("POST", "/v1/operations", input);
+  client.operations = (params = {}) => client.request("GET", "/v1/operations?" + new URLSearchParams(params));
+  client.operation = (key, params = {}) => client.request("GET",
+    "/v1/operations/" + encodeURIComponent(key) + "?" + new URLSearchParams(params));
+  client.cancelOperation = (key, requestId) => client.request("POST",
+    "/v1/operations/" + encodeURIComponent(key) + "/cancel", { requestId });
   client.ensureReady = async (deviceId) => {
     const key = dir + ":" + deviceId;
     if (readiness.has(key)) return readiness.get(key);

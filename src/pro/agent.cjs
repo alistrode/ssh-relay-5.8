@@ -26,6 +26,7 @@ const { Connections, fault } = require("./connections.cjs");
 const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
+const { Operations } = require("./operations.cjs");
 class Agent {
   constructor({
     role,
@@ -105,7 +106,10 @@ class Agent {
     });
     write(this.file("identity.json"), this.identity);
     write(this.file("settings.json"), this.settings);
-    if (this.role === "near") recoverPairTransactions(this);
+    if (this.role === "near") {
+      recoverPairTransactions(this);
+      this.operations = new Operations(this);
+    }
     if (this.role === "far") this.taskManager = new TaskManager({
       dir: this.file("operations"), deviceId: this.identity.deviceId, bootId: this.bootId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
@@ -404,6 +408,9 @@ class Agent {
     // Invalidate callbacks before destroying the client: close/error can fire
     // synchronously or arrive after a replacement worker has started.
     t.generation++;
+    t.controlClient?.close();
+    t.controlClient = null;
+    t.controlPending = null;
     const client = t.client;
     t.client = null;
     t.connecting = false;
@@ -815,6 +822,8 @@ class Agent {
         bodyChunks.push(chunk);
       }
       const body = Buffer.concat(bodyChunks).toString("utf8");
+      const apiUrl = new URL(req.url, "http://127.0.0.1");
+      const route = apiUrl.pathname;
       let data = {};
       try { data = body ? JSON.parse(body) : {}; }
       catch { throw fault("INVALID_REQUEST", "Invalid JSON request body"); }
@@ -822,6 +831,36 @@ class Agent {
         throw fault("INVALID_REQUEST", "Expected a JSON object");
       let value = { ok: true };
       let responseCode = 200;
+      const pageParams = () => {
+        const value = {};
+        for (const name of ["stdoutOffset", "stderrOffset", "limitBytes"]) {
+          if (!apiUrl.searchParams.has(name)) continue;
+          const number = Number(apiUrl.searchParams.get(name));
+          if (!Number.isSafeInteger(number) || number < (name === "limitBytes" ? 1 : 0) ||
+              (name === "limitBytes" && number > 65536))
+            throw fault("INVALID_REQUEST", "Invalid output page parameters");
+          value[name] = number;
+        }
+        return value;
+      };
+      if (this.role === "near" && req.method === "POST" && route === "/v1/operations") {
+        value = this.operations.register(data);
+        reply(200, value); return;
+      }
+      if (this.role === "near" && req.method === "GET" && route === "/v1/operations") {
+        value = this.operations.list({
+          limit: apiUrl.searchParams.has("limit") ? Number(apiUrl.searchParams.get("limit")) : 20,
+          deviceId: apiUrl.searchParams.get("deviceId") || undefined });
+        reply(200, value); return;
+      }
+      if (this.role === "near" && req.method === "GET" && /^\/v1\/operations\/[a-f0-9-]+$/.test(route)) {
+        value = await this.operations.get(route.split("/")[3], pageParams());
+        reply(200, value); return;
+      }
+      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/cancel$/.test(route)) {
+        value = await this.operations.cancel(route.split("/")[3], data);
+        reply(value.state === "cancel_requested" ? 202 : 200, value); return;
+      }
       if (req.url.startsWith("/v1/") && req.url !== "/v1/health" && this.role !== "near")
         throw fault("ROLE_MISMATCH", "Device connection API requires a near Agent");
       if (req.method === "GET" && req.url === "/v1/health")

@@ -22,6 +22,7 @@ import * as groups from "./server-groups.js";
 import { hooks, toggleHook, executeHook } from "./hooks.js";
 import { readState, writeState } from "./state.js";
 import { logger } from "./logger.js";
+import { durableExec } from "./durable-exec.js";
 groups.setServerConfigProvider(servers);
 const need = (a, key) => {
   if (a[key] === undefined || a[key] === "")
@@ -88,7 +89,7 @@ async function execute(a, sudo = false) {
         },
       );
     } else
-      result = await run(a.server, command, {
+      result = await durableExec(a.server, command, {
         cwd: a.cwd || config.defaultDir,
         timeout,
       });

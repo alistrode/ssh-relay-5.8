@@ -8,7 +8,7 @@ import { registerPrompts, instructions } from "./prompts.js";
 import { closeAll } from "./transport.js";
 import { closeSessions } from "./sessions.js";
 import { tunnels, closeTunnel } from "./tunnels.js";
-import { arg, servers, serverConfig, refreshAgentServers, withServerSnapshot, connectAgent, connectionTask, agentMode } from "./config.js";
+import { arg, servers, serverConfig, refreshAgentServers, withServerSnapshot, connectAgent, connectionTask, localAgentClient, agentMode } from "./config.js";
 import { TOOL_GROUPS } from "./tool-registry.js";
 const server = new McpServer(
   { name: "current-public-relay-mcp", version: "1.1.0" },
@@ -30,7 +30,7 @@ const enabled =
           : mode.split(","),
       );
 for (const tool of enabled)
-  if (!handlers[tool] && !(agentMode && tool === "ssh_connect")) throw new Error("Unknown selected tool " + tool);
+  if (!handlers[tool] && !(agentMode && ["ssh_connect", "ssh_operation_status"].includes(tool))) throw new Error("Unknown selected tool " + tool);
 const notes = {
   ssh_sync:
     " Uses portable SFTP with dry-run, exclusion, checksum and delete; no rsync or wire compression. Symlinks are refused.",
@@ -114,6 +114,39 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_conne
         code: error.code || "CONNECTION_FAILED", message: error.message,
         retryable: error.retryable === true,
       } }, args) }], isError: true };
+    }
+  });
+if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_operation_status")))
+  server.registerTool("ssh_operation_status", {
+    description: "Query a persistent operation by operationId, or list recent operations when omitted. Output is bounded byte pages with base64 encoding and next offsets. action=cancel requests cancellation; it does not undo prior effects.",
+    inputSchema: {
+      operationId: z.string().uuid().optional(),
+      action: z.enum(["status", "cancel"]).optional(),
+      requestId: z.string().uuid().optional(),
+      server: z.string().optional(),
+      stdoutOffset: z.number().int().min(0).optional(),
+      stderrOffset: z.number().int().min(0).optional(),
+      limitBytes: z.number().int().min(1).max(65536).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+    },
+  }, async args => {
+    try {
+      const result = await withServerSnapshot(async () => {
+        const client = await localAgentClient();
+        if (args.action === "cancel") {
+          if (!args.operationId) throw Error("operationId is required for cancellation");
+          return client.cancelOperation(args.operationId, args.requestId || crypto.randomUUID());
+        }
+        if (args.operationId) return client.operation(args.operationId,
+          Object.fromEntries(Object.entries({ stdoutOffset: args.stdoutOffset,
+            stderrOffset: args.stderrOffset, limitBytes: args.limitBytes }).filter(([, value]) => value !== undefined)));
+        return client.operations({ limit: args.limit || 20,
+          ...(args.server ? { deviceId: serverConfig(args.server).agentDeviceId } : {}) });
+      });
+      return { content: [{ type: "text", text: sanitized(result, args) }], isError: result.ok === false };
+    } catch (error) {
+      return { content: [{ type: "text", text: sanitized({ ok: false,
+        error: { code: error.code || "OPERATION_QUERY_FAILED", message: error.message } }, args) }], isError: true };
     }
   });
 for (const { name, config } of catalog) {

@@ -192,3 +192,13 @@
 - 新增 TaskManager 检查源码（不启动真实命令），覆盖重复 submit/冲突、owner 隔离、重启 unknown 不重放、排队取消和输出分页；本批未运行检查、测试、构建或任务。
 - 下一步接 MCP 控制客户端与近端父操作，先增强 exec，再逐项接 jobs/session；文件分块恢复尚未开始。
 - 上一成功远端提交：536b0f6ed1921f236bef2890ee743308b8c6243b。
+
+## 2026-10-21 01:25（北京时间）近端父操作与普通 exec 接线检查点
+
+- 新增近端 operations.cjs：先持久记录 parent operationId、设备 UUID、远端 child operationId 和请求摘要，再由 MCP 发送 submit。近端记录不存原命令；新增注册、列表、分页查询和取消 API。查询/取消复用 Agent 已核验 SSH 探测连接，不要求原 MCP 进程仍存活。
+- 新增 agent-control.cjs，共用控制协商并核对实际设备 ID/任务协议；Agent 的控制连接随目标 generation 失效，关闭订阅不取消远端任务。
+- 新增 durable-exec.js 并接普通 ssh_execute：目标明确支持任务协议时发送一次 submit，后续只 get 同一 child ID；网络错误返回父 operationId 与 unknown，不自动重发命令。旧目标和旧报告路径仍用原 exec；sudo、jobs 和 session 尚未接持久协议。
+- 保留原 stdout/stderr/code/成功字段；新增 operationId/state/completed。内联输出最多 2 MiB，更多输出返回分页要求与精确字节偏移，不取消远端任务。普通等待仍按原 timeout，未终结时明确 pending。
+- 新增 ssh_operation_status，支持按父 ID 查询/取消及列出最近操作，供适配器重启后发现原操作；原 37 个工具 schema 未改变。
+- 本批未运行测试、检查、构建、真实配对或命令；新增接口与原 exec 的实际兼容性仍未验证。近端记录清理、操作查询错误分级与分组父子编排继续补充。
+- 上一成功远端提交：588e1b2fd97466d8acc9805436973ee2528220b2。

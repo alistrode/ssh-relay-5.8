@@ -39,6 +39,10 @@ export async function connectionTask(key) {
   if (!agentMode) throw Error("Connection tasks require Agent mode");
   return (await agentClient(agentDir)).connectionTask(key);
 }
+export async function localAgentClient() {
+  if (!agentMode) throw Error("Persistent operations require Agent mode");
+  return agentClient(agentDir);
+}
 export async function setAgentConnection(config, connected) {
   const client = await agentClient(agentDir);
   const requestId = (await import("node:crypto")).randomUUID();

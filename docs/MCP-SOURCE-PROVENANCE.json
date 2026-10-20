@@ -119,7 +119,10 @@
       "src/pro/task-spec.cjs",
       "src/pro/task-process.cjs",
       "src/pro/task-runner.cjs",
-      "src/pro/tasks.cjs"
+      "src/pro/tasks.cjs",
+      "src/pro/agent-control.cjs",
+      "src/pro/operations.cjs",
+      "src/mcp/durable-exec.js"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
