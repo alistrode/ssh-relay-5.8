@@ -211,7 +211,11 @@ export async function connect(name, retries = 2) {
           )
         );
       },
-    }); } catch (error) { cancel(error); }
+    }); } catch (error) {
+      cancel(config.agentDeviceId && ["ENOENT", "EACCES", "EPERM"].includes(error.code)
+        ? Object.assign(Error("Agent SSH credential could not be read"), { code: "LOCAL_CREDENTIAL_UNAVAILABLE" })
+        : error);
+    }
   });
   task.config = config;
   task.cancel = cancel;

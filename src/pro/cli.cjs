@@ -30,8 +30,23 @@ if (require.main === module)
       ),
       command = args[0];
     if (!["near", "far"].includes(role)) throw Error("Invalid role");
+    if (["operations", "operation-status", "operation-cancel"].includes(command)) {
+      if (role !== "near") throw Error("Operation discovery requires near role");
+      if (command !== "operations" && !args.includes("--args-stdin"))
+        throw Error("Use --args-stdin for operation input");
+      const input = args.includes("--args-stdin") ? await stdinJSON() : {};
+      const client = await ensureAgent({ dir, role });
+      const value = command === "operations" ? await client.operations(input) :
+        command === "operation-cancel" ? await client.cancelOperation(input.operationId, input.requestId || crypto.randomUUID()) :
+        await client.operation(input.operationId, Object.fromEntries(
+          Object.entries({ stdoutOffset: input.stdoutOffset, stderrOffset: input.stderrOffset,
+            limitBytes: input.limitBytes }).filter(([, value]) => value !== undefined)));
+      console.log(JSON.stringify(value, null, 2));
+      if (value.ok === false) process.exitCode = 1;
+      return;
+    }
     if (command === "help" || command === "--help") {
-      console.log("Commands: start, status, devices, pair-code, pair --code-file, connect --args-stdin, connection-task --id UUID, disconnect --args-stdin, retry, logs, stop. connect stdin: {requestId?,code|deviceId,waitMs?}; disconnect stdin: {requestId?,deviceId}. Pairing codes stay off the command line.");
+      console.log("Commands: start, status, devices, pair-code, pair --code-file, connect --args-stdin, connection-task --id UUID, disconnect --args-stdin, operations, operation-status --args-stdin, operation-cancel --args-stdin, retry, logs, stop. connect stdin: {requestId?,code|deviceId,waitMs?}; disconnect stdin: {requestId?,deviceId}; operation stdin: {operationId,stdoutOffset?,stderrOffset?,limitBytes?,requestId?}. Pairing codes stay off the command line.");
       return;
     }
     if (["connect", "connection-task", "disconnect"].includes(command)) {

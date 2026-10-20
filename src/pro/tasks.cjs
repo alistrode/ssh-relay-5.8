@@ -48,6 +48,10 @@ class TaskManager {
         if (result) {
           record.state = result.state; record.updatedAt = result.finishedAt; this.save(record); continue;
         }
+        if (FINAL.has(record.state) && record.state !== "unknown") {
+          this.unknown(record, "RESULT_MISSING", false);
+          continue;
+        }
         if (record.state === "accepted") {
           const input = privateJSON(this.file(name, "input.json"));
           if (!input || requestHash(this.deviceId, record.kind, input.spec) !== record.requestHash ||
@@ -210,6 +214,8 @@ class TaskManager {
     if (!Number.isInteger(limit) || limit < 1 || limit > 65536)
       throw failure("INVALID_LIMIT", "Output page limit must be between 1 and 65536 bytes");
     const result = this.result(record);
+    if (!result && FINAL.has(record.state) && record.state !== "unknown")
+      throw failure("OPERATION_CORRUPT", "Final operation result is missing");
     return { operationId: key, deviceId: this.deviceId, state: result?.state || record.state,
       kind: record.kind, createdAt: record.createdAt, errorCode: result?.errorCode || record.errorCode || null,
       result: result ? { exitCode: result.exitCode, signal: result.signal, finishedAt: result.finishedAt,

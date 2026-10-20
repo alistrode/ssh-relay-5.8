@@ -77,3 +77,15 @@ test("runner timeout is a final failed result with the same operation ID", nativ
   assert.equal(result.operationId, input.operationId);
   assert.equal(result.errorCode, "EXEC_TIMEOUT");
 });
+test("an incoherent PID namespace refuses before any command side effect",
+  { skip: process.platform !== "linux" || !!processIdentity(process.pid) }, async t => {
+    const { dir, manager } = fixture(t), marker = path.join(dir, "must-not-exist");
+    // Exercise the runner's independent guard even if a parent cached an
+    // earlier capability. This never disables the runner ownership check.
+    manager.identityAvailable = true;
+    const input = request("require('fs').writeFileSync(" + JSON.stringify(marker) + ",'unexpected')");
+    manager.submit(owner, input);
+    const result = await until(() => manager.get(owner, input), value => value.state === "failed");
+    assert.equal(result.errorCode, "PROCESS_IDENTITY_UNAVAILABLE");
+    assert.equal(fs.existsSync(marker), false);
+  });

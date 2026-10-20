@@ -44,7 +44,8 @@ function bindings(dir) {
 export function descriptorConfig(descriptor, base, allowCloudSelfTest = false) {
   if (descriptor.deviceId !== base.deviceId || descriptor.host !== "127.0.0.1" ||
       !Number.isInteger(descriptor.port) || descriptor.port < 1 || descriptor.port > 65535 ||
-      !Number.isInteger(descriptor.generation) || descriptor.generation < 0 ||
+      !Number.isSafeInteger(descriptor.generation) || descriptor.generation < 0 ||
+      typeof descriptor.agentBootId !== "string" || !descriptor.agentBootId || descriptor.agentBootId.length > 128 ||
       !/^SHA256:[A-Za-z0-9+/]{43}$/.test(descriptor.fingerprint) ||
       !["windows", "linux"].includes(descriptor.platform) ||
       typeof descriptor.remoteUser !== "string" || !descriptor.remoteUser ||
@@ -82,8 +83,10 @@ export async function agentServers(dir, allowCloudSelfTest = false) {
   await Promise.all(Object.values(servers).filter(d => d.state === "online").map(async base => {
     try { servers[base.name] = descriptorConfig(await client.getConnection(base.deviceId), base, allowCloudSelfTest); }
     catch (error) {
-      if (!["DEVICE_NOT_READY", "DEVICE_DISCONNECTED", "WAITING_APPROVAL", "DEVICE_NOT_FOUND"].includes(error.code)) throw error;
-      servers[base.name] = Object.freeze({ ...base, state: "disconnected" });
+      if (error.statusCode === 401 || /^LOCAL_/.test(error.code || "")) throw error;
+      const transient = ["DEVICE_NOT_READY", "DEVICE_DISCONNECTED", "WAITING_APPROVAL", "DEVICE_NOT_FOUND"].includes(error.code);
+      servers[base.name] = Object.freeze({ ...base, state: transient ? "disconnected" : "identity_error",
+        lastErrorCode: error.code || "INVALID_DEVICE_DESCRIPTOR" });
     }
   }));
   return servers;

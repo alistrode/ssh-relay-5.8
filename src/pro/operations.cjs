@@ -5,15 +5,20 @@ const { folder } = require("./store.cjs");
 const { operationId } = require("./task-spec.cjs");
 const { durableWrite, privateJSON } = require("./task-store.cjs");
 const { agentControl } = require("./agent-control.cjs");
+const { validateTaskPage, publicFailure } = require("./task-result.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 class Operations {
-  constructor(agent) { this.agent = agent; this.dir = folder(agent.file("operations")); }
+  constructor(agent, { control = agentControl } = {}) {
+    this.agent = agent; this.dir = folder(agent.file("operations")); this.control = control;
+  }
   file(key) { return path.join(this.dir, operationId(key), "manifest.json"); }
   record(key) {
     const record = privateJSON(this.file(key), null);
     if (!record) throw failure("OPERATION_NOT_FOUND", "Unknown local operation");
     if (record.operationId !== key || record.profileId !== this.agent.identity.deviceId ||
-        !/^[a-f0-9]{64}$/.test(record.requestHash))
+        !/^[a-f0-9]{64}$/.test(record.requestHash) || record.kind !== "exec" ||
+        !["registered", "accepted", "starting", "running", "completed", "failed", "cancelled", "unknown"].includes(record.state) ||
+        !Number.isFinite(record.createdAt))
       throw failure("OPERATION_CORRUPT", "Local operation record is invalid");
     operationId(record.deviceId); operationId(record.childOperationId);
     return record;
@@ -24,6 +29,7 @@ class Operations {
       createdAt: record.createdAt, observedAt: record.observedAt || null };
   }
   register(params) {
+    this.cleanup();
     const key = operationId(params.operationId), deviceId = operationId(params.deviceId);
     const childOperationId = operationId(params.childOperationId);
     if (params.kind !== "exec" || !/^[a-f0-9]{64}$/.test(params.requestHash))
@@ -47,6 +53,7 @@ class Operations {
     return this.public(record);
   }
   list({ limit = 20, deviceId } = {}) {
+    this.cleanup();
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       throw failure("INVALID_LIMIT", "Operation list limit must be between 1 and 100");
     if (deviceId) operationId(deviceId);
@@ -63,16 +70,15 @@ class Operations {
   async get(key, params = {}) {
     const record = this.record(key);
     try {
-      const control = await agentControl(this.agent, record.deviceId);
+      const control = await this.control(this.agent, record.deviceId);
       const result = await control.request("get", { ...params, operationId: record.childOperationId });
+      validateTaskPage(result, { ...params, operationId: record.childOperationId, deviceId: record.deviceId });
       record.state = result.state; record.observedAt = Date.now();
       durableWrite(this.file(key), record);
       return { ...result, ...this.public(record), ok: true, outputEncoding: result.outputEncoding };
     } catch (error) {
       return { ...this.public(record), ok: false, state: error.code === "OPERATION_NOT_FOUND" ? "unknown" : "unavailable",
-        lastKnownState: record.state, error: { code: error.code || "CONTROL_UNAVAILABLE",
-          message: error.code ? error.message : "Remote operation could not be queried",
-          retryable: error.code !== "OPERATION_NOT_FOUND" && error.retryable !== false } };
+        lastKnownState: record.state, error: publicFailure(error) };
     }
   }
   async cancel(key, params) {
@@ -81,10 +87,20 @@ class Operations {
       record.cancelRequestId = requestId;
       durableWrite(this.file(key), record);
     }
-    const control = await agentControl(this.agent, record.deviceId);
+    const control = await this.control(this.agent, record.deviceId);
     const result = await control.request("cancel", { operationId: record.childOperationId,
       requestId: record.cancelRequestId });
     return { ...result, operationId: key, childOperationId: record.childOperationId };
+  }
+  cleanup() {
+    for (const name of fs.readdirSync(this.dir)) {
+      if (!/^[a-f0-9-]{36}$/.test(name)) continue;
+      let record;
+      try { record = this.record(name); } catch { continue; }
+      if (["completed", "failed", "cancelled"].includes(record.state) &&
+          Number.isFinite(record.observedAt) && Date.now() - record.observedAt > 7 * 86400000)
+        fs.rmSync(path.dirname(this.file(name)), { recursive: true });
+    }
   }
 }
 module.exports = { Operations };

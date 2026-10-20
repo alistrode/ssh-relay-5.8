@@ -212,3 +212,13 @@
 - 重跑上述组合：22 项中 19 项通过，3 项真实 runner 检查因环境不能证明进程身份而跳过。跳过不等于 runner 存活、取消或超时已经通过。Windows 与匹配 /proc 的原生 Linux 仍需实际执行这些检查。
 - 原 SSH 路径的结果显式带 persistent=false，避免把兼容回退当成任务持久保证。未进行任何用户电脑连接、生产部署或运行包构建。
 - 上一成功远端提交：d631c76367e420e606ae24f30a988163c9d40e0c。
+
+## 2026-10-21 01:35（北京时间）父操作恢复与结果完整性检查点
+
+- 新增 task-result.cjs，近端与 MCP 都核对远端 operationId/deviceId、状态、base64 编码、分页字节数和单调游标；终结状态缺最终 result 不能被当成成功。Far 记录缺结果时转 unknown，不重跑。
+- 近端终结父记录保留七天，查询列表不返回请求摘要或私密路径。控制/HTTP 私有状态错误用固定消息，避免把密钥或操作目录路径带给普通工具结果。
+- Provider 单设备描述符失败只影响该设备，其他设备仍可被调用；Agent API 认证或本机状态错误仍整体拒绝发现。新 CLI 可 operations/operation-status/operation-cancel，继续支持 stdin 输入和分页。
+- 节点间新增父操作检查三项通过，覆盖注册不 submit、适配器重启后查询原 child、断线不重发、错目标拒绝和取消 requestId 保留；Provider 在线/离线/默认目录/legacy 检查通过。
+- 新增实际 runner 拒绝检查，在本环境 PID 命名空间不一致时，确认结果为 PROCESS_IDENTITY_UNAVAILABLE 且未产生命令标记文件。最近组合共 8 项：5 通过、3 个原生 runner 功能检查跳过；不能用拒绝检查冒充持久执行功能通过。另与 TaskManager 的六项组合检查通过。
+- 尚未做 SSH/MCP 完整集成、Windows 原生检查、分组父子编排、jobs/session 持久化、文件分块恢复或运行包构建。上传节点仅保存和上传源码。
+- 上一成功远端提交：c54b894f82e5d1a4980c78edbd42926e729c2410。

@@ -5,6 +5,7 @@ import { localAgentClient } from "./config.js";
 import { shellQuote } from "./shell-quote.js";
 const { openControl } = createRequire(import.meta.url)("../pro/agent-control.cjs");
 const { normalizeSpec, requestHash } = createRequire(import.meta.url)("../pro/task-spec.cjs");
+const { validateTaskPage } = createRequire(import.meta.url)("../pro/task-result.cjs");
 const controls = new WeakMap();
 const CAPTURE = 2 * 1024 * 1024;
 const FINAL = new Set(["completed", "failed", "cancelled", "unknown"]);
@@ -38,6 +39,8 @@ export async function durableExec(name, command, { cwd, timeout }) {
     let page = await control.request("submit", { operationId: childOperationId, kind: "exec", requestHash: hash, spec });
     const deadline = Date.now() + timeout + 1000;
     while (true) {
+      validateTaskPage(page, { operationId: childOperationId, deviceId: config.agentDeviceId,
+        stdoutOffset: offsets.stdout, stderrOffset: offsets.stderr });
       let pagination = false;
       for (const name of ["stdout", "stderr"]) {
         const bytes = Buffer.from(page[name].data, "base64");

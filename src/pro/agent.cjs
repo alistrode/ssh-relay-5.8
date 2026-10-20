@@ -27,6 +27,7 @@ const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
 const { Operations } = require("./operations.cjs");
+const { publicFailure } = require("./task-result.cjs");
 class Agent {
   constructor({
     role,
@@ -313,8 +314,7 @@ class Agent {
           if (child.connected) child.send({ type: "task-rpc-result", rpcId: message.rpcId, ok: true, result }, () => {});
         }, error => {
           if (child.connected) child.send({ type: "task-rpc-result", rpcId: message.rpcId, ok: false,
-            error: { code: error.code || "CONTROL_FAILED", message: error.code ? error.message : "Control operation failed",
-              retryable: error.retryable === true } }, () => {});
+            error: publicFailure(error) }, () => {});
         });
       }
       if (key === "far" && this.children.get(key) === item && message?.type === "admission-status") {
@@ -1014,14 +1014,15 @@ class Agent {
           : e.message.slice(0, 200),
       });
       if (req.url.startsWith("/v1/")) {
-        const code = e.code || "INVALID_REQUEST";
+        const safe = publicFailure(e);
+        const code = safe.code;
         const status = code === "DEVICE_LIMIT_REACHED" || code === "REQUEST_CONFLICT" ? 409 :
           ["DEVICE_NOT_FOUND", "CONNECTION_NOT_FOUND"].includes(code) ? 404 :
           ["ROLE_MISMATCH", "IDENTITY_MISMATCH", "AUTH_REVOKED"].includes(code) ? 403 :
           e.retryable === true ? 503 : 400;
         reply(status,
           { ok: false, error: { code, phase: e.phase || "request",
-            message: e.message, retryable: e.retryable === true, details: e.details } });
+            message: safe.message, retryable: safe.retryable, details: e.details } });
       } else reply(400, { error: e.message });
     }
   }

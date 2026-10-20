@@ -32,6 +32,8 @@ const enabled =
 for (const tool of enabled)
   if (!handlers[tool] && !(agentMode && ["ssh_connect", "ssh_operation_status"].includes(tool))) throw new Error("Unknown selected tool " + tool);
 const notes = {
+  ssh_execute:
+    " Runs an independent command. Agent targets advertising persistent task protocol return operationId; query ssh_operation_status after disconnection or an uncertain outcome. Legacy targets return persistent=false. Inspect completed/state and real exit code. More than 2 MiB of inline output requires pagination; sudo, jobs and sessions have separate recovery limits.",
   ssh_sync:
     " Uses portable SFTP with dry-run, exclusion, checksum and delete; no rsync or wire compression. Symlinks are refused.",
   ssh_tail:
