@@ -1,3 +1,5 @@
+> 文档状态（2026-10-20）：历史 Pro 2.0 交接：不作为当前分支、工作区、进度或连接入口依据；内文 recovery/main 指令和机器状态属于历史快照。当前入口见 SSH-RELAY-DEVELOPMENT-HANDOFF.md。
+
 > 仓库整理更新（2026-10-17）：用户已明确授权 Pro 成为 main；当前开发主分支为 main，版本分类分支为 versions/4.0。下文关于禁止修改 main、仅在 recovery 分支开发的历史限制不再适用于本次整理及后续 main 维护。其他连接、安全和验收要求保留。旧 main 已完整归档至 archive/main-before-pro-20261017。
 
 # 接手 Pro 工作分支

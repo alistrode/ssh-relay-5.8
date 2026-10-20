@@ -1,3 +1,5 @@
+> 文档状态（2026-10-20）：旧版/兼容操作参考：recovery 分支、安装路径和连接报告步骤不作为当前整合版本的最终接入设计；接口事实需核对源码，不能据此声称当前包可用。见 SSH-RELAY-DOCUMENT-STATUS.md。
+
 # SSH Relay Pro 2.0
 
 工作分支：`recovery/current-public-relay-pro`。基线：旧维护分支 `recovery/current-public-relay-mcp@4c05038`。本版本在现有公共 MQTT WebSocket 中继上升级 SSH 管理；没有新增需要购买或部署的服务器，也没有接入局域网发现、Tailscale 或其他传输。公共 broker 仍有第三方可用性限制，设备断电或系统休眠时不能凭空保持在线。
