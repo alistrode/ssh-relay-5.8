@@ -11,19 +11,23 @@ export function arg(name) {
 const reportPath = arg("--connection");
 const manifestPath = arg("--connections");
 const agentDir = arg("--agent-dir");
-if (args.includes("--agent-dir") && (!agentDir || agentDir.startsWith("--")))
-  throw new Error("--agent-dir requires a path");
+for (const name of ["--connection", "--connections", "--agent-dir"]) {
+  const value = arg(name);
+  if (args.includes(name) && (!value || value.startsWith("--")))
+    throw new Error(`${name} requires a path`);
+}
 if ([reportPath, manifestPath, agentDir].filter(Boolean).length > 1)
   throw new Error("Use only one of --connection, --connections or --agent-dir");
+const agentMode = !reportPath && !manifestPath;
 const discovery = createAgentDiscovery(() => agentServers(agentDir));
 export async function refreshAgentServers() {
-  if (!agentDir) return;
+  if (!agentMode) return;
   // Clear stale descriptors before awaiting: API failure must not leave a
   // disabled or unpaired target available through the old snapshot.
   await discovery.refresh();
 }
 export function servers() {
-  const config = agentDir ? { servers: discovery.snapshot() } : manifestPath
+  const config = agentMode ? { servers: discovery.snapshot() } : manifestPath
     ? JSON.parse(fs.readFileSync(path.resolve(manifestPath), "utf8"))
     : {
         servers: reportPath

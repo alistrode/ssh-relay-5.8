@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createRequire } from "node:module";
-const { request } = createRequire(import.meta.url)("../pro/agent-client.cjs");
+const { ensureAgent } = createRequire(import.meta.url)("../pro/agent-client.cjs");
 
 export function createAgentDiscovery(load) {
   let current = Object.create(null);
@@ -22,7 +22,8 @@ export function createAgentDiscovery(load) {
 // Only reports from an online, admitted device are supplied to the existing
 // fingerprint/hostname/account verification path in config and transport.
 export async function agentServers(dir) {
-  const status = await request(path.resolve(dir), "/status");
+  const client = await ensureAgent({ role: "near", ...(dir ? { dir: path.resolve(dir) } : {}) });
+  const status = await client.request("GET", "/status");
   if (status.role !== "near" || !Array.isArray(status.devices))
     throw Error("A near Agent is required for MCP");
   const servers = Object.create(null);
