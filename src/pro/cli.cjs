@@ -2,8 +2,21 @@
 const fs = require("node:fs"),
   path = require("node:path"),
   os = require("node:os"),
-  { read } = require("./store.cjs");
-const { request, ensure } = require("./agent-client.cjs");
+  crypto = require("node:crypto");
+const { request, ensure, ensureAgent } = require("./agent-client.cjs");
+async function stdinJSON() {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    size += chunk.length;
+    if (size > 40000) throw Error("stdin JSON exceeds 40000 bytes");
+    chunks.push(chunk);
+  }
+  const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw Error("Expected a JSON object from stdin");
+  return value;
+}
 module.exports = { request, ensure };
 if (require.main === module)
   (async () => {
@@ -15,6 +28,26 @@ if (require.main === module)
       ),
       command = args[0];
     if (!["near", "far"].includes(role)) throw Error("Invalid role");
+    if (command === "help" || command === "--help") {
+      console.log("Commands: start, status, devices, pair-code, pair --code-file, connect --args-stdin, connection-task --id UUID, disconnect --args-stdin, retry, logs, stop. connect stdin: {requestId?,code|deviceId,waitMs?}; disconnect stdin: {requestId?,deviceId}. Pairing codes stay off the command line.");
+      return;
+    }
+    if (["connect", "connection-task", "disconnect"].includes(command)) {
+      if (role !== "near") throw Error("Device connections require near role");
+      if (command !== "connection-task" && !args.includes("--args-stdin"))
+        throw Error("Use --args-stdin for connection input");
+      const input = command === "connection-task" ? null : await stdinJSON();
+      const client = await ensureAgent({ dir, role,
+        allowCloudSelfTest: args.includes("--allow-cloud-self-test") });
+      const result = command === "connection-task"
+        ? await client.connectionTask(arg("--id", ""))
+        : command === "connect"
+          ? await client.connect({ ...input, requestId: input.requestId || crypto.randomUUID() })
+          : await client.disconnect(input.deviceId, input.requestId || crypto.randomUUID());
+      console.log(JSON.stringify(result, null, 2));
+      if (result.ok === false) process.exitCode = 1;
+      return;
+    }
     if (["start", "pair-code", "pair", "retry"].includes(command))
       await ensure({
         dir,
@@ -22,7 +55,9 @@ if (require.main === module)
         allowCloudSelfTest: args.includes("--allow-cloud-self-test"),
       });
     let value;
-    if (command === "start" || command === "status" || command === "devices")
+    if (command === "devices" && role === "near")
+      value = await request(dir, "/v1/devices");
+    else if (command === "start" || command === "status" || command === "devices")
       value = await request(dir, "/status");
     else if (command === "pair-code")
       value = await request(dir, "/pair/create", {});
@@ -47,3 +82,4 @@ if (require.main === module)
     console.error(e.message);
     process.exitCode = 1;
   });
+

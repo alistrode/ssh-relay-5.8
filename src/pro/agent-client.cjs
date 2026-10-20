@@ -159,6 +159,8 @@ async function ensureAgent(options = {}) {
   client.connect = (input) => client.request("POST", "/v1/connections", input, { timeoutMs: 25000 });
   client.connectionTask = (key) => client.request("GET", "/v1/connections/" + encodeURIComponent(key));
   client.getConnection = (deviceId) => client.request("GET", "/v1/devices/" + encodeURIComponent(deviceId) + "/connection");
+  client.disconnect = (deviceId, requestId) => client.request("POST",
+    "/v1/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });
   client.ensureReady = async (deviceId) => {
     const key = dir + ":" + deviceId;
     if (readiness.has(key)) return readiness.get(key);

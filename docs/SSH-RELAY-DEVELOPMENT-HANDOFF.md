@@ -125,3 +125,14 @@
 - 在不改原工具 schema 的基础上，新增 ssh_connect，支持 code 或已有 server、requestId 和连接任务查询；配对码从错误结果中脱敏。原列表增加可选 deviceId/state/enabled/lastVerifiedAt。
 - 本批未运行检查、测试、构建或远程命令。旧模拟 API 检查源码尚未适配新 /v1/devices/descriptor 契约，不能沿用旧通过结论。仍需继续：幂等 disconnect、CLI stdin 入口、默认连接并行度 2、配对 staging、任务记录容量与清理，以及多机实测。
 - 上一成功远端提交：48503e43f4c7d86a5db27830ea0f114848d0bbb9。
+
+## 2026-10-21 00:56（北京时间）断开与 CLI 检查点
+
+- 新增认证 POST /v1/devices/:id/disconnect：保留配对，持久停用 desiredConnected，取消该设备恢复并释放槽位；重复 requestId 返回原结果、不同输入返回 REQUEST_CONFLICT；中断后不盲目重放未知断开结果。
+- readiness 使用独立 intentGeneration，主动断开可取消旧等待；worker 自动恢复仍允许同一等待继续。MCP 原 ssh_connection_status 的 disconnect/reconnect 在 Agent 模式同步调用设备 API，退出 MCP 本身仍不停止 Agent。
+- CLI 补 connect/disconnect --args-stdin、connection-task --id 与帮助，配对码不要求进入命令行；devices 读取新设备列表。
+- 连接请求内存最多 1024 个活动记录，持久记录最多 10000 条；清理超过七天的终结记录，不清理活动请求。Agent 读取 desiredConnected 时兼容旧 enabled 数据，原配对写入 schemaVersion/desiredConnected/autoConnect。SSH 握手默认最多两台并行。
+- HTTP JSON 接收改为字节上限与完整 UTF-8 解码；新 API 按冲突/权限/不存在/临时不可用返回结构化状态码。
+- 新增 tests/pro/connections.cjs 检查源码，涵盖 requestId 冲突、重启 unknown 不重配对、断开取消和配对预留槽位；本批没有运行这些或其他检查、测试、构建。
+- 继续开发配对跨文件 staging/提交恢复；Windows ACL、原模拟 Provider 检查契约更新、多机实测与第二阶段持久业务仍未完成。
+- 上一成功远端提交：608ea2a659f669e5760e4af570a7e594c40e094e。

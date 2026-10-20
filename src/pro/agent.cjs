@@ -159,7 +159,15 @@ class Agent {
     });
   }
   registry() {
-    return read(this.file("devices.json"), {});
+    const registry = read(this.file("devices.json"), {});
+    if (!registry || typeof registry !== "object" || Array.isArray(registry))
+      throw Error("Invalid device registry");
+    for (const [key, device] of Object.entries(registry)) {
+      if (!device || typeof device !== "object" || id(key) !== device.id)
+        throw Error("Invalid device registry entry");
+      if (typeof device.desiredConnected === "boolean") device.enabled = device.desiredConnected;
+    }
+    return registry;
   }
   saveRegistry(value) {
     write(this.file("devices.json"), value);
@@ -252,6 +260,9 @@ class Agent {
             hostname: value.hostname,
             target: value.target,
             enabled: true,
+            desiredConnected: true,
+            schemaVersion: 1,
+            autoConnect: true,
             pairedAt: registry[value.deviceId]?.pairedAt || Date.now(),
           };
           this.saveRegistry(registry);
@@ -477,7 +488,8 @@ class Agent {
           t.dir,
         );
       }
-      if (!t.client && !t.connecting && Date.now() >= t.nextAt)
+      if (!t.client && !t.connecting && Date.now() >= t.nextAt &&
+          [...this.targets.values()].filter(target => target.connecting).length < 2)
         this.probe(t, device);
       else if (
         t.client &&
@@ -770,13 +782,18 @@ class Agent {
       reply(401, { error: "Unauthorized" });
       return;
     }
-    let body = "";
+    const bodyChunks = [];
+    let bodyBytes = 0;
     try {
       for await (const chunk of req) {
-        body += chunk;
-        if (body.length > 40000) throw Error("Request too large");
+        bodyBytes += chunk.length;
+        if (bodyBytes > 40000) throw fault("INVALID_REQUEST", "Request too large");
+        bodyChunks.push(chunk);
       }
+      const body = Buffer.concat(bodyChunks).toString("utf8");
       const data = body ? JSON.parse(body) : {};
+      if (!data || typeof data !== "object" || Array.isArray(data))
+        throw fault("INVALID_REQUEST", "Expected a JSON object");
       let value = { ok: true };
       let responseCode = 200;
       if (req.url.startsWith("/v1/") && req.url !== "/v1/health" && this.role !== "near")
@@ -794,6 +811,8 @@ class Agent {
         value = this.connections.result(this.connections.get(req.url.split("/")[3]));
       } else if (req.method === "GET" && /^\/v1\/devices\/[a-f0-9-]+\/connection$/.test(req.url)) {
         value = this.connections.descriptor(req.url.split("/")[3]);
+      } else if (req.method === "POST" && /^\/v1\/devices\/[a-f0-9-]+\/disconnect$/.test(req.url)) {
+        value = this.connections.disconnect(req.url.split("/")[3], data);
       }
       else if (req.method === "GET" && req.url === "/status") value = this.status();
       else if (req.method === "GET" && req.url === "/logs") {
@@ -855,6 +874,16 @@ class Agent {
           this.deviceSlots.assertCanEnable(registry, key);
         if (typeof data.enabled === "boolean")
           registry[key].enabled = data.enabled;
+        if (typeof data.enabled === "boolean") {
+          registry[key].desiredConnected = data.enabled;
+          if (!data.enabled) {
+            const target = this.targets.get(key);
+            if (target) {
+              target.intentGeneration = (target.intentGeneration || 0) + 1;
+              target.readyPromise = null;
+            }
+          }
+        }
         if (data.default === true) this.settings.defaultDevice = key;
         if (typeof data.label === "string")
           registry[key].label = data.label.slice(0, 80);
@@ -919,7 +948,11 @@ class Agent {
       });
       if (req.url.startsWith("/v1/")) {
         const code = e.code || "INVALID_REQUEST";
-        reply(code === "DEVICE_LIMIT_REACHED" || code === "REQUEST_CONFLICT" ? 409 : 400,
+        const status = code === "DEVICE_LIMIT_REACHED" || code === "REQUEST_CONFLICT" ? 409 :
+          ["DEVICE_NOT_FOUND", "CONNECTION_NOT_FOUND"].includes(code) ? 404 :
+          ["ROLE_MISMATCH", "IDENTITY_MISMATCH", "AUTH_REVOKED"].includes(code) ? 403 :
+          e.retryable === true ? 503 : 400;
+        reply(status,
           { ok: false, error: { code, phase: e.phase || "request",
             message: e.message, retryable: e.retryable === true, details: e.details } });
       } else reply(400, { error: e.message });
@@ -966,3 +999,4 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { servers, serverConfig } from "./config.js";
+import { servers, serverConfig, setAgentConnection } from "./config.js";
 import { connect, run, pool, sftp, sftpCall, psQuote } from "./transport.js";
 import { upload, download, sync, remotePath } from "./files.js";
 import { job } from "./jobs.js";
@@ -526,6 +526,7 @@ export const handlers = {
       for (const t of [...tunnels.values()])
         if (t.server === c.name) await closeTunnel(t.id);
       pool.get(c.name)?.close();
+      if (c.agentDeviceId) await setAgentConnection(c, a.action === "reconnect");
       if (a.action === "reconnect") await connect(c.name);
     }
     if (a.action === "cleanup") {

@@ -1,6 +1,7 @@
 "use strict";
 const crypto = require("node:crypto");
 const path = require("node:path");
+const fs = require("node:fs");
 const { read, write, id } = require("./store.cjs");
 
 function fault(code, message, retryable = false) {
@@ -34,7 +35,7 @@ class Connections {
   get(key) {
     const task = this.tasks.get(key) || read(this.file(key), null);
     if (!task) throw fault("CONNECTION_NOT_FOUND", "Unknown connection task");
-    if (task.bootId !== this.agent.bootId && !["ready", "failed", "unknown"].includes(task.state)) {
+    if (task.bootId !== this.agent.bootId && !["ready", "failed", "unknown", "disconnected"].includes(task.state)) {
       task.state = "unknown";
       task.ok = false;
       task.error = { code: "CONNECTION_INTERRUPTED", phase: "connection",
@@ -62,7 +63,7 @@ class Connections {
       if (task.requestHash !== hash) throw fault("REQUEST_CONFLICT", "requestId was used for different connection input");
       task = this.get(key);
     } else {
-      if (this.tasks.size >= 1024) throw fault("CONNECTION_CAPACITY", "Connection request capacity reached", true);
+      this.capacity();
       task = { ok: true, connectionTaskId: key, deviceId: spec.deviceId || null,
         state: "connecting", phase: hasCode ? "pairing" : "connecting",
         requestHash: hash, bootId: this.agent.bootId, createdAt: Date.now() };
@@ -112,13 +113,78 @@ class Connections {
       this.save(task);
     }
   }
+  capacity() {
+    for (const [key, task] of this.tasks)
+      if (!task.pending && ["ready", "failed", "unknown"].includes(task.state)) this.tasks.delete(key);
+    if (this.tasks.size >= 1024)
+      throw fault("CONNECTION_CAPACITY", "Too many pending connection requests", true);
+    const directory = this.agent.file("connection-tasks");
+    let names;
+    try { names = fs.readdirSync(directory); }
+    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    let count = 0;
+    for (const name of names) {
+      if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+      const file = path.join(directory, name), record = read(file);
+      if (!record || typeof record !== "object")
+        throw fault("CONNECTION_RECORD_CORRUPT", "Connection request record is corrupt");
+      if (!this.tasks.has(record.connectionTaskId) &&
+          ["ready", "failed", "unknown", "disconnected"].includes(record.state) &&
+          Date.now() - (record.updatedAt || record.createdAt || Date.now()) > 7 * 86400000) {
+        fs.unlinkSync(file);
+      } else count++;
+    }
+    if (count >= 10000)
+      throw fault("CONNECTION_CAPACITY", "Connection request storage capacity reached", true);
+  }
+  disconnect(deviceId, data) {
+    const key = requestId(data.requestId), a = this.agent;
+    deviceId = id(deviceId);
+    const hash = crypto.createHash("sha256").update(JSON.stringify({ action: "disconnect", deviceId })).digest("hex");
+    const previous = this.tasks.get(key) || read(this.file(key), null);
+    if (previous) {
+      if (previous.requestHash !== hash) throw fault("REQUEST_CONFLICT", "requestId was used for different input");
+      if (previous.state === "disconnecting") {
+        return { ok: false, deviceId, state: "unknown", error: {
+          code: "DISCONNECT_INTERRUPTED", phase: "disconnect",
+          message: "The previous disconnect outcome is uncertain; query the current device state", retryable: false,
+        } };
+      }
+      return this.result(previous);
+    }
+    const registry = a.registry(), device = registry[deviceId];
+    if (!device) throw fault("DEVICE_NOT_FOUND", "Unknown paired device");
+    this.capacity();
+    const record = { ok: true, connectionTaskId: key, deviceId, state: "disconnecting",
+      phase: "disconnect", requestHash: hash, bootId: a.bootId, createdAt: Date.now() };
+    this.save(record);
+    device.enabled = false;
+    device.desiredConnected = false;
+    a.saveRegistry(registry);
+    const t = a.targets.get(deviceId);
+    if (t) {
+      t.intentGeneration = (t.intentGeneration || 0) + 1;
+      t.readyPromise = null;
+      a.invalidateTarget(t);
+      t.state = "disconnected";
+    }
+    a.stopWorker(deviceId);
+    a.tick();
+    record.state = "disconnected";
+    record.updatedAt = Date.now();
+    this.save(record);
+    return this.result(record);
+  }
   ensureReady(deviceId) {
     const a = this.agent, device = a.registry()[id(deviceId)];
     if (!device) return Promise.reject(fault("DEVICE_NOT_FOUND", "Unknown paired device"));
     const t = a.targetFor(device);
     if (t.readyPromise) return t.readyPromise;
+    const intentGeneration = t.intentGeneration || 0;
     const task = (async () => {
       while (!a.stopping) {
+        if ((t.intentGeneration || 0) !== intentGeneration || a.targets.get(deviceId) !== t)
+          throw fault("DEVICE_DISCONNECTED", "Connection was explicitly cancelled");
         const slots = a.deviceSlots.snapshot(a.registry());
         if (!slots.active.includes(deviceId) || !a.settings.enabled)
           throw fault("DEVICE_DISCONNECTED", "Device is disabled or has no active connection slot");

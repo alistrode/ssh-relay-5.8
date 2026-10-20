@@ -39,6 +39,19 @@ export async function connectionTask(key) {
   if (!agentMode) throw Error("Connection tasks require Agent mode");
   return (await agentClient(agentDir)).connectionTask(key);
 }
+export async function setAgentConnection(config, connected) {
+  const client = await agentClient(agentDir);
+  const requestId = (await import("node:crypto")).randomUUID();
+  if (!connected) return client.disconnect(config.agentDeviceId, requestId);
+  const task = await client.connect({ requestId, deviceId: config.agentDeviceId, waitMs: 20000 });
+  if (task.state !== "ready") {
+    const error = Error(task.error?.message || "Device connection is " + task.state);
+    error.code = task.error?.code || "DEVICE_NOT_READY";
+    error.connectionTaskId = task.connectionTaskId;
+    throw error;
+  }
+  return task;
+}
 export async function refreshAgentServers() {
   if (!agentMode) return;
   // Clear stale descriptors before awaiting: API failure must not leave a
