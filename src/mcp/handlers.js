@@ -367,6 +367,10 @@ export const handlers = {
     success: true,
     servers: Object.values(servers()).map((c) => ({
       name: c.name,
+      deviceId: c.agentDeviceId,
+      state: c.state,
+      enabled: c.enabled,
+      lastVerifiedAt: c.lastVerifiedAt,
       hostname: c.hostname,
       remoteUser: c.remoteUser,
       platform: c.platform,
@@ -680,3 +684,4 @@ export async function invoke(name, args) {
     throw error;
   }
 }
+

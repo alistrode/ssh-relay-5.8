@@ -2,7 +2,7 @@ import { Client } from "ssh2";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
-import { serverConfig, refreshAgentServers } from "./config.js";
+import { serverConfig, prepareServer } from "./config.js";
 import { readState } from "./state.js";
 import { shellQuote } from "./shell-quote.js";
 export const pool = new Map();
@@ -10,6 +10,8 @@ const pending = new Map();
 const recovery = new Map();
 let shuttingDown = false;
 export function recoverManaged(config) {
+  // Device recovery belongs to the Agent in the descriptor mode.
+  if (config.agentDeviceId) return;
   if (!config.agentManaged || shuttingDown || recovery.has(config.name)) return;
   const controller = { cancelled: false };
   recovery.set(config.name, controller);
@@ -72,8 +74,7 @@ export function powershell(script) {
   return cmd;
 }
 export async function connect(name, retries = 2) {
-  await refreshAgentServers();
-  const config = serverConfig(name);
+  const config = await prepareServer(name);
   const key = config.name;
   if (readState("revoked-keys.json", {})[key])
     throw new Error("Application host key pin revoked");
@@ -81,11 +82,23 @@ export async function connect(name, retries = 2) {
   if (
     old?.connected &&
     old.config.fingerprint === config.fingerprint &&
+    old.config.generation === config.generation &&
+    old.config.agentBootId === config.agentBootId &&
     old.config.port === config.port
   )
     return old;
   if (old) old.close();
-  if (pending.has(key)) return pending.get(key);
+  if (pending.has(key)) {
+    const previous = pending.get(key);
+    if (previous.config.port === config.port &&
+        previous.config.generation === config.generation &&
+        previous.config.agentBootId === config.agentBootId &&
+        previous.config.fingerprint === config.fingerprint) return previous;
+    previous.cancel();
+    pending.delete(key);
+  }
+  let cancel;
+  let cancelled = false;
   const task = new Promise((resolve, reject) => {
     const client = new Client();
     const conn = {
@@ -99,25 +112,37 @@ export async function connect(name, retries = 2) {
         if (task) task.cancelled = true;
         this.connected = false;
         client.end();
-        pool.delete(key);
+        if (pool.get(key) === this) pool.delete(key);
       },
     };
     const timer = setTimeout(() => {
-      client.destroy();
-      reject(new Error("SSH connection/identity check timeout"));
+      cancel(new Error("SSH connection/identity check timeout"));
     }, 65000);
+    cancel = (error = new Error("SSH connection superseded or closed")) => {
+      cancelled = true;
+      clearTimeout(timer);
+      conn.manualClose = true;
+      conn.connected = false;
+      client.destroy();
+      reject(error);
+    };
     client.on("error", (err) => {
+      cancelled = true;
       conn.connected = false;
       clearTimeout(timer);
       reject(err);
     });
     client.on("close", () => {
+      cancelled = true;
+      clearTimeout(timer);
       conn.connected = false;
+      if (!conn.verified) reject(new Error("SSH closed before identity verification"));
       if (pool.get(key) === conn) pool.delete(key);
       if (conn.verified && !conn.manualClose)
         setImmediate(() => recoverManaged(config));
     });
     client.once("ready", async () => {
+      if (cancelled || shuttingDown) return;
       conn.connected = true;
       try {
         const result = await executeRaw(
@@ -141,6 +166,16 @@ export async function connect(name, retries = 2) {
           throw new Error(
             "Actual SSH account or hostname differs from verified connection report",
           );
+        if (shuttingDown || pending.get(key) !== task)
+          throw new Error("SSH connection superseded or closed");
+        if (config.agentDeviceId) {
+          const current = await prepareServer(name);
+          if (current.agentBootId !== config.agentBootId || current.generation !== config.generation ||
+              current.port !== config.port || current.fingerprint !== config.fingerprint)
+            throw new Error("Agent descriptor changed during SSH identity verification");
+        }
+        if (cancelled || shuttingDown || pending.get(key) !== task)
+          throw new Error("SSH connection superseded or closed");
         conn.verified = true;
         pool.set(key, conn);
         clearTimeout(timer);
@@ -151,7 +186,7 @@ export async function connect(name, retries = 2) {
         reject(e);
       }
     });
-    client.connect({
+    try { client.connect({
       host: "127.0.0.1",
       port: config.port,
       username: "relay",
@@ -175,8 +210,10 @@ export async function connect(name, retries = 2) {
           )
         );
       },
-    });
+    }); } catch (error) { cancel(error); }
   });
+  task.config = config;
+  task.cancel = cancel;
   pending.set(key, task);
   try {
     return await task;
@@ -303,6 +340,9 @@ export const sftpCall = (s, method, ...args) =>
   );
 export function closeAll() {
   shuttingDown = true;
+  for (const task of pending.values()) task.cancel();
+  pending.clear();
   for (const task of recovery.values()) task.cancelled = true;
   for (const conn of [...pool.values()]) conn.close();
 }
+

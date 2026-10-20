@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveServerName } from "./server-aliases.js";
-import { agentServers, createAgentDiscovery } from "./agent-provider.js";
+import { agentServers, readyAgentServer, agentClient, createAgentDiscovery } from "./agent-provider.js";
 const args = process.argv.slice(2);
 export function arg(name) {
   const i = args.indexOf(name);
@@ -18,8 +19,26 @@ for (const name of ["--connection", "--connections", "--agent-dir"]) {
 }
 if ([reportPath, manifestPath, agentDir].filter(Boolean).length > 1)
   throw new Error("Use only one of --connection, --connections or --agent-dir");
-const agentMode = !reportPath && !manifestPath;
-const discovery = createAgentDiscovery(() => agentServers(agentDir));
+export const agentMode = !reportPath && !manifestPath;
+const allowCloudSelfTest = arg("--allow-cloud-self-test") === "yes";
+const context = new AsyncLocalStorage();
+const discovery = createAgentDiscovery(() => agentServers(agentDir, allowCloudSelfTest));
+export async function withServerSnapshot(fn) {
+  const snapshot = agentMode ? await agentServers(agentDir, allowCloudSelfTest) : readServers();
+  return context.run({ servers: Object.freeze(snapshot) }, fn);
+}
+export async function prepareServer(name) {
+  const base = serverConfig(name);
+  return base.agentDeviceId ? readyAgentServer(agentDir, base, allowCloudSelfTest) : base;
+}
+export async function connectAgent(input) {
+  if (!agentMode) throw Error("Pairing requires Agent mode");
+  return (await agentClient(agentDir)).connect(input);
+}
+export async function connectionTask(key) {
+  if (!agentMode) throw Error("Connection tasks require Agent mode");
+  return (await agentClient(agentDir)).connectionTask(key);
+}
 export async function refreshAgentServers() {
   if (!agentMode) return;
   // Clear stale descriptors before awaiting: API failure must not leave a
@@ -27,6 +46,10 @@ export async function refreshAgentServers() {
   await discovery.refresh();
 }
 export function servers() {
+  return context.getStore()?.servers || readServers();
+}
+function readServers() {
+  if (agentMode) return discovery.snapshot();
   const config = agentMode ? { servers: discovery.snapshot() } : manifestPath
     ? JSON.parse(fs.readFileSync(path.resolve(manifestPath), "utf8"))
     : {
@@ -135,3 +158,4 @@ export function serverConfig(name) {
     throw new Error(`Unknown server ${name}; call ssh_list_servers`);
   return all[resolved];
 }
+

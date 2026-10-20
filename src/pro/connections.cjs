@@ -139,8 +139,10 @@ class Connections {
   }
   descriptor(deviceId) {
     const a = this.agent, key = id(deviceId), t = a.targets.get(key);
-    if (!a.settings.enabled || !a.deviceSlots.snapshot(a.registry()).active.includes(key) ||
-        t?.state !== "online" || !t.client || Date.now() - t.lastProbe >= 45000)
+    if (!a.registry()[key]) throw fault("DEVICE_NOT_FOUND", "Unknown paired device");
+    if (!a.settings.enabled || !a.deviceSlots.snapshot(a.registry()).active.includes(key))
+      throw fault("DEVICE_DISCONNECTED", "Device is disabled or has no active connection slot");
+    if (t?.state !== "online" || !t.client || Date.now() - t.lastProbe >= 45000)
       throw fault(t?.state === "remote_busy" ? "WAITING_APPROVAL" : "DEVICE_NOT_READY",
         "Device has no current verified connection", true);
     const info = a.safeInfo(read(path.join(t.dir, "identity.json")));
@@ -149,7 +151,7 @@ class Connections {
     if (!runtime || runtime.port !== t.port || !Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 ||
         !peer || peer.fingerprint !== info.fingerprint || Date.now() - peer.receivedAt >= 45000)
       throw fault("DEVICE_NOT_READY", "Relay descriptor is stale", true);
-    return { deviceId: key, generation: t.generation, host: "127.0.0.1", port: runtime.port,
+    return { deviceId: key, generation: t.generation, agentBootId: a.bootId, host: "127.0.0.1", port: runtime.port,
       keyPath: path.join(t.dir, "client_key"), knownHosts: path.join(t.dir, "known_hosts"),
       fingerprint: info.fingerprint, platform: info.target === "win10" ? "windows" : "linux",
       remoteUser: t.remoteUser, hostname: info.hostname, capabilities: peer.capabilities || {},

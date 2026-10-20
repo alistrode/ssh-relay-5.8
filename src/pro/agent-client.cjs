@@ -82,6 +82,7 @@ function request(dir, route, body, options = {}) {
 }
 
 const starting = new Map();
+const readiness = new Map();
 function stateDirectory({ dir, profileDir, role = "near" } = {}) {
   if (!["near", "far"].includes(role)) throw Error("Invalid role");
   if (dir && profileDir) throw Error("Use state dir or profile dir, not both");
@@ -146,7 +147,7 @@ async function ensureAgent(options = {}) {
     starting.set(key, task);
   }
   await starting.get(key);
-  return {
+  const client = {
     request: (method, route, body, requestOptions) => {
       if (!["GET", "POST"].includes(method) || (method === "GET" && body !== undefined) ||
           (method === "POST" && body === undefined))
@@ -154,6 +155,33 @@ async function ensureAgent(options = {}) {
       return request(dir, route, body, requestOptions);
     },
   };
+  client.devices = () => client.request("GET", "/v1/devices");
+  client.connect = (input) => client.request("POST", "/v1/connections", input, { timeoutMs: 25000 });
+  client.connectionTask = (key) => client.request("GET", "/v1/connections/" + encodeURIComponent(key));
+  client.getConnection = (deviceId) => client.request("GET", "/v1/devices/" + encodeURIComponent(deviceId) + "/connection");
+  client.ensureReady = async (deviceId) => {
+    const key = dir + ":" + deviceId;
+    if (readiness.has(key)) return readiness.get(key);
+    const pending = (async () => {
+    try { return await client.getConnection(deviceId); }
+    catch (error) {
+      if (!["DEVICE_NOT_READY", "WAITING_APPROVAL"].includes(error.code)) throw error;
+    }
+    let task = await client.connect({ requestId: require("node:crypto").randomUUID(), deviceId, waitMs: 20000 });
+    if (task.state !== "ready") {
+      const error = Error(task.error?.message || "Device connection is " + task.state);
+      error.code = task.error?.code || (task.state === "waiting_approval" ? "WAITING_APPROVAL" : "DEVICE_NOT_READY");
+      error.connectionTaskId = task.connectionTaskId;
+      error.retryable = task.error?.retryable ?? true;
+      throw error;
+    }
+      return client.getConnection(deviceId);
+    })();
+    readiness.set(key, pending);
+    try { return await pending; }
+    finally { if (readiness.get(key) === pending) readiness.delete(key); }
+  };
+  return client;
 }
 // Backward compatible CLI API.
 async function ensure(options) { await ensureAgent(options); }

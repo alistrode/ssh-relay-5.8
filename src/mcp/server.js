@@ -1,13 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import crypto from "node:crypto";
 import { catalog } from "./catalog.js";
 import { invoke, handlers } from "./handlers.js";
 import { registerPrompts, instructions } from "./prompts.js";
 import { closeAll } from "./transport.js";
 import { closeSessions } from "./sessions.js";
 import { tunnels, closeTunnel } from "./tunnels.js";
-import { arg, servers, refreshAgentServers } from "./config.js";
+import { arg, servers, serverConfig, refreshAgentServers, withServerSnapshot, connectAgent, connectionTask, agentMode } from "./config.js";
 import { TOOL_GROUPS } from "./tool-registry.js";
 const server = new McpServer(
   { name: "current-public-relay-mcp", version: "1.1.0" },
@@ -29,7 +30,7 @@ const enabled =
           : mode.split(","),
       );
 for (const tool of enabled)
-  if (!handlers[tool]) throw new Error("Unknown selected tool " + tool);
+  if (!handlers[tool] && !(agentMode && tool === "ssh_connect")) throw new Error("Unknown selected tool " + tool);
 const notes = {
   ssh_sync:
     " Uses portable SFTP with dry-run, exclusion, checksum and delete; no rsync or wire compression. Symlinks are refused.",
@@ -61,6 +62,7 @@ const notes = {
 function sanitized(value, args) {
   const secrets = [
     args.password,
+    args.code,
     args.dbPassword,
     args.options?.sudoPassword,
   ].filter((s) => typeof s === "string" && s.length);
@@ -80,6 +82,40 @@ function sanitized(value, args) {
   };
   return JSON.stringify(scrub(value), null, 2);
 }
+if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_connect")))
+  server.registerTool("ssh_connect", {
+    description: "Pair a device using a code, or connect a remembered server. At most five active devices. Pass connectionTaskId alone to query a pending request. Reuse requestId when retrying the same input.",
+    inputSchema: {
+      code: z.string().optional(),
+      server: z.string().optional(),
+      requestId: z.string().uuid().optional(),
+      connectionTaskId: z.string().uuid().optional(),
+      waitMs: z.number().int().min(0).max(20000).optional(),
+    },
+  }, async (args) => {
+    try {
+      const result = await withServerSnapshot(async () => {
+        if (args.connectionTaskId) {
+          if (args.code !== undefined || args.server !== undefined || args.requestId !== undefined)
+            throw Error("Use connectionTaskId alone to query");
+          return connectionTask(args.connectionTaskId);
+        }
+        if ((args.code !== undefined) === (args.server !== undefined))
+          throw Error("Provide exactly one of code or server");
+        return connectAgent({
+          requestId: args.requestId || crypto.randomUUID(),
+          ...(args.code !== undefined ? { code: args.code } : { deviceId: serverConfig(args.server).agentDeviceId }),
+          waitMs: args.waitMs,
+        });
+      });
+      return { content: [{ type: "text", text: sanitized(result, args) }], isError: result.ok === false };
+    } catch (error) {
+      return { content: [{ type: "text", text: sanitized({ ok: false, error: {
+        code: error.code || "CONNECTION_FAILED", message: error.message,
+        retryable: error.retryable === true,
+      } }, args) }], isError: true };
+    }
+  });
 for (const { name, config } of catalog) {
   if (!enabled.has(name)) continue;
   server.registerTool(
@@ -92,8 +128,7 @@ for (const { name, config } of catalog) {
     },
     async (args) => {
       try {
-        await refreshAgentServers();
-        const result = await invoke(name, args);
+        const result = await withServerSnapshot(() => invoke(name, args));
         const isError =
           result?.success === false ||
           (result?.code !== undefined && result.code !== 0);
@@ -107,7 +142,9 @@ for (const { name, config } of catalog) {
             {
               type: "text",
               text: sanitized(
-                { success: false, error: error.message, tool: name },
+                { success: false, error: error.message, tool: name,
+                  code: error.code, retryable: error.retryable,
+                  connectionTaskId: error.connectionTaskId },
                 args,
               ),
             },
@@ -143,3 +180,4 @@ console.error(
 // Managed profiles remain discoverable while the background repairs their connection.
 const { recoverManaged } = await import("./transport.js");
 for (const config of Object.values(servers())) recoverManaged(config);
+

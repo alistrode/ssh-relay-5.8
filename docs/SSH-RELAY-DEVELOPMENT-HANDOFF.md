@@ -114,3 +114,14 @@
 - 上传冲突处理：远端同时新增 87b8f775 的 MCP 默认发现源码；本批基于该提交合入并保留其源码和交接记录，未强制覆盖分支。
 
 - 远端又新增 75019175 的 generation 实现，本批以其为基线保留回调修复，仅合入连接任务、预留槽位及握手端口核对。
+
+
+## 2026-10-21 00:52（北京时间）MCP 接线检查点
+
+- AgentProvider 切换到 /v1/devices 与内部已验证描述符，不再通过 connection.json 为 Agent 模式取配置；旧 --connection/--connections 路径仍保留原读取逻辑。未在线/停用的设备保留在列表且明确状态。
+- 每次 MCP 工具调用使用 AsyncLocalStorage 独立设备快照；旧 discovery 的代次检查保留，业务 SSH 另经 ensureReady 获取最新描述符。新增 server-bindings.json 的固定名称到设备 ID 读取，冲突报错，不改原别名、组及 profile 文件。
+- SDK 补 devices/connect/connectionTask/getConnection/ensureReady，活跃设备优先读取就绪描述符；同设备并发等待复用 Promise，显式停用设备不会由业务调用偷偷启用。
+- 业务池按 Agent bootId、generation、端口和指纹匹配，建连中描述符变化则取消旧握手；旧 close 不得删除新池项，shutdown 取消 pending。Agent 模式不再启动 MCP 自己的后台恢复循环；legacy 模式保留旧行为。
+- 在不改原工具 schema 的基础上，新增 ssh_connect，支持 code 或已有 server、requestId 和连接任务查询；配对码从错误结果中脱敏。原列表增加可选 deviceId/state/enabled/lastVerifiedAt。
+- 本批未运行检查、测试、构建或远程命令。旧模拟 API 检查源码尚未适配新 /v1/devices/descriptor 契约，不能沿用旧通过结论。仍需继续：幂等 disconnect、CLI stdin 入口、默认连接并行度 2、配对 staging、任务记录容量与清理，以及多机实测。
+- 上一成功远端提交：48503e43f4c7d86a5db27830ea0f114848d0bbb9。
