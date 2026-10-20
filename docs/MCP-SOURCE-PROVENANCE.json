@@ -123,7 +123,9 @@
       "src/pro/agent-control.cjs",
       "src/pro/operations.cjs",
       "src/mcp/durable-exec.js",
-      "src/pro/task-result.cjs"
+      "src/pro/task-result.cjs",
+      "src/pro/task-jobs.cjs",
+      "src/pro/job-executor.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

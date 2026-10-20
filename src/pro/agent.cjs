@@ -28,6 +28,7 @@ const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
 const { Operations } = require("./operations.cjs");
 const { publicFailure } = require("./task-result.cjs");
+const { jobCatalog } = require("./task-jobs.cjs");
 class Agent {
   constructor({
     role,
@@ -172,6 +173,7 @@ class Agent {
       controlSubsystem: 1,
       taskProtocol: 1,
       persistentTasks: this.taskManager?.identityAvailable === true,
+      taskJobs: jobCatalog(),
       clockSkewCorrection: true,
     });
   }
@@ -306,6 +308,7 @@ class Agent {
           if (message.method === "hello" && message.params?.protocol === 1)
             return { protocol: 1, deviceId: this.identity.deviceId,
               capabilities: { persistentExec: this.taskManager?.identityAvailable === true, taskProtocol: 1,
+                taskJobs: jobCatalog(),
                 recovery: "verified-live-runner", maxFrameBytes: 1048576, maxConcurrent: 4,
                 maxOutputBytesPerStream: 67108864, maxPageBytesPerStream: 65536 } };
           if (!this.taskManager) throw fault("CONTROL_UNAVAILABLE", "Task manager is not ready", true);

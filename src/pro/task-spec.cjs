@@ -30,8 +30,34 @@ function normalizeSpec(spec, platform = process.platform === "win32" ? "windows"
 }
 function requestHash(deviceId, kind, spec, platform) {
   operationId(deviceId);
-  if (kind !== "exec") throw invalid("Task kind is not supported");
-  const normalized = normalizeSpec(spec, platform);
+  const normalized = normalizeTask(kind, spec, platform);
   return crypto.createHash("sha256").update(JSON.stringify({ deviceId, kind, spec: normalized })).digest("hex");
 }
-module.exports = { operationId, normalizeSpec, requestHash };
+function canonical(value) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    const result = Object.create(null);
+    for (const name of Object.keys(value).sort())
+      if (value[name] !== undefined) result[name] = canonical(value[name]);
+    return result;
+  }
+  throw invalid("Job arguments must be finite JSON values");
+}
+function normalizeJobSpec(spec) {
+  if (!spec || !["alerts", "backup", "database", "health", "schedule", "tail"].includes(spec.name) ||
+      !/^[a-f0-9]{64}$/.test(spec.sourceHash) || !spec.args || typeof spec.args !== "object" || Array.isArray(spec.args))
+    throw invalid("A controlled job name, source hash and argument object are required");
+  const args = canonical(spec.args), timeoutMs = spec.timeoutMs ?? 30000;
+  if (Buffer.byteLength(JSON.stringify(args)) > 256 * 1024 ||
+      !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86400000)
+    throw invalid("Job arguments or timeout exceed the supported limit");
+  return { name: spec.name, sourceHash: spec.sourceHash, args, timeoutMs };
+}
+function normalizeTask(kind, spec, platform) {
+  if (kind === "exec") return normalizeSpec(spec, platform);
+  if (kind === "job") return normalizeJobSpec(spec);
+  throw invalid("Task kind is not supported");
+}
+module.exports = { operationId, normalizeSpec, normalizeJobSpec, normalizeTask, requestHash };

@@ -222,3 +222,12 @@
 - 新增实际 runner 拒绝检查，在本环境 PID 命名空间不一致时，确认结果为 PROCESS_IDENTITY_UNAVAILABLE 且未产生命令标记文件。最近组合共 8 项：5 通过、3 个原生 runner 功能检查跳过；不能用拒绝检查冒充持久执行功能通过。另与 TaskManager 的六项组合检查通过。
 - 尚未做 SSH/MCP 完整集成、Windows 原生检查、分组父子编排、jobs/session 持久化、文件分块恢复或运行包构建。上传节点仅保存和上传源码。
 - 上一成功远端提交：c54b894f82e5d1a4980c78edbd42926e729c2410。
+
+## 2026-10-21 01:40（北京时间）受控 job 注册与 runner 源码检查点
+
+- 新增 task-jobs.cjs/job-executor.cjs，将原 alerts/backup/database/health/schedule/tail 六个随包模块登记为受控作业。任务含模块 SHA-256，hello/能力公布目录；版本不匹配在启动前拒绝，不接受客户端上传实现代码。
+- job-executor 使用一次读取并核验的随包源码执行，避免版本校验后第二次读文件换入不同实现；原业务模块未改。参数规范化按 JSON 键排序，等待参数不参与摘要，参数和实现版本变化会改变摘要。
+- TaskManager/runner 增加 job kind。作业参数保存在私有 input；临时目录限制到该操作 tmp 子目录，终结后清理，避免取消后外部临时凭据残留。并行、owner、一次执行锁、输出上限与取消仍用同一任务机制。
+- 本批只接 Far 任务 kind；MCP jobs.js 仍是原路径，下一步切换到版本匹配的受控任务。sudo、session、部署多阶段和分组父子编排仍未完成。
+- 节点间受控 job/父操作组合五项通过；TaskManager/runner 组合四项通过、三个原生 runner 功能检查因本云端 PID 命名空间不一致跳过。runner 新分支通过语法检查，但未在 Windows 或原生 Linux 实际执行作业。
+- 上传节点不运行验证。上一成功远端提交：79e2aca4f969d0bd5993867b391c658e2f8db1b3。

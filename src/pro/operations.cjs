@@ -16,7 +16,7 @@ class Operations {
     const record = privateJSON(this.file(key), null);
     if (!record) throw failure("OPERATION_NOT_FOUND", "Unknown local operation");
     if (record.operationId !== key || record.profileId !== this.agent.identity.deviceId ||
-        !/^[a-f0-9]{64}$/.test(record.requestHash) || record.kind !== "exec" ||
+        !/^[a-f0-9]{64}$/.test(record.requestHash) || !["exec", "job"].includes(record.kind) ||
         !["registered", "accepted", "starting", "running", "completed", "failed", "cancelled", "unknown"].includes(record.state) ||
         !Number.isFinite(record.createdAt))
       throw failure("OPERATION_CORRUPT", "Local operation record is invalid");
@@ -32,7 +32,7 @@ class Operations {
     this.cleanup();
     const key = operationId(params.operationId), deviceId = operationId(params.deviceId);
     const childOperationId = operationId(params.childOperationId);
-    if (params.kind !== "exec" || !/^[a-f0-9]{64}$/.test(params.requestHash))
+    if (!["exec", "job"].includes(params.kind) || !/^[a-f0-9]{64}$/.test(params.requestHash))
       throw failure("INVALID_REQUEST", "Invalid local task metadata");
     if (!this.agent.registry()[deviceId]) throw failure("DEVICE_NOT_FOUND", "Unknown paired device");
     const existing = privateJSON(this.file(key), null);

@@ -3,9 +3,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const cp = require("node:child_process");
-const { write } = require("./store.cjs");
+const { write, folder } = require("./store.cjs");
 const { durableWrite, durableText, privateJSON } = require("./task-store.cjs");
-const { operationId, normalizeSpec, requestHash } = require("./task-spec.cjs");
+const { operationId, normalizeTask, requestHash } = require("./task-spec.cjs");
 const { processIdentity, sameProcess } = require("./task-process.cjs");
 const LIMIT = 64 * 1024 * 1024;
 async function run(directory) {
@@ -14,11 +14,11 @@ async function run(directory) {
   if (fs.lstatSync(directory).isSymbolicLink()) throw Error("Invalid operation directory");
   const file = name => path.join(directory, name);
   let manifest = privateJSON(file("manifest.json"));
-  if (!manifest || manifest.operationId !== key || manifest.kind !== "exec" || manifest.state !== "starting")
+  if (!manifest || manifest.operationId !== key || !["exec", "job"].includes(manifest.kind) || manifest.state !== "starting")
     throw Error("Operation is not authorized to start");
   operationId(manifest.owner);
   const input = privateJSON(file("input.json"));
-  const spec = normalizeSpec(input?.spec);
+  const spec = normalizeTask(manifest.kind, input?.spec), job = manifest.kind === "job";
   if (requestHash(manifest.deviceId, manifest.kind, spec) !== manifest.requestHash)
     throw Error("Operation input does not match its accepted request");
   try { fs.mkdirSync(file("execution.lock"), { mode: 0o700 }); }
@@ -43,13 +43,14 @@ async function run(directory) {
   };
   let child, childIdentity, interval, timeout, killTimer, killer, finishing = false;
   let reason = null, cancellationApplied = false, cancellationError = null, outputError = false;
-  const script = file(spec.shell === "powershell" ? "executor.ps1" : "executor.sh");
+  const script = job ? null : file(spec.shell === "powershell" ? "executor.ps1" : "executor.sh");
+  const temporary = job ? folder(file("tmp")) : null;
   const windows = process.platform === "win32";
   const source = windows
     ? "\uFEFF$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);$global:LASTEXITCODE=0;try {\n" +
       spec.command + "\n;if($LASTEXITCODE){exit $LASTEXITCODE}} catch {[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n"
     : spec.command + "\n";
-  durableText(script, source);
+  if (script) durableText(script, source);
   function stop(why) {
     if (why === "output_storage") outputError = true;
     if (reason) return;
@@ -114,18 +115,25 @@ async function run(directory) {
     durableWrite(file("result.json"), result);
     manifest = { ...manifest, state, updatedAt: result.finishedAt };
     durableWrite(file("manifest.json"), manifest);
-    for (const name of ["input.json", path.basename(script)]) {
+    for (const name of ["input.json", ...(script ? [path.basename(script)] : [])]) {
       try { fs.unlinkSync(file(name)); } catch (error) { if (error.code !== "ENOENT") throw error; }
     }
+    if (temporary) fs.rmSync(temporary, { recursive: true, force: true });
   }
   if (privateJSON(file("cancel.json"), null)) {
     reason = "cancel"; await finish(null, null, false); return;
   }
   durableWrite(file("manifest.json"), { ...manifest, state: "running", startedAt: Date.now() });
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-  child = cp.spawn(windows
+  if (job) {
+    env.ELECTRON_RUN_AS_NODE = "1";
+    env.TMPDIR = temporary; env.TMP = temporary; env.TEMP = temporary;
+  }
+  const executable = job ? process.execPath : windows
     ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "/bin/sh",
-    windows ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script] : [script],
+    args = job ? [path.join(__dirname, "job-executor.cjs"), directory] :
+      windows ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script] : [script];
+  child = cp.spawn(executable, args,
     { cwd: spec.cwd || os.homedir(), env, windowsHide: true, detached: !windows,
       stdio: ["ignore", "pipe", "pipe"] });
   child.once("spawn", () => { childIdentity = processIdentity(child.pid); });

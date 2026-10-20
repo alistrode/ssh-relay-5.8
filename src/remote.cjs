@@ -269,6 +269,7 @@ server.listen(config.sshPort, "127.0.0.1", () => {
       controlSubsystem: config.controlSubsystem === 1 && process.connected ? 1 : 0,
       persistentExec: config.taskProtocol === 1 && config.persistentTasks === true && process.connected,
       taskProtocol: config.taskProtocol === 1 && process.connected ? 1 : 0,
+      taskJobs: config.taskJobs || {},
       version: 3,
     },
     fingerprint,

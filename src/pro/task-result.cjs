@@ -22,7 +22,7 @@ function validateTaskPage(value, { operationId, deviceId, stdoutOffset = 0, stde
   return value;
 }
 function publicFailure(failure) {
-  const known = /^(CONTROL|TASK|OPERATION|AUTH|REQUEST|INVALID|PROCESS|RUNNER|EXEC|AGENT|DEVICE|STALE|ACCOUNT|WAITING|LOCAL)_/.test(failure.code || "");
+  const known = /^(CONTROL|TASK|OPERATION|AUTH|REQUEST|INVALID|PROCESS|RUNNER|EXEC|JOB|AGENT|DEVICE|STALE|ACCOUNT|WAITING|LOCAL)_/.test(failure.code || "");
   return { code: known ? failure.code : "CONTROL_STORAGE_FAILED",
     message: known ? failure.message : "Control operation could not access its private state",
     retryable: failure.retryable === true };

@@ -5,7 +5,8 @@ const cp = require("node:child_process");
 const crypto = require("node:crypto");
 const { folder } = require("./store.cjs");
 const { durableWrite, privateJSON, syncDirectory } = require("./task-store.cjs");
-const { operationId, normalizeSpec, requestHash } = require("./task-spec.cjs");
+const { operationId, normalizeTask, requestHash } = require("./task-spec.cjs");
+const { jobHash } = require("./task-jobs.cjs");
 const { ownedRunner, processIdentity } = require("./task-process.cjs");
 const FINAL = new Set(["completed", "failed", "cancelled", "unknown"]);
 function failure(code, message, retryable = false) {
@@ -30,7 +31,7 @@ class TaskManager {
   save(record) { durableWrite(this.file(record.operationId, "manifest.json"), record); }
   validate(record, key) {
     if (!record || record.operationId !== key || record.deviceId !== this.deviceId ||
-        record.kind !== "exec" || !/^[a-f0-9]{64}$/.test(record.requestHash) ||
+        !["exec", "job"].includes(record.kind) || !/^[a-f0-9]{64}$/.test(record.requestHash) ||
         !["accepted", "starting", "running", ...FINAL].includes(record.state))
       throw failure("OPERATION_CORRUPT", "Operation manifest is invalid");
     operationId(record.owner);
@@ -96,12 +97,10 @@ class TaskManager {
   }
   submit(owner, params) {
     if (this.stopping) throw failure("AGENT_STOPPING", "Far Agent is stopping", true);
-    if (!this.identityAvailable)
-      throw failure("PROCESS_IDENTITY_UNAVAILABLE", "This runtime cannot prove process identity; persistent execution is unavailable");
     operationId(owner);
     if (!this.authorized(owner)) throw failure("AUTH_REVOKED", "Controller authorization is no longer valid");
     const key = operationId(params.operationId), kind = params.kind;
-    const spec = normalizeSpec(params.spec);
+    const spec = normalizeTask(kind, params.spec);
     const hash = requestHash(this.deviceId, kind, spec);
     if (params.requestHash !== undefined && params.requestHash !== hash)
       throw failure("REQUEST_HASH_MISMATCH", "Task request hash does not match normalized input");
@@ -111,6 +110,18 @@ class TaskManager {
       return this.get(owner, { operationId: key });
     }
     if (this.corrupt.has(key)) throw failure("OPERATION_CORRUPT", "Operation record is isolated; outcome is unknown");
+    if (!this.identityAvailable)
+      throw failure("PROCESS_IDENTITY_UNAVAILABLE", "This runtime cannot prove process identity; persistent execution is unavailable");
+    if (kind === "job") {
+      let actual;
+      try { actual = jobHash(spec.name); }
+      catch (error) {
+        if (error.code === "ENOENT") throw failure("JOB_MODULE_MISSING", "Controlled job module is not installed on the target");
+        throw error;
+      }
+      if (actual !== spec.sourceHash)
+        throw failure("JOB_VERSION_MISMATCH", "Controlled job version differs from the requested module");
+    }
     this.cleanup();
     if (this.records.size + this.corrupt.size >= 10000 ||
         [...this.records.values()].filter(record => record.state === "accepted").length >= 64)
