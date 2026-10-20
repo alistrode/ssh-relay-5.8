@@ -101,5 +101,28 @@
       "windowsServiceHost": "WinSW 2.12.0 .NET Framework 4 variant (included Windows OS framework), bundled only for Windows pre-login services"
     },
     "verification": "tests/pro/ is separate verification code; private states and raw logs stay outside Git."
+  },
+  "endToEndIntegration": {
+    "base": "fix/ssh-pro-startup-20261019@7cf931d1bf9b3108668ba9bd270600b04857a2d8",
+    "origin": "New application integration code implementing SSH-RELAY-END-TO-END-DESIGN.md; not recovered third-party source.",
+    "modules": [
+      "src/pro/agent-client.cjs",
+      "src/pro/device-slots.cjs",
+      "src/pro/connections.cjs",
+      "src/pro/pair-state.cjs",
+      "src/mcp/agent-provider.js"
+    ],
+    "adaptations": [
+      "src/pro/agent.cjs",
+      "src/pro/cli.cjs",
+      "desktop/main.cjs",
+      "src/mcp/config.js",
+      "src/mcp/transport.js",
+      "src/mcp/server.js",
+      "src/mcp/handlers.js",
+      "src/mcp/prompts.js"
+    ],
+    "dependencies": "No new third-party dependency or replacement of OPAQUE, SSH or MQTT protocols.",
+    "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run."
   }
 }

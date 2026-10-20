@@ -23,6 +23,7 @@ const { Client } = require("ssh2"),
 const DEFAULT_BROKER = "wss://broker.emqx.io:8084/mqtt";
 const { DeviceSlots } = require("./device-slots.cjs");
 const { Connections, fault } = require("./connections.cjs");
+const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 class Agent {
   constructor({
     role,
@@ -101,6 +102,7 @@ class Agent {
       bootId: this.bootId,
       osBoot: systemBootId(),
     });
+    if (this.role === "near") recoverPairTransactions(this);
     this.server = http.createServer((req, res) => this.api(req, res));
     await new Promise((resolve, reject) => {
       this.server.once("error", reject);
@@ -247,36 +249,8 @@ class Agent {
           this.safeInfo(value);
           const registry = this.registry();
           this.deviceSlots.assertCanEnable(registry, value.deviceId, reservation);
-          const deviceDir = folder(this.file("devices/" + value.deviceId));
-          text(path.join(deviceDir, "client_key"), keys.privateKey);
-          text(
-            path.join(deviceDir, "known_hosts"),
-            "relay-" + value.deviceId + " " + value.hostPublicKey + "\n",
-          );
-          write(path.join(deviceDir, "identity.json"), value);
-          registry[value.deviceId] = {
-            id: value.deviceId,
-            label: value.label || value.hostname,
-            hostname: value.hostname,
-            target: value.target,
-            enabled: true,
-            desiredConnected: true,
-            schemaVersion: 1,
-            autoConnect: true,
-            pairedAt: registry[value.deviceId]?.pairedAt || Date.now(),
-          };
-          this.saveRegistry(registry);
+          commitPair(this, value, keys);
           this.deviceSlots.release(reservation);
-          const existing = this.targets.get(value.deviceId);
-          if (existing) {
-            this.invalidateTarget(existing);
-            existing.state = "waiting";
-            existing.failures = 0;
-            existing.nextAt = 0;
-            this.stopWorker(value.deviceId);
-          }
-          this.settings.defaultDevice = value.deviceId;
-          write(this.file("settings.json"), this.settings);
         },
       });
       this.log("pair_saved", { deviceId: info.deviceId });

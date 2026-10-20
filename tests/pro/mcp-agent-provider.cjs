@@ -33,11 +33,17 @@ test("MCP Agent mode discovers authenticated online targets; legacy report mode 
       res.end(JSON.stringify({ apiVersion: 1, role: "near", profileId: id, bootId: "fixture-boot" }));
       return;
     }
-    if (req.url !== "/status") { res.writeHead(404); res.end("{}"); return; }
+    if (req.url === "/v1/devices/" + id + "/connection") {
+      res.end(JSON.stringify({ deviceId: id, generation: 1, agentBootId: "fixture-boot",
+        host: "127.0.0.1", port: 2222, keyPath: path.join(dir, "client_key"),
+        fingerprint, hostname: "isolated-target", remoteUser: "fixture", platform: "linux" }));
+      return;
+    }
+    if (req.url !== "/v1/devices") { res.writeHead(404); res.end("{}"); return; }
     calls++;
-    const device = { id, enabled: true, state: "online", connectionReport: report };
-    res.end(JSON.stringify({ role: "near", settings: { enabled: true },
-      devices: [device, { ...device, id: "b".repeat(36), slotPaused: true },
+    const device = { id, enabled: true, state: "online", hostname: "isolated-target", target: "linux" };
+    res.end(JSON.stringify({ ok: true,
+      devices: [device, { ...device, id: "b".repeat(36), slotPaused: true, state: "slot_paused" },
         { ...device, id: "d".repeat(36), state: "retrying" }] }));
   });
   server.listen(0, "127.0.0.1");
@@ -56,14 +62,17 @@ test("MCP Agent mode discovers authenticated online targets; legacy report mode 
   const options = { cwd: root, env: { ...process.env, RELAY_MCP_STATE_DIR: path.join(dir, "mcp") } };
   const agent = await run(process.execPath, ["--input-type=module", "-e", code, "--", "fixture", "--agent-dir", dir], options);
   const found = JSON.parse(agent.stdout);
-  assert.deepEqual(Object.keys(found), ["device-" + id]);
+  assert.deepEqual(Object.keys(found), ["device-" + id, "device-" + "b".repeat(36), "device-" + "d".repeat(36)]);
+  assert.equal(found["device-" + "d".repeat(36)].state, "retrying");
+  assert.equal(found["device-" + "d".repeat(36)].port, undefined);
   assert.equal(found["device-" + id].fingerprint, fingerprint);
   assert.equal(calls, 1);
   const automatic = await run(process.execPath, ["--input-type=module", "-e", code, "--", "fixture"],
     { ...options, env: { ...options.env, HOME: dir, USERPROFILE: dir } });
-  assert.deepEqual(Object.keys(JSON.parse(automatic.stdout)), ["device-" + id]);
+  assert.deepEqual(Object.keys(JSON.parse(automatic.stdout)), Object.keys(found));
   assert.equal(calls, 2);
   const legacy = await run(process.execPath, ["--input-type=module", "-e", code, "--", "fixture", "--connection", report], options);
   assert.equal(JSON.parse(legacy.stdout).remote.fingerprint, fingerprint);
   assert.equal(calls, 2, "legacy mode must not contact Agent");
 });
+
