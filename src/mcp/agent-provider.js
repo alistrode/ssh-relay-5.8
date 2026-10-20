@@ -2,6 +2,22 @@ import path from "node:path";
 import { createRequire } from "node:module";
 const { request } = createRequire(import.meta.url)("../pro/agent-client.cjs");
 
+export function createAgentDiscovery(load) {
+  let current = Object.create(null);
+  let generation = 0;
+  return {
+    snapshot: () => current,
+    async refresh() {
+      const ticket = ++generation;
+      current = Object.create(null);
+      const next = await load();
+      if (ticket !== generation)
+        throw Error("Agent discovery superseded by a newer request; retry");
+      current = next;
+    },
+  };
+}
+
 // Discovery is authenticated through the same local API used by the Pro CLI.
 // Only reports from an online, admitted device are supplied to the existing
 // fingerprint/hostname/account verification path in config and transport.

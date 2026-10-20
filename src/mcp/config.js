@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { resolveServerName } from "./server-aliases.js";
-import { agentServers } from "./agent-provider.js";
+import { agentServers, createAgentDiscovery } from "./agent-provider.js";
 const args = process.argv.slice(2);
 export function arg(name) {
   const i = args.indexOf(name);
@@ -15,16 +15,15 @@ if (args.includes("--agent-dir") && (!agentDir || agentDir.startsWith("--")))
   throw new Error("--agent-dir requires a path");
 if ([reportPath, manifestPath, agentDir].filter(Boolean).length > 1)
   throw new Error("Use only one of --connection, --connections or --agent-dir");
-let discovered = Object.create(null);
+const discovery = createAgentDiscovery(() => agentServers(agentDir));
 export async function refreshAgentServers() {
   if (!agentDir) return;
   // Clear stale descriptors before awaiting: API failure must not leave a
   // disabled or unpaired target available through the old snapshot.
-  discovered = Object.create(null);
-  discovered = await agentServers(agentDir);
+  await discovery.refresh();
 }
 export function servers() {
-  const config = agentDir ? { servers: discovered } : manifestPath
+  const config = agentDir ? { servers: discovery.snapshot() } : manifestPath
     ? JSON.parse(fs.readFileSync(path.resolve(manifestPath), "utf8"))
     : {
         servers: reportPath
