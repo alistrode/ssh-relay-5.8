@@ -66,88 +66,19 @@ function options() {
     development: !app.isPackaged,
   };
 }
+const agentClient = require("../src/pro/agent-client.cjs");
+function roleDirectory(role) {
+  return role === "far" && args.includes("--far-state-dir")
+    ? path.resolve(arg("--far-state-dir")) : path.join(profile, role);
+}
 function request(role, route, body) {
-  return new Promise((resolve, reject) => {
-    const roleDirectory = role === "far" && args.includes("--far-state-dir") ? arg("--far-state-dir") : path.join(profile, role);
-    const runtime = read(path.join(roleDirectory, "agent-runtime.json"), null);
-    if (!runtime) return reject(Error("Background is not running"));
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port: runtime.port,
-        path: route,
-        method: body === undefined ? "GET" : "POST",
-        headers: {
-          Authorization: "Bearer " + runtime.token,
-          "Content-Type": "application/json",
-        },
-        timeout: 110000,
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (x) => (data += x));
-        res.on("end", () => {
-          try {
-            const result = JSON.parse(data);
-            if (res.statusCode !== 200)
-              reject(Error(result.error || "Background request failed"));
-            else resolve(result);
-          } catch (e) {
-            reject(e);
-          }
-        });
-      },
-    );
-    req.on("error", reject);
-    req.on("timeout", () => req.destroy(Error("Background request timeout")));
-    req.end(body === undefined ? undefined : JSON.stringify(body));
+  return agentClient.request(roleDirectory(role), route, body);
+}
+async function ensure(role) {
+  await agentClient.ensureAgent({
+    dir: roleDirectory(role), role,
+    allowCloudSelfTest: args.includes("--allow-cloud-self-test"),
   });
-}
-const starting = new Map();
-function ensure(role) {
-  if (starting.has(role)) return starting.get(role);
-  const task = ensureActual(role).finally(() => starting.delete(role));
-  starting.set(role, task);
-  return task;
-}
-async function ensureActual(role) {
-  try {
-    await request(role, "/status");
-    return;
-  } catch {}
-  const dir = folder(path.join(profile, role));
-  const log = fs.openSync(path.join(dir, "bootstrap.log"), "a", 0o600);
-  const child = cp.spawn(
-    process.execPath,
-    [
-      path.join(root, "src/pro/guardian.cjs"),
-      "--role",
-      role,
-      "--state-dir",
-      dir,
-      ...(args.includes("--allow-cloud-self-test")
-        ? ["--allow-cloud-self-test"]
-        : []),
-    ],
-    {
-      detached: true,
-      stdio: ["ignore", log, log],
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-      windowsHide: true,
-    },
-  );
-  child.unref();
-  fs.closeSync(log);
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    try {
-      await request(role, "/status");
-      return;
-    } catch {}
-  }
-  throw Error(
-    "Could not start " + role + " background; inspect private bootstrap.log",
-  );
 }
 function show() {
   if (window) {

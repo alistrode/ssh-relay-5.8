@@ -2,50 +2,8 @@
 const fs = require("node:fs"),
   path = require("node:path"),
   os = require("node:os"),
-  cp = require("node:child_process"),
-  { folder, read } = require("./store.cjs");
-const { request } = require("./agent-client.cjs");
-async function ensure({
-  dir,
-  role,
-  allowCloudSelfTest = false,
-  testHooks = false,
-}) {
-  try {
-    await request(dir, "/status");
-    return;
-  } catch {}
-  folder(dir);
-  const fd = fs.openSync(path.join(dir, "bootstrap.log"), "a", 0o600),
-    p = cp.spawn(
-      process.execPath,
-      [
-        path.join(__dirname, "guardian.cjs"),
-        "--state-dir",
-        dir,
-        "--role",
-        role,
-        ...(allowCloudSelfTest ? ["--allow-cloud-self-test"] : []),
-        ...(testHooks ? ["--test-hooks"] : []),
-      ],
-      {
-        stdio: ["ignore", fd, fd],
-        detached: true,
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-        windowsHide: true,
-      },
-    );
-  p.unref();
-  fs.closeSync(fd);
-  for (let i = 0; i < 100; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    try {
-      await request(dir, "/status");
-      return;
-    } catch {}
-  }
-  throw Error("Agent could not start; inspect the private bootstrap.log");
-}
+  { read } = require("./store.cjs");
+const { request, ensure } = require("./agent-client.cjs");
 module.exports = { request, ensure };
 if (require.main === module)
   (async () => {

@@ -110,6 +110,8 @@ class Agent {
       token: this.apiToken,
       role: this.role,
       bootId: this.bootId,
+      apiVersion: 1,
+      profileId: this.identity.deviceId,
     });
     if (this.role === "far") this.initFar();
     this.log("agent_started", { deviceId: this.identity.deviceId });
@@ -747,7 +749,9 @@ class Agent {
       }
       const data = body ? JSON.parse(body) : {};
       let value = { ok: true };
-      if (req.method === "GET" && req.url === "/status") value = this.status();
+      if (req.method === "GET" && req.url === "/v1/health")
+        value = { apiVersion: 1, profileId: this.identity.deviceId, bootId: this.bootId, role: this.role };
+      else if (req.method === "GET" && req.url === "/status") value = this.status();
       else if (req.method === "GET" && req.url === "/logs") {
         let rows = [];
         for (const name of [
