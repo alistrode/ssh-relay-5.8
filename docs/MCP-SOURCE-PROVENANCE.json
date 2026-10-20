@@ -118,7 +118,8 @@
       "src/pro/task-store.cjs",
       "src/pro/task-spec.cjs",
       "src/pro/task-process.cjs",
-      "src/pro/task-runner.cjs"
+      "src/pro/task-runner.cjs",
+      "src/pro/tasks.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

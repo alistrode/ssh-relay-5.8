@@ -25,6 +25,7 @@ const { DeviceSlots } = require("./device-slots.cjs");
 const { Connections, fault } = require("./connections.cjs");
 const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
+const { TaskManager } = require("./tasks.cjs");
 class Agent {
   constructor({
     role,
@@ -105,6 +106,10 @@ class Agent {
     write(this.file("identity.json"), this.identity);
     write(this.file("settings.json"), this.settings);
     if (this.role === "near") recoverPairTransactions(this);
+    if (this.role === "far") this.taskManager = new TaskManager({
+      dir: this.file("operations"), deviceId: this.identity.deviceId, bootId: this.bootId,
+      authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
+    });
     this.server = http.createServer((req, res) => this.api(req, res));
     await new Promise((resolve, reject) => {
       this.server.once("error", reject);
@@ -160,6 +165,7 @@ class Agent {
       clientKeysFile: clients,
       connectionAdmission: true,
       controlSubsystem: 1,
+      taskProtocol: 1,
       clockSkewCorrection: true,
     });
   }
@@ -293,8 +299,11 @@ class Agent {
             throw fault("AUTH_REVOKED", "Controller authorization is no longer valid");
           if (message.method === "hello" && message.params?.protocol === 1)
             return { protocol: 1, deviceId: this.identity.deviceId,
-              capabilities: { persistentExec: false, maxFrameBytes: 1048576, maxConcurrent: 4 } };
-          throw fault("CONTROL_UNSUPPORTED_METHOD", "Control method is not available");
+              capabilities: { persistentExec: !!this.taskManager, taskProtocol: 1,
+                recovery: "verified-live-runner", maxFrameBytes: 1048576, maxConcurrent: 4,
+                maxOutputBytesPerStream: 67108864, maxPageBytesPerStream: 65536 } };
+          if (!this.taskManager) throw fault("CONTROL_UNAVAILABLE", "Task manager is not ready", true);
+          return this.taskManager.handle(message.controllerId, message.method, message.params);
         }).then(result => {
           if (child.connected) child.send({ type: "task-rpc-result", rpcId: message.rpcId, ok: true, result }, () => {});
         }, error => {
@@ -426,6 +435,8 @@ class Agent {
   }
   tick() {
     if (this.stopping) return;
+    try { this.taskManager?.tick(); }
+    catch (error) { this.log("task_manager_storage_error", { code: error.code || "TASK_STORAGE_FAILED" }); }
     if (this.role === "far") {
       if (
         this.settings.enabled &&
@@ -927,6 +938,7 @@ class Agent {
             clients = read(file, {});
           delete clients[key];
           write(file, clients);
+          value = { ok: true, revoked: true, operations: this.taskManager?.revoke(key) || [] };
           this.children.get("far")?.child.send({ type:"revoke-controller", controllerId:key });
         }
         this.log("device_unpaired", { deviceId: key });
@@ -976,6 +988,7 @@ class Agent {
   async close() {
     if (this.stopping) return;
     this.stopping = true;
+    this.taskManager?.close();
     clearInterval(this.timer);
     this.offer?.cancel();
     for (const t of this.targets.values()) this.invalidateTarget(t);

@@ -181,3 +181,14 @@
 - 目前 runner 尚未接入 TaskManager/submit/get/cancel，因此对外 hello 仍是 persistentExec=false；本批不是新增可用任务能力。Windows 宿主 Job Object 对 detached runner 的影响尚未原生验证，不能保证跨宿主退出存活。
 - 本批不执行验证、测试、构建或任何实际任务。下一步接 Far Agent 的 TaskManager，处理 accepted/starting/running 恢复、owner 隔离、输出分页和未知状态，不自动重启无法证明结果的操作。
 - 上一成功远端提交：b71ccb8b581f92ab22caf24a4f02f955137e1502。
+
+## 2026-10-21 01:20（北京时间）Far TaskManager 源码检查点
+
+- 新增 tasks.cjs 并接 Far Agent。控制 subsystem 可 dispatch exec submit/get/cancel，owner 取认证 controllerId；相同 operationId+规范化输入返回原记录，输入冲突拒绝，其他 owner 不可读取输出。
+- accepted/starting/running 落盘、最多两个运行槽位与 64 条等待、磁盘容量检查、七天终结记录清理、每流每次最多 64 KiB 的 base64 字节分页。未知 runner 保守保留运行额度，不自动重放命令。
+- Agent 重启只接管系统 boot、进程启动标识与 runner 路径都匹配的进程；starting/running 无法证明时标记 unknown；runner 增加心跳，最终 result 是完成依据。Agent 退出不主动杀 runner，Windows 宿主退出存活仍未原生验证。
+- 取消通过私有请求文件交给 runner，实际终止前核对执行进程身份；只有最终 result 才表示 cancelled。远端撤销授权同时发起逐任务取消，逐项保留未知结果。
+- hello/远端能力现在声明任务协议 1 和 verified-live-runner 恢复语义；原 MCP ssh_execute 尚未切换到任务协议，仍按原 SSH exec 行为，不能把接口存在等同原业务全量持久化。
+- 新增 TaskManager 检查源码（不启动真实命令），覆盖重复 submit/冲突、owner 隔离、重启 unknown 不重放、排队取消和输出分页；本批未运行检查、测试、构建或任务。
+- 下一步接 MCP 控制客户端与近端父操作，先增强 exec，再逐项接 jobs/session；文件分块恢复尚未开始。
+- 上一成功远端提交：536b0f6ed1921f236bef2890ee743308b8c6243b。

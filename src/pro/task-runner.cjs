@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const cp = require("node:child_process");
+const { write } = require("./store.cjs");
 const { durableWrite, durableText, privateJSON } = require("./task-store.cjs");
 const { operationId, normalizeSpec, requestHash } = require("./task-spec.cjs");
 const { processIdentity, sameProcess } = require("./task-process.cjs");
@@ -25,7 +26,8 @@ async function run(directory) {
   if (privateJSON(file("result.json"), null)) return;
   const identity = processIdentity(process.pid);
   if (!identity) throw Error("Runner process identity is unavailable");
-  durableWrite(file("runner.json"), { ...identity, operationDir: directory, operationId: key });
+  const runnerRecord = { ...identity, operationDir: directory, operationId: key, heartbeatAt: Date.now() };
+  durableWrite(file("runner.json"), runnerRecord);
   const output = {
     stdout: { fd: fs.openSync(file("stdout.bin"), "wx", 0o600), bytes: 0, totalBytes: 0, truncated: false },
     stderr: { fd: fs.openSync(file("stderr.bin"), "wx", 0o600), bytes: 0, totalBytes: 0, truncated: false },
@@ -124,6 +126,10 @@ async function run(directory) {
   child.on("close", (code, signal) => finish(code, signal, false).catch(() => { process.exitCode = 1; }));
   interval = setInterval(() => {
     try {
+      if (Date.now() - runnerRecord.heartbeatAt >= 2000) {
+        runnerRecord.heartbeatAt = Date.now();
+        write(file("runner.json"), runnerRecord);
+      }
       const request = privateJSON(file("cancel.json"), null);
       if (request && request.owner === manifest.owner) stop("cancel");
     } catch { stop("output_storage"); }
