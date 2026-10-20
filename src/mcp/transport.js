@@ -5,6 +5,7 @@ import zlib from "node:zlib";
 import { serverConfig, prepareServer } from "./config.js";
 import { readState } from "./state.js";
 import { shellQuote } from "./shell-quote.js";
+import { withCommandSlot } from "./command-queue.js";
 export const pool = new Map();
 const pending = new Map();
 const recovery = new Map();
@@ -243,7 +244,7 @@ export function executeRaw(
 ) {
   if (!Number.isFinite(timeout) || timeout < 1 || timeout > 300000)
     throw new Error("Timeout must be 1..300000 ms");
-  return new Promise((resolve, reject) => {
+  return withCommandSlot(conn, timeout, (remaining) => new Promise((resolve, reject) => {
     let stream,
       done = false,
       out = [],
@@ -274,8 +275,9 @@ export function executeRaw(
           `Command timed out after ${timeout}ms; interrupted task is not resumable`,
         ),
       );
-    }, timeout);
-    conn.client.exec(command, (error, ch) => {
+    }, remaining);
+    try { conn.client.exec(command, (error, ch) => {
+      if (done) { ch?.close(); return; }
       if (error) return finish(error);
       stream = ch;
       if (done) {
@@ -306,8 +308,8 @@ export function executeRaw(
       ch.on("error", finish);
       if (stdin !== null) ch.end(stdin);
       else ch.end();
-    });
-  });
+    }); } catch (error) { finish(error); }
+  }));
 }
 export async function run(
   name,

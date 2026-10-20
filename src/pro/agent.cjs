@@ -484,6 +484,7 @@ class Agent {
   failed(t, error) {
     if (this.stopping) return;
     this.invalidateTarget(t);
+    t.lastErrorCode = error.code || null;
     t.failures++;
     this.stats.disconnects++;
     const fatal =
@@ -645,6 +646,14 @@ class Agent {
         e.identity = true;
         throw e;
       }
+      const registry = this.registry(), savedDevice = registry[t.id];
+      if (savedDevice?.verifiedIdentity?.remoteUser &&
+          savedDevice.verifiedIdentity.remoteUser.toLowerCase() !== lines[0].toLowerCase()) {
+        const error = Error("Remote account changed from the previously verified permission context; explicit pairing is required");
+        error.identity = true;
+        error.code = "ACCOUNT_CONTEXT_CHANGED";
+        throw error;
+      }
       const isSelf = lines[1].toLowerCase() === os.hostname().toLowerCase();
       if (isSelf && !this.allowCloudSelfTest)
         throw Error("Cloud self-test target refused");
@@ -683,7 +692,14 @@ class Agent {
         ],
       };
       write(path.join(t.dir, "connection.json"), report);
-      t.lastProbe = Date.now();
+      const verifiedAt = Date.now();
+      const peer = read(path.join(t.dir, "peer.json"), {});
+      savedDevice.verifiedIdentity = { hostname: lines[1], remoteUser: lines[0], fingerprint: info.fingerprint };
+      savedDevice.permissionSnapshot = peer.permissions || null;
+      savedDevice.lastVerifiedAt = verifiedAt;
+      this.saveRegistry(registry);
+      t.lastProbe = verifiedAt;
+      t.lastErrorCode = null;
       t.remoteUser = lines[0];
     } finally {
       if (t.probeOwner === client && t.generation === generation) {
@@ -706,8 +722,10 @@ class Agent {
               slotPaused: slots.paused.includes(d.id),
               attempts: t?.failures || 0,
               retryAt: t?.nextAt || 0,
-              lastVerifiedAt: t?.lastProbe || null,
-              remoteUser: t?.remoteUser || null,
+              lastVerifiedAt: t?.lastProbe || d.lastVerifiedAt || null,
+              remoteUser: t?.remoteUser || d.verifiedIdentity?.remoteUser || null,
+              lastErrorCode: t?.lastErrorCode || null,
+              permissionSnapshot: d.permissionSnapshot || null,
               workerPid: this.children.get(d.id)?.child.pid || null,
               connectionReport:
                 t?.state === "online" && slots.active.includes(d.id) && this.settings.enabled

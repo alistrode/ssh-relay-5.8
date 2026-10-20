@@ -111,7 +111,8 @@
       "src/pro/connections.cjs",
       "src/pro/pair-state.cjs",
       "src/mcp/agent-provider.js",
-      "src/pro/private-state.cjs"
+      "src/pro/private-state.cjs",
+      "src/mcp/command-queue.js"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

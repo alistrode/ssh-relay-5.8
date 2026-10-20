@@ -189,7 +189,7 @@ class Connections {
         if (!slots.active.includes(deviceId) || !a.settings.enabled)
           throw fault("DEVICE_DISCONNECTED", "Device is disabled or has no active connection slot");
         if (t.state === "identity_error")
-          throw fault("IDENTITY_MISMATCH", "Device authentication or identity verification failed");
+          throw fault(t.lastErrorCode || "IDENTITY_MISMATCH", "Device authentication or identity verification failed");
         if (t.state === "unsupported_remote")
           throw fault("UNSUPPORTED_REMOTE", "Remote must be upgraded to support admission");
         if (t.state === "online" && t.client && Date.now() - t.lastProbe < 45000)

@@ -73,7 +73,7 @@ export async function agentServers(dir, allowCloudSelfTest = false) {
       state: device.state, enabled: device.enabled, slotPaused: device.slotPaused,
       generation: device.generation, lastVerifiedAt: device.lastVerifiedAt,
       group: "", description: device.label || "", defaultDir: "", mode: "unrestricted",
-      permissions: null, capabilities: {}, relayProtocol: 0, peerReceivedAt: 0,
+      permissions: device.permissionSnapshot || null, capabilities: {}, relayProtocol: 0, peerReceivedAt: 0,
     };
     servers[name] = Object.freeze(base);
   }
