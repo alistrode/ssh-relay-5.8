@@ -253,8 +253,7 @@ class Agent {
           this.saveRegistry(registry);
           const existing = this.targets.get(value.deviceId);
           if (existing) {
-            existing.client?.destroy();
-            existing.client = null;
+            this.invalidateTarget(existing);
             existing.state = "waiting";
             existing.failures = 0;
             existing.nextAt = 0;
@@ -273,6 +272,8 @@ class Agent {
   }
   spawnWorker(key, script, args, dir) {
     if (this.children.has(key) || this.stopping) return;
+    const target = this.targets.get(key);
+    if (target) this.invalidateTarget(target);
     const child = cp.spawn(
       process.execPath,
       [
@@ -345,8 +346,8 @@ class Agent {
       this.children.delete(key);
       const target = this.targets.get(key);
       if (target) {
-        target.client?.destroy();
-        target.client = null;
+        this.invalidateTarget(target);
+        target.state = "retrying";
         target.nextAt = Date.now() + retryDelay(++target.workerFailures);
       } else if (key === "far") {
         this.farFailures = (this.farFailures || 0) + 1;
@@ -355,6 +356,9 @@ class Agent {
     });
   }
   stopWorker(key) {
+    const target = this.targets.get(key);
+    if (target && (target.client || target.connecting || target.probeBusy))
+      this.invalidateTarget(target);
     const item = this.children.get(key);
     if (item) {
       this.children.delete(key);
@@ -375,12 +379,24 @@ class Agent {
     child.on("error", () => this.log("consent_notification_unavailable"));
     child.unref();
   }
+  invalidateTarget(t) {
+    // Invalidate callbacks before destroying the client: close/error can fire
+    // synchronously or arrive after a replacement worker has started.
+    t.generation++;
+    const client = t.client;
+    t.client = null;
+    t.connecting = false;
+    t.probeBusy = false;
+    t.probeOwner = null;
+    client?.destroy();
+  }
   targetFor(device) {
     let t = this.targets.get(device.id);
     if (!t) {
       const dir = this.file("devices/" + id(device.id));
       t = {
         id: device.id,
+        generation: 0,
         dir,
         state: "waiting",
         failures: 0,
@@ -418,8 +434,7 @@ class Agent {
     const admitted = new Set(slots.active);
     for (const [key, t] of this.targets)
       if (!admitted.has(key) || !this.settings.enabled) {
-        t.client?.destroy();
-        t.client = null;
+        if (t.client || t.connecting || t.probeBusy) this.invalidateTarget(t);
         t.state = slots.paused.includes(key) ? "slot_paused" : "disconnected";
         this.stopWorker(key);
       }
@@ -464,21 +479,16 @@ class Agent {
         Date.now() - t.lastProbe > 30000 &&
         !t.probeBusy
       ) {
-        const current = t.client;
+        const current = t.client, generation = t.generation;
         this.identityProbe(t, device, current).catch((e) => {
-          if (t.client === current) this.failed(t, e);
+          if (t.client === current && t.generation === generation) this.failed(t, e);
         });
       }
     }
   }
   failed(t, error) {
     if (this.stopping) return;
-    t.connecting = false;
-    t.probeBusy = false;
-    t.probeOwner = null;
-    const client = t.client;
-    t.client = null;
-    client?.destroy();
+    this.invalidateTarget(t);
     t.failures++;
     this.stats.disconnects++;
     const fatal =
@@ -526,17 +536,21 @@ class Agent {
     this.stats.attempts++;
     const info = this.safeInfo(read(path.join(t.dir, "identity.json"))),
       client = new Client();
+    const generation = ++t.generation;
     t.client = client;
+    const current = () => !this.stopping && t.generation === generation &&
+      t.client === client && this.targets.get(t.id) === t;
     let validated = false,
       settled = false;
     const timer = setTimeout(() => {
-      if (!settled) {
+      if (!settled && current()) {
         settled = true;
         this.failed(t, Error("SSH identity handshake timeout"));
       }
     }, 65000);
     const fail = (e) => {
       clearTimeout(timer);
+      if (!current()) return;
       if (!settled) {
         settled = true;
         this.failed(t, e);
@@ -545,9 +559,10 @@ class Agent {
     client.on("error", fail);
     client.on("close", () => fail(Error("SSH connection closed")));
     client.once("ready", async () => {
+      if (!current()) return;
       try {
         await this.identityProbe(t, device, client);
-        if (t.client !== client) return;
+        if (!current()) return;
         settled = true;
         validated = true;
         clearTimeout(timer);
@@ -587,6 +602,7 @@ class Agent {
   }
   async identityProbe(t, device, client = t.client) {
     if (!client) throw Error("No identity connection");
+    const generation = t.generation;
     t.probeBusy = true;
     t.probeOwner = client;
     const info = read(path.join(t.dir, "identity.json"));
@@ -616,7 +632,8 @@ class Agent {
           },
         );
       });
-      if (t.client !== client) throw Error("Stale identity probe discarded");
+      if (this.stopping || t.client !== client || t.generation !== generation ||
+          this.targets.get(t.id) !== t) throw Error("Stale identity probe discarded");
       const lines = result.stdout
         .trim()
         .split(/\r?\n/)
@@ -670,7 +687,7 @@ class Agent {
       t.lastProbe = Date.now();
       t.remoteUser = lines[0];
     } finally {
-      if (t.probeOwner === client) {
+      if (t.probeOwner === client && t.generation === generation) {
         t.probeBusy = false;
         t.probeOwner = null;
       }
@@ -793,8 +810,8 @@ class Agent {
           this.settings.enabled = data.enabled;
           if (!data.enabled) {
             for (const t of this.targets.values()) {
-              t.client?.destroy();
-              t.client = null;
+              this.invalidateTarget(t);
+              t.state = "disconnected";
             }
             for (const k of this.children.keys()) this.stopWorker(k);
           }
@@ -831,7 +848,7 @@ class Agent {
           delete registry[key];
           this.saveRegistry(registry);
           const t = this.targets.get(key);
-          t?.client?.destroy();
+          if (t) this.invalidateTarget(t);
           this.stopWorker(key);
           this.targets.delete(key);
         } else {
@@ -881,7 +898,7 @@ class Agent {
     this.stopping = true;
     clearInterval(this.timer);
     this.offer?.cancel();
-    for (const t of this.targets.values()) t.client?.destroy();
+    for (const t of this.targets.values()) this.invalidateTarget(t);
     for (const key of this.children.keys()) this.stopWorker(key);
     this.log("agent_stopped");
     await new Promise((resolve) => this.server.close(resolve));
