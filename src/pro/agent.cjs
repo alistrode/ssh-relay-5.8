@@ -21,6 +21,7 @@ const { Client } = require("ssh2"),
   pairing = require("./pairing.cjs"),
   { createTraceWriter } = require("../diagnostics.cjs");
 const DEFAULT_BROKER = "wss://broker.emqx.io:8084/mqtt";
+const { DeviceSlots } = require("./device-slots.cjs");
 class Agent {
   constructor({
     role,
@@ -36,6 +37,7 @@ class Agent {
     this.allowCloudSelfTest = allowCloudSelfTest;
     this.testHooks = testHooks;
     this.targets = new Map();
+    this.deviceSlots = new DeviceSlots();
     this.children = new Map();
     this.stats = {
       attempts: 0,
@@ -229,8 +231,9 @@ class Agent {
         },
         accept: async (value) => {
           this.safeInfo(value);
-          const registry = this.registry(),
-            deviceDir = folder(this.file("devices/" + value.deviceId));
+          const registry = this.registry();
+          this.deviceSlots.assertCanEnable(registry, value.deviceId);
+          const deviceDir = folder(this.file("devices/" + value.deviceId));
           text(path.join(deviceDir, "client_key"), keys.privateKey);
           text(
             path.join(deviceDir, "known_hosts"),
@@ -243,7 +246,7 @@ class Agent {
             hostname: value.hostname,
             target: value.target,
             enabled: true,
-            pairedAt: Date.now(),
+            pairedAt: registry[value.deviceId]?.pairedAt || Date.now(),
           };
           this.saveRegistry(registry);
           const existing = this.targets.get(value.deviceId);
@@ -409,15 +412,17 @@ class Agent {
       return;
     }
     const registry = this.registry();
+    const slots = this.deviceSlots.snapshot(registry);
+    const admitted = new Set(slots.active);
     for (const [key, t] of this.targets)
-      if (!registry[key]?.enabled || !this.settings.enabled) {
+      if (!admitted.has(key) || !this.settings.enabled) {
         t.client?.destroy();
         t.client = null;
-        t.state = "disconnected";
+        t.state = slots.paused.includes(key) ? "slot_paused" : "disconnected";
         this.stopWorker(key);
       }
     for (const device of Object.values(registry)) {
-      if (!device.enabled || !this.settings.enabled) continue;
+      if (!admitted.has(device.id) || !this.settings.enabled) continue;
       const t = this.targetFor(device);
       if (t.state === "identity_error") continue;
       if (!this.children.has(device.id)) {
@@ -670,20 +675,23 @@ class Agent {
     }
   }
   status() {
+    const registry = this.role === "near" ? this.registry() : null;
+    const slots = registry ? this.deviceSlots.snapshot(registry) : null;
     const devices =
       this.role === "near"
-        ? Object.values(this.registry()).map((d) => {
+        ? Object.values(registry).map((d) => {
             const t = this.targets.get(d.id);
             return {
               ...d,
-              state: t?.state || "disconnected",
+              state: slots.paused.includes(d.id) ? "slot_paused" : t?.state || "disconnected",
+              slotPaused: slots.paused.includes(d.id),
               attempts: t?.failures || 0,
               retryAt: t?.nextAt || 0,
               lastVerifiedAt: t?.lastProbe || null,
               remoteUser: t?.remoteUser || null,
               workerPid: this.children.get(d.id)?.child.pid || null,
               connectionReport:
-                t?.state === "online"
+                t?.state === "online" && slots.active.includes(d.id) && this.settings.enabled
                   ? path.join(t.dir, "connection.json")
                   : null,
             };
@@ -702,6 +710,7 @@ class Agent {
             : "disconnected"
           : "running",
       devices,
+      deviceSlots: slots,
       stats: this.stats,
       pairing: this.offer?.active
         ? { active: true, expiresAt: this.offer.expiresAt }
@@ -794,6 +803,8 @@ class Agent {
         const registry = this.registry(),
           key = id(data.id);
         if (!registry[key]) throw Error("Unknown paired device");
+        if (this.role === "near" && data.enabled === true)
+          this.deviceSlots.assertCanEnable(registry, key);
         if (typeof data.enabled === "boolean")
           registry[key].enabled = data.enabled;
         if (data.default === true) this.settings.defaultDevice = key;

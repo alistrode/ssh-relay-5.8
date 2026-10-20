@@ -7,7 +7,7 @@ import { registerPrompts, instructions } from "./prompts.js";
 import { closeAll } from "./transport.js";
 import { closeSessions } from "./sessions.js";
 import { tunnels, closeTunnel } from "./tunnels.js";
-import { arg, servers } from "./config.js";
+import { arg, servers, refreshAgentServers } from "./config.js";
 import { TOOL_GROUPS } from "./tool-registry.js";
 const server = new McpServer(
   { name: "current-public-relay-mcp", version: "1.1.0" },
@@ -92,6 +92,7 @@ for (const { name, config } of catalog) {
     },
     async (args) => {
       try {
+        await refreshAgentServers();
         const result = await invoke(name, args);
         const isError =
           result?.success === false ||
@@ -132,6 +133,7 @@ process.once("SIGTERM", () => shutdown().finally(() => process.exit(0)));
 process.stdin.once("end", () => shutdown());
 process.stdin.once("close", () => shutdown());
 // Configuration errors fail startup before any tool claims a usable target.
+await refreshAgentServers();
 servers();
 await server.connect(new StdioServerTransport());
 console.error(

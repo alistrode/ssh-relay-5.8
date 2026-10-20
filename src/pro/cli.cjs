@@ -2,51 +2,9 @@
 const fs = require("node:fs"),
   path = require("node:path"),
   os = require("node:os"),
-  http = require("node:http"),
   cp = require("node:child_process"),
   { folder, read } = require("./store.cjs");
-function request(dir, route, body) {
-  return new Promise((resolve, reject) => {
-    let runtime;
-    try {
-      runtime = read(path.join(dir, "agent-runtime.json"));
-      if (!runtime) throw Error("Agent is not running");
-    } catch (e) {
-      reject(e);
-      return;
-    }
-    const r = http.request(
-      {
-        host: "127.0.0.1",
-        port: runtime.port,
-        path: route,
-        method: body === undefined ? "GET" : "POST",
-        headers: {
-          Authorization: "Bearer " + runtime.token,
-          "Content-Type": "application/json",
-        },
-        timeout: 110000,
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (b) => (data += b));
-        res.on("end", () => {
-          try {
-            const value = JSON.parse(data);
-            res.statusCode === 200
-              ? resolve(value)
-              : reject(Error(value.error || "Agent request failed"));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      },
-    );
-    r.on("error", reject);
-    r.on("timeout", () => r.destroy(Error("Agent request timeout")));
-    r.end(body === undefined ? undefined : JSON.stringify(body));
-  });
-}
+const { request } = require("./agent-client.cjs");
 async function ensure({
   dir,
   role,

@@ -2,7 +2,7 @@ import { Client } from "ssh2";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
-import { serverConfig } from "./config.js";
+import { serverConfig, refreshAgentServers } from "./config.js";
 import { readState } from "./state.js";
 import { shellQuote } from "./shell-quote.js";
 export const pool = new Map();
@@ -72,6 +72,7 @@ export function powershell(script) {
   return cmd;
 }
 export async function connect(name, retries = 2) {
+  await refreshAgentServers();
   const config = serverConfig(name);
   const key = config.name;
   if (readState("revoked-keys.json", {})[key])
