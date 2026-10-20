@@ -5,6 +5,7 @@ const http = require("node:http"),
   os = require("node:os"),
   cp = require("node:child_process"),
   { folder, read } = require("./store.cjs");
+const { assertPrivateState } = require("./private-state.cjs");
 function request(dir, route, body, options = {}) {
   return new Promise((resolve, reject) => {
     if (typeof route !== "string" || !route.startsWith("/") || route.startsWith("//") ||
@@ -19,13 +20,15 @@ function request(dir, route, body, options = {}) {
     }
     let runtime;
     try {
+      assertPrivateState(dir);
       runtime = read(path.join(dir, "agent-runtime.json"));
       if (!runtime) throw Error("Agent is not running");
       if (!Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 ||
           !/^[a-f0-9]{64}$/.test(runtime.token))
         throw Error("Invalid local Agent endpoint");
     } catch (e) {
-      reject(e);
+      reject(e instanceof SyntaxError
+        ? Object.assign(Error("Invalid local Agent runtime"), { code: "LOCAL_STATE_INVALID" }) : e);
       return;
     }
     const r = http.request(
@@ -67,7 +70,7 @@ function request(dir, route, body, options = {}) {
               reject(error);
             }
           } catch (e) {
-            reject(e);
+            reject(e instanceof SyntaxError ? Error("Agent returned invalid JSON") : e);
           }
         });
       },
@@ -104,6 +107,7 @@ async function health(dir, role) {
 }
 async function startAgent(options, dir) {
   const role = options.role || "near";
+  assertPrivateState(dir);
   const check = async () => {
     try { await health(dir, role); return true; }
     catch (error) {

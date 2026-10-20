@@ -110,7 +110,8 @@
       "src/pro/device-slots.cjs",
       "src/pro/connections.cjs",
       "src/pro/pair-state.cjs",
-      "src/mcp/agent-provider.js"
+      "src/mcp/agent-provider.js",
+      "src/pro/private-state.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

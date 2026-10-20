@@ -25,7 +25,7 @@ test("shared client authenticates on loopback and reloads rotated runtime tokens
     fs.rmSync(dir, { recursive: true, force: true });
   });
   const save = (value) => fs.writeFileSync(path.join(dir, "agent-runtime.json"),
-    JSON.stringify({ port: server.address().port, token: value }));
+    JSON.stringify({ port: server.address().port, token: value }), { mode: 0o600 });
   save(token);
   assert.equal((await request(dir, "/status")).role, "near");
   token = "b".repeat(64);
@@ -35,3 +35,4 @@ test("shared client authenticates on loopback and reloads rotated runtime tokens
   save("invalid");
   await assert.rejects(request(dir, "/status"), /Invalid local Agent endpoint/);
 });
+

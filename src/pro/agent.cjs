@@ -24,6 +24,7 @@ const DEFAULT_BROKER = "wss://broker.emqx.io:8084/mqtt";
 const { DeviceSlots } = require("./device-slots.cjs");
 const { Connections, fault } = require("./connections.cjs");
 const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
+const { assertPrivateState } = require("./private-state.cjs");
 class Agent {
   constructor({
     role,
@@ -59,8 +60,6 @@ class Agent {
     this.identity = read(path.join(this.dir, "identity.json"), null) || {
       deviceId: crypto.randomUUID(),
     };
-    write(path.join(this.dir, "identity.json"), this.identity);
-    write(path.join(this.dir, "settings.json"), this.settings);
     this.logFile = path.join(this.dir, "agent-events.jsonl");
     this.record = createTraceWriter(this.dir, "agent");
     this.connections = new Connections(this);
@@ -74,6 +73,7 @@ class Agent {
     return path.join(this.dir, name);
   }
   async start() {
+    assertPrivateState(this.dir);
     const lock = this.file("agent.lock");
     try {
       fs.mkdirSync(lock, { mode: 0o700 });
@@ -102,6 +102,8 @@ class Agent {
       bootId: this.bootId,
       osBoot: systemBootId(),
     });
+    write(this.file("identity.json"), this.identity);
+    write(this.file("settings.json"), this.settings);
     if (this.role === "near") recoverPairTransactions(this);
     this.server = http.createServer((req, res) => this.api(req, res));
     await new Promise((resolve, reject) => {
@@ -765,7 +767,9 @@ class Agent {
         bodyChunks.push(chunk);
       }
       const body = Buffer.concat(bodyChunks).toString("utf8");
-      const data = body ? JSON.parse(body) : {};
+      let data = {};
+      try { data = body ? JSON.parse(body) : {}; }
+      catch { throw fault("INVALID_REQUEST", "Invalid JSON request body"); }
       if (!data || typeof data !== "object" || Array.isArray(data))
         throw fault("INVALID_REQUEST", "Expected a JSON object");
       let value = { ok: true };

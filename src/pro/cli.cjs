@@ -12,7 +12,9 @@ async function stdinJSON() {
     if (size > 40000) throw Error("stdin JSON exceeds 40000 bytes");
     chunks.push(chunk);
   }
-  const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  let value;
+  try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  catch { throw Error("Invalid stdin JSON"); }
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw Error("Expected a JSON object from stdin");
   return value;

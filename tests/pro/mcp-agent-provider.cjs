@@ -14,8 +14,8 @@ const root = path.resolve(__dirname, "../..");
 test("MCP Agent mode discovers authenticated online targets; legacy report mode remains valid", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-provider-test-"));
   const near = path.join(dir, ".ssh-relay-pro", "near");
-  fs.mkdirSync(near, { recursive: true });
-  const save = (name, value) => fs.writeFileSync(path.join(dir, name), JSON.stringify(value));
+  fs.mkdirSync(near, { recursive: true, mode: 0o700 });
+  const save = (name, value) => fs.writeFileSync(path.join(dir, name), JSON.stringify(value), { mode: 0o600 });
   const report = path.join(dir, "connection.json");
   const fingerprint = "SHA256:" + "A".repeat(43);
   save("connection.json", { connected: true, agent_managed: true,
@@ -56,8 +56,8 @@ test("MCP Agent mode discovers authenticated online targets; legacy report mode 
     profileId: id, bootId: "fixture-boot" };
   save("agent-runtime.json", runtime);
   save("identity.json", { deviceId: id });
-  fs.writeFileSync(path.join(near, "agent-runtime.json"), JSON.stringify(runtime));
-  fs.writeFileSync(path.join(near, "identity.json"), JSON.stringify({ deviceId: id }));
+  fs.writeFileSync(path.join(near, "agent-runtime.json"), JSON.stringify(runtime), { mode: 0o600 });
+  fs.writeFileSync(path.join(near, "identity.json"), JSON.stringify({ deviceId: id }), { mode: 0o600 });
   const code = 'const c = await import("./src/mcp/config.js"); await c.refreshAgentServers(); console.log(JSON.stringify(c.servers()));';
   const options = { cwd: root, env: { ...process.env, RELAY_MCP_STATE_DIR: path.join(dir, "mcp") } };
   const agent = await run(process.execPath, ["--input-type=module", "-e", code, "--", "fixture", "--agent-dir", dir], options);
