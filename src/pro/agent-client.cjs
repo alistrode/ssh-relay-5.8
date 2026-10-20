@@ -7,6 +7,16 @@ const http = require("node:http"),
   { folder, read } = require("./store.cjs");
 function request(dir, route, body, options = {}) {
   return new Promise((resolve, reject) => {
+    if (typeof route !== "string" || !route.startsWith("/") || route.startsWith("//") ||
+        /[\r\n]/.test(route)) {
+      reject(Error("Invalid Agent request route"));
+      return;
+    }
+    if (options.timeoutMs !== undefined &&
+        (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > 120000)) {
+      reject(Error("Invalid Agent request timeout"));
+      return;
+    }
     let runtime;
     try {
       runtime = read(path.join(dir, "agent-runtime.json"));
@@ -32,17 +42,19 @@ function request(dir, route, body, options = {}) {
         signal: options.signal,
       },
       (res) => {
-        let data = "";
+        const chunks = [];
+        let size = 0;
         res.on("error", reject);
         res.on("aborted", () => reject(Error("Agent response interrupted")));
         res.on("data", (b) => {
-          data += b;
-          if (Buffer.byteLength(data) > 2 * 1024 * 1024)
+          size += b.length;
+          if (size > 2 * 1024 * 1024)
             r.destroy(Error("Agent response too large"));
+          else chunks.push(b);
         });
         res.on("end", () => {
           try {
-            const value = JSON.parse(data);
+            const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
             if (res.statusCode >= 200 && res.statusCode < 300) resolve(value);
             else {
               const detail = value.error;
@@ -51,6 +63,7 @@ function request(dir, route, body, options = {}) {
               error.code = detail?.code;
               error.phase = detail?.phase;
               error.retryable = detail?.retryable;
+              error.details = detail?.details;
               reject(error);
             }
           } catch (e) {
@@ -60,6 +73,9 @@ function request(dir, route, body, options = {}) {
       },
     );
     r.on("error", reject);
+    const deadline = setTimeout(() => r.destroy(Error("Agent request timeout")), options.timeoutMs ?? 110000);
+    deadline.unref();
+    r.once("close", () => clearTimeout(deadline));
     r.on("timeout", () => r.destroy(Error("Agent request timeout")));
     r.end(body === undefined ? undefined : JSON.stringify(body));
   });
@@ -142,3 +158,4 @@ async function ensureAgent(options = {}) {
 // Backward compatible CLI API.
 async function ensure(options) { await ensureAgent(options); }
 module.exports = { request, ensure, ensureAgent, stateDirectory };
+

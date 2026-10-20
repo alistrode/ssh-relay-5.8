@@ -22,6 +22,7 @@ const { Client } = require("ssh2"),
   { createTraceWriter } = require("../diagnostics.cjs");
 const DEFAULT_BROKER = "wss://broker.emqx.io:8084/mqtt";
 const { DeviceSlots } = require("./device-slots.cjs");
+const { Connections, fault } = require("./connections.cjs");
 class Agent {
   constructor({
     role,
@@ -61,6 +62,7 @@ class Agent {
     write(path.join(this.dir, "settings.json"), this.settings);
     this.logFile = path.join(this.dir, "agent-events.jsonl");
     this.record = createTraceWriter(this.dir, "agent");
+    this.connections = new Connections(this);
   }
   log(event, details = {}) {
     const entry = { event, role: this.role, bootId: this.bootId, ...details };
@@ -216,6 +218,8 @@ class Agent {
     if (this.role !== "near")
       throw Error("Only a near end can enter a pairing code");
     if (this.pairBusy) throw Error("Pairing already in progress");
+    const reservation = crypto.randomUUID();
+    this.deviceSlots.reserve(this.registry(), reservation);
     this.pairBusy = true;
     try {
       let keys = read(this.file("near-identity-key.json"), null);
@@ -234,7 +238,7 @@ class Agent {
         accept: async (value) => {
           this.safeInfo(value);
           const registry = this.registry();
-          this.deviceSlots.assertCanEnable(registry, value.deviceId);
+          this.deviceSlots.assertCanEnable(registry, value.deviceId, reservation);
           const deviceDir = folder(this.file("devices/" + value.deviceId));
           text(path.join(deviceDir, "client_key"), keys.privateKey);
           text(
@@ -251,6 +255,7 @@ class Agent {
             pairedAt: registry[value.deviceId]?.pairedAt || Date.now(),
           };
           this.saveRegistry(registry);
+          this.deviceSlots.release(reservation);
           const existing = this.targets.get(value.deviceId);
           if (existing) {
             this.invalidateTarget(existing);
@@ -267,6 +272,7 @@ class Agent {
       this.tick();
       return { deviceId: info.deviceId };
     } finally {
+      this.deviceSlots.release(reservation);
       this.pairBusy = false;
     }
   }
@@ -388,6 +394,7 @@ class Agent {
     t.connecting = false;
     t.probeBusy = false;
     t.probeOwner = null;
+    t.lastProbe = 0;
     client?.destroy();
   }
   targetFor(device) {
@@ -537,6 +544,7 @@ class Agent {
     const info = this.safeInfo(read(path.join(t.dir, "identity.json"))),
       client = new Client();
     const generation = ++t.generation;
+    t.port = runtime.port;
     t.client = client;
     const current = () => !this.stopping && t.generation === generation &&
       t.client === client && this.targets.get(t.id) === t;
@@ -634,6 +642,9 @@ class Agent {
       });
       if (this.stopping || t.client !== client || t.generation !== generation ||
           this.targets.get(t.id) !== t) throw Error("Stale identity probe discarded");
+      if (!this.settings.enabled || !this.deviceSlots.snapshot(this.registry()).active.includes(t.id) ||
+          read(path.join(t.dir, "runtime.json"))?.port !== t.port)
+        throw Error("Relay endpoint changed during identity probe");
       const lines = result.stdout
         .trim()
         .split(/\r?\n/)
@@ -652,7 +663,7 @@ class Agent {
       const report = {
         connected: true,
         agent_managed: true,
-        local_port: read(path.join(t.dir, "runtime.json")).port,
+        local_port: t.port,
         target: info.target,
         remote_user: lines[0],
         remote_hostname: lines[1],
@@ -703,6 +714,7 @@ class Agent {
             return {
               ...d,
               state: slots.paused.includes(d.id) ? "slot_paused" : t?.state || "disconnected",
+              generation: t?.generation || 0,
               slotPaused: slots.paused.includes(d.id),
               attempts: t?.failures || 0,
               retryAt: t?.nextAt || 0,
@@ -766,8 +778,23 @@ class Agent {
       }
       const data = body ? JSON.parse(body) : {};
       let value = { ok: true };
+      let responseCode = 200;
+      if (req.url.startsWith("/v1/") && req.url !== "/v1/health" && this.role !== "near")
+        throw fault("ROLE_MISMATCH", "Device connection API requires a near Agent");
       if (req.method === "GET" && req.url === "/v1/health")
         value = { apiVersion: 1, profileId: this.identity.deviceId, bootId: this.bootId, role: this.role };
+      else if (req.method === "GET" && req.url === "/v1/devices") {
+        const status = this.status();
+        value = { ok: true, devices: status.devices.map(({ connectionReport, workerPid, ...device }) => device),
+          slots: status.deviceSlots };
+      } else if (req.method === "POST" && req.url === "/v1/connections") {
+        value = await this.connections.connect(data);
+        responseCode = ["ready", "failed", "unknown"].includes(value.state) ? 200 : 202;
+      } else if (req.method === "GET" && /^\/v1\/connections\/[a-f0-9-]+$/.test(req.url)) {
+        value = this.connections.result(this.connections.get(req.url.split("/")[3]));
+      } else if (req.method === "GET" && /^\/v1\/devices\/[a-f0-9-]+\/connection$/.test(req.url)) {
+        value = this.connections.descriptor(req.url.split("/")[3]);
+      }
       else if (req.method === "GET" && req.url === "/status") value = this.status();
       else if (req.method === "GET" && req.url === "/logs") {
         let rows = [];
@@ -882,7 +909,7 @@ class Agent {
         reply(404, { error: "Unknown agent endpoint" });
         return;
       }
-      reply(200, value);
+      reply(responseCode, value);
     } catch (e) {
       this.log("api_error", {
         route: req.url,
@@ -890,7 +917,12 @@ class Agent {
           ? "pairing failed"
           : e.message.slice(0, 200),
       });
-      reply(400, { error: e.message });
+      if (req.url.startsWith("/v1/")) {
+        const code = e.code || "INVALID_REQUEST";
+        reply(code === "DEVICE_LIMIT_REACHED" || code === "REQUEST_CONFLICT" ? 409 : 400,
+          { ok: false, error: { code, phase: e.phase || "request",
+            message: e.message, retryable: e.retryable === true, details: e.details } });
+      } else reply(400, { error: e.message });
     }
   }
   async close() {
