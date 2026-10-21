@@ -648,3 +648,11 @@
 - Windows 会话启动尚未定位，测试增加最后观测状态及受控 runner-error 码，保留生产身份守卫，不凭超时盲改功能。
 - 健康修复版三包完整内容核对通过，含 104 个应用文件、固定运行时完整 hash、生产依赖及 DEB 权限；但本轮 tasks.cjs 又发生修复，现有包已落后，需重新冻结构建，不计第 24 项完成。源码归档曾更新至 208 文件，同样需跟随本提交重建。
 - 本节点只上传源码/交接，不启动验证。上一成功提交 41b1b7c2b1b259afcde7c72512dc8cb28e2e4911。
+
+## 2026-10-21 20:29（北京时间）Linux 原生通过与 Windows 标记修复；开发仍 95.8%
+
+- 92cec99 的原生 CI：Linux 10/10 通过、无跳过，真实验证独立提交进程退出后存活、同 ID 不重放、取消命令树、超时及会话 Manager 重建。Windows 仍 9/10，通过任务三项，失败在第一条会话命令收尾而非 shell 创建。运行：https://github.com/trlstdin/rororororo/actions/runs/39599424036 。
+- Windows 原始 stderr 明确报 Replace 的 oldChar 不能从两个字符的反引号 n 转换。session-shell.cjs 改为显式 [string][char]10，选择 string/string 重载，使 stdout/stderr 结束边界实际可写出。未改身份或超时守卫，待原生复验。
+- 启动竞态处理进一步对齐设计：身份未确认时内存/公开状态仍 unknown 并保留占位，只在原有 30 秒启动窗口内避免覆盖磁盘 starting 意图，绝不生成替代 runner。超过窗口仍拒绝重放。定向 5 项通过；会话 Shell/Engine/任务组合 12 项通过。
+- 前轮本地 runner/reader/engine 共 13 项为 10 通过、3 项 PID 环境限制明确跳过；不能算全原生通过。Linux CI 原生结果独立记录，不混淆。
+- 当前生产源码再次变化，最终运行包须待复验后重建。开发仍 23/24。本节点只上传源码和交接，不启动验证；上一成功提交 92cec99c7c1a2631c39f347522de9dd7bed6f21e。

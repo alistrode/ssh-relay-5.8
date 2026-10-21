@@ -16,7 +16,7 @@ function sessionCommand(platform, marker, command) {
     "try {. ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + encoded + "'))));" +
     "$__relayCode=if($?){if($LASTEXITCODE){$LASTEXITCODE}else{0}}else{1}}" +
     "catch{[Console]::Error.WriteLine($_.Exception.Message);$__relayCode=1};" +
-    "[Console]::Out.Write(('`n" + marker + ":'+$__relayCode+':'+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Location).Path))+'`n').Replace('`n', [char]10));" +
-    "[Console]::Error.Write(('`n" + marker + ":END`n').Replace('`n', [char]10))\n";
+    "[Console]::Out.Write(('`n" + marker + ":'+$__relayCode+':'+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Location).Path))+'`n').Replace('`n', [string][char]10));" +
+    "[Console]::Error.Write(('`n" + marker + ":END`n').Replace('`n', [string][char]10))\n";
 }
 module.exports = { sessionCommand };

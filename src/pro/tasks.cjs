@@ -70,8 +70,10 @@ class TaskManager {
             record.state = "running"; this.save(record);
           } else if (record.state === "starting" && !runner && Number.isFinite(record.launchAt) &&
               Date.now() >= record.launchAt && Date.now() - record.launchAt <= 30000) {
-            // The original detached process may still be initializing. Keep its
-            // slot and startup intent; never spawn a replacement on recovery.
+            // Report uncertainty while the original process initializes. Do
+            // not overwrite its startup intent or spawn a replacement.
+            record.state = "unknown"; record.errorCode = "RUNNER_IDENTITY_UNCONFIRMED";
+            record.reserveSlot = true;
           } else this.unknown(record, "RUNNER_IDENTITY_UNCONFIRMED", true);
         } else if (record.state === "unknown" && record.reserveSlot) this.active.add(name);
       } catch { this.corrupt.add(name); this.active.add(name); }

@@ -39,7 +39,8 @@ test("restart preserves the original runner startup window without respawning", 
   manager.close();
   const recovered = new TaskManager({ ...options, bootId: crypto.randomUUID() });
   recovered.tick();
-  assert.equal(recovered.get(owner, request).state, "starting");
+  assert.equal(recovered.get(owner, request).state, "unknown");
+  assert.equal(JSON.parse(fs.readFileSync(manager.file(request.operationId, "manifest.json"))).state, "starting");
   assert.equal(recovered.active.size, 1);
   assert.equal(starts(), 1);
   const record = recovered.records.get(request.operationId);
