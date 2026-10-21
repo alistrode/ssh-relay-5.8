@@ -50,6 +50,24 @@ class NearSessions {
     }
     return { sessions: sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 100) };
   }
+  sequenceIndex(id) {
+    const dir = folder(path.join(this.directory(id), "sequences")), marker = path.join(dir, "ready.json");
+    if (!fs.existsSync(marker)) {
+      for (const name of fs.readdirSync(path.join(this.directory(id), "requests"))) {
+        if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+        const request = privateJSON(path.join(this.directory(id), "requests", name), null);
+        if (request?.kind !== "send") continue;
+        if (!Number.isInteger(request.sequence) || request.sequence < 1 || request.sequence > 10000)
+          throw failure("SESSION_CORRUPT", "Session request sequence metadata is invalid");
+        const file = path.join(dir, request.sequence + ".json"), previous = privateJSON(file, null);
+        if (previous && (previous.requestId !== request.requestId || previous.requestHash !== request.requestHash))
+          throw failure("SESSION_CORRUPT", "Multiple requests reserve one session sequence");
+        if (!previous) durableWrite(file, { requestId: request.requestId, requestHash: request.requestHash });
+      }
+      durableWrite(marker, { id });
+    }
+    return dir;
+  }
   registerRequest(id, params) {
     this.record(id); const requestId = operationId(params.requestId), kind = params.kind || "send";
     if (!["send", "close"].includes(kind) || !/^[a-f0-9]{64}$/.test(params.requestHash) ||
@@ -61,8 +79,16 @@ class NearSessions {
     if (previous) {
       if (previous.requestId !== requestId || previous.kind !== record.kind || previous.sequence !== record.sequence || previous.requestHash !== record.requestHash)
         throw failure("REQUEST_CONFLICT", "Session request ID was used for different input");
-    } else {
-      if (fs.readdirSync(path.dirname(file)).length >= 10000) throw failure("SESSION_CAPACITY", "Session request metadata capacity reached");
+    }
+    if (!previous && fs.readdirSync(path.dirname(file)).length >= 10000) throw failure("SESSION_CAPACITY", "Session request metadata capacity reached");
+    if (kind === "send") {
+      const sequenceFile = path.join(this.sequenceIndex(id), params.sequence + ".json"), reservation = privateJSON(sequenceFile, null);
+      if (reservation && (reservation.requestId !== requestId || reservation.requestHash !== record.requestHash))
+        throw failure("REQUEST_CONFLICT", "Session sequence is already reserved by a different request");
+      // A crash after reservation cannot free the sequence for another command.
+      if (!reservation) durableWrite(sequenceFile, { requestId, requestHash: record.requestHash });
+    }
+    if (!previous) {
       durableWrite(file, { ...record, createdAt: Date.now() });
     }
     return { id, requestId, kind, sequence: record.sequence };

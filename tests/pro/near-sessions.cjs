@@ -26,3 +26,13 @@ test("remembered sessions and request IDs survive adapters without dispatching c
   assert.equal((await reopened.get(id, { requestId })).state, "unknown");
   assert.equal(calls.every(method => method === "session.get"), true);
 });
+test("one near Agent reserves a sequence for one request even across adapters", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-near-sequence-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const deviceId = crypto.randomUUID(), id = "ssh_" + crypto.randomUUID(), agent = { identity: { deviceId: crypto.randomUUID() }, file: name => path.join(dir, name), registry: () => ({ [deviceId]: {} }) };
+  const first = new NearSessions(agent); first.register({ id, deviceId, server: "fixed" });
+  const input = { requestId: crypto.randomUUID(), sequence: 1, requestHash: "a".repeat(64) };
+  first.registerRequest(id, input);
+  const second = new NearSessions(agent); second.registerRequest(id, input);
+  assert.throws(() => second.registerRequest(id, { ...input, requestId: crypto.randomUUID() }), { code: "REQUEST_CONFLICT" });
+  assert.equal(second.requests(id).requests.length, 1);
+});
