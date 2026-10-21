@@ -34,3 +34,18 @@ test("group registration fixes per-device IDs and status never reruns completed 
   const listed = service.list().operations.find(record => record.operationId === input.operationId);
   assert.equal(listed.children[0].childOperationId, children[0].childOperationId);
 });
+test("corrupt recursive group metadata is rejected before querying children", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-group-corrupt-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const deviceId = crypto.randomUUID();
+  const agent = { identity: { deviceId: crypto.randomUUID() }, file: name => path.join(dir, name), registry: () => ({ [deviceId]: {} }) };
+  const service = new Operations(agent);
+  const input = { kind: "exec-group", operationId: crypto.randomUUID(), requestHash: "b".repeat(64),
+    children: [{ operationId: crypto.randomUUID(), childOperationId: crypto.randomUUID(), deviceId, requestHash: "a".repeat(64) }] };
+  service.register(input);
+  assert.throws(() => service.register({ ...input.children[0], kind: "exec", groupOperationId: crypto.randomUUID() }), { code: "REQUEST_CONFLICT" });
+  const file = service.groups.file(input.operationId), record = JSON.parse(fs.readFileSync(file, "utf8"));
+  record.children[0].operationId = input.operationId;
+  fs.writeFileSync(file, JSON.stringify(record));
+  assert.throws(() => service.groups.record(input.operationId), { code: "OPERATION_CORRUPT" });
+});

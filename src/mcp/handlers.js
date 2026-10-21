@@ -23,6 +23,7 @@ import { hooks, toggleHook, executeHook } from "./hooks.js";
 import { readState, writeState } from "./state.js";
 import { logger } from "./logger.js";
 import { durableExec } from "./durable-exec.js";
+import { planGroupTargets } from "./group-targets.js";
 groups.setServerConfigProvider(servers);
 const need = (a, key) => {
   if (a[key] === undefined || a[key] === "")
@@ -616,7 +617,9 @@ export const handlers = {
   ssh_execute_group: async (a) => {
     const group = groups.getGroup(a.group);
     if (!group) throw new Error("Unknown group");
+    const targets = planGroupTargets(group.servers, serverConfig);
     const strategy = a.strategy || group.strategy || "parallel";
+    if (!["parallel", "sequential", "rolling"].includes(strategy)) throw new Error("Unknown group strategy");
     const results = [];
     const call = async (name) => {
       try {
@@ -629,9 +632,9 @@ export const handlers = {
       }
     };
     if (strategy === "parallel")
-      results.push(...(await Promise.all(group.servers.map(call))));
+      results.push(...(await Promise.all(targets.map(call))));
     else
-      for (const name of group.servers) {
+      for (const name of targets) {
         const r = await call(name);
         results.push(r);
         if (!r.success && (a.stopOnError ?? group.stopOnError)) break;

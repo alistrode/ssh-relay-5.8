@@ -45,7 +45,8 @@ class Operations {
     if (existing) {
       const record = this.record(key);
       if (record.deviceId !== deviceId || record.childOperationId !== childOperationId ||
-          record.requestHash !== params.requestHash || record.kind !== params.kind)
+          record.requestHash !== params.requestHash || record.kind !== params.kind ||
+          record.groupOperationId !== params.groupOperationId)
         throw failure("REQUEST_CONFLICT", "operationId was used for different local task metadata");
       return this.public(record);
     }

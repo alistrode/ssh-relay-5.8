@@ -24,7 +24,7 @@ test("unresolved members are left for per-target error reporting", () => {
   }), ["ready", "missing"]);
 });
 test("legacy aliases use canonical server names for duplicate protection", () => {
-  assert.throws(() => planGroupTargets(["ALPHA", "alpha"], () => ({ name: "alpha" })),
+  assert.throws(() => planGroupTargets(["alpha", "production-alias"], () => ({ name: "alpha" })),
     /duplicate target/);
 });
 

@@ -27,6 +27,20 @@ class OperationGroups {
         record.kind !== "exec-group" || !Array.isArray(record.children) ||
         record.children.length < 1 || record.children.length > 5)
       throw failure("OPERATION_CORRUPT", "Group operation metadata is invalid");
+    try {
+      operationId(record.operationId);
+      if (!/^[a-f0-9]{64}$/.test(record.requestHash) || !Number.isFinite(record.createdAt)) throw Error();
+      const ids = new Set([key]), devices = new Set();
+      for (const child of record.children) {
+        operationId(child.operationId); operationId(child.childOperationId); operationId(child.deviceId);
+        if (child.kind !== "exec" || child.groupOperationId !== key ||
+            !/^[a-f0-9]{64}$/.test(child.requestHash) ||
+            ids.has(child.operationId) || ids.has(child.childOperationId) ||
+            child.operationId === child.childOperationId || devices.has(child.deviceId) ||
+            this.exists(child.operationId)) throw Error();
+        ids.add(child.operationId); ids.add(child.childOperationId); devices.add(child.deviceId);
+      }
+    } catch { throw failure("OPERATION_CORRUPT", "Group operation metadata is invalid"); }
     return record;
   }
   public(record) {
