@@ -69,7 +69,7 @@ test("group registration cannot capture an unrelated child and cancellation chec
   assert.equal(calls, 0);
   assert.equal(service.record(input.children[0].operationId).state, "registered");
 });
-test("retention removes expired final groups and unstarted children but keeps active plans", t => {
+test("registration and listing preserve expired groups and their recovery records", t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-group-retention-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const deviceId = crypto.randomUUID();
@@ -82,9 +82,11 @@ test("retention removes expired final groups and unstarted children but keeps ac
   fs.writeFileSync(service.groups.file(old.operationId), JSON.stringify(group));
   const child = service.record(old.children[0].operationId); child.state = "not_started"; child.observedAt = expired;
   fs.writeFileSync(service.file(child.operationId), JSON.stringify(child));
-  service.cleanup();
-  assert.equal(service.groups.exists(old.operationId), false);
-  assert.equal(service.exists(child.operationId), false);
+  service.register(make());
+  service.list();
+  assert.equal(typeof service.cleanup, "undefined");
+  assert.equal(service.groups.exists(old.operationId), true);
+  assert.equal(service.exists(child.operationId), true);
   assert.equal(service.groups.exists(active.operationId), true);
   assert.equal(service.exists(active.children[0].operationId), true);
 });

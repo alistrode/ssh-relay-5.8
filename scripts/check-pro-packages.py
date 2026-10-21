@@ -4,7 +4,6 @@ from pathlib import Path,PurePosixPath
 import hashlib,io,json,subprocess,tarfile,zipfile
 
 repo=Path(__file__).resolve().parents[1];out=repo/'deliverables/pro'
-evidence=json.loads((repo/'docs/PRO-STARTUP-VALIDATION.json').read_text())
 expected={str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest()for folder in ['src','desktop','launchers'] for p in sorted((repo/folder).rglob('*'))if p.suffix in ['.js','.cjs','.ps1']}
 version=json.loads((repo/'package.json').read_text())['version'];results=[]
 def inspect(archive,prefix,platform):
@@ -16,17 +15,14 @@ def inspect(archive,prefix,platform):
  for name,digest in expected.items():assert hashlib.sha256(payload('resources/app/'+name)).hexdigest()==digest,name
  manifest=json.loads(payload('resources/app/BUILD-PRO.json'));assert manifest['sourceSha256']==expected
  assert manifest['applicationVersion']==version
- checked=json.loads(payload('resources/app/docs/PRO-STARTUP-VALIDATION.json'));assert checked['applicationVersion']==version
+ for name in ['SSH-RELAY-END-TO-END-DESIGN.md','SSH-RELAY-DEVELOPMENT-HANDOFF.md','MCP-SOURCE-PROVENANCE.json']:payload('resources/app/docs/'+name)
+ payload('resources/app/assets/licenses/mcp-ssh-manager.LICENSE')
  assert payload('resources/app/package.json')==(repo/'package.json').read_bytes()
  for name in ['ssh2','mqtt','@serenity-kit/opaque','@modelcontextprotocol/sdk']:
   payload('resources/app/node_modules/'+name+'/package.json')
  payload('LICENSE');payload('LICENSES.chromium.html')
- # Accept the published historical snapshot and future Pro-only skill packages.
- skill_root='resources/app/.agents/skills/'
- if prefix+skill_root+'ssh-relay-pro/SKILL.md' in members:
-  payload(skill_root+'ssh-relay-pro/SKILL.md');payload(skill_root+'workspace-backup-dev/SKILL.md')
- else:
-  payload(skill_root+'connect-win10-public-ssh/SKILL.md')
+ # Current connection instructions are embedded in MCP prompts; removed skills are not package requirements.
+ payload('resources/app/src/mcp/prompts.js')
  exe=payload('SSHRelayPro.exe'if platform=='win32'else'ssh-relay-pro')
  assert exe[:2]==(b'MZ'if platform=='win32'else b'\x7fE')
  if platform=='win32':
@@ -36,7 +32,7 @@ def inspect(archive,prefix,platform):
   assert members[prefix+'ssh-relay-pro'].mode&0o111;payload('relay-cli');payload('mcp');payload('libffmpeg.so');payload('libvk_swiftshader.so');payload('libvulkan.so.1')
  forbidden={'connection.json','connection-private.json','client_key','host_key','agent-runtime.json','guardian-runtime.json'}
  assert not any(PurePosixPath(n).name in forbidden for n in members)
- return {'platform':platform,'archiveMembers':len(members),'measuredApplicationFiles':len(expected),'candidateValidationIncluded':True,'productionDependenciesIncluded':True}
+ return {'platform':platform,'archiveMembers':len(members),'measuredApplicationFiles':len(expected),'currentDesignAndHandoffIncluded':True,'productionDependenciesIncluded':True}
 with tarfile.open(out/'ssh-relay-pro-linux-x64.tar.xz','r:xz')as t:
  results.append({'file':'ssh-relay-pro-linux-x64.tar.xz',**inspect(t,'SSHRelayPro/','linux')})
 with zipfile.ZipFile(out/'ssh-relay-pro-windows-x64.zip')as z:

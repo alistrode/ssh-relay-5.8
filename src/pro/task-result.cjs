@@ -24,9 +24,10 @@ function validateTaskPage(value, { operationId, deviceId, stdoutOffset = 0, stde
   return value;
 }
 function publicFailure(failure) {
-  const known = /^(CONTROL|TASK|OPERATION|AUTH|REQUEST|INVALID|PROCESS|RUNNER|EXEC|JOB|SESSION|AGENT|DEVICE|STALE|ACCOUNT|WAITING|LOCAL)_/.test(failure.code || "");
-  return { code: known ? failure.code : "CONTROL_STORAGE_FAILED",
-    message: known ? failure.message : "Control operation could not access its private state",
+  const known = /^(CONTROL|TASK|OPERATION|AUTH|REQUEST|INVALID|PROCESS|RUNNER|EXEC|JOB|SESSION|AGENT|DEVICE|STALE|ACCOUNT|WAITING|LOCAL|TRANSFER)_/.test(failure.code || "");
+  const transferState = ["SOURCE_CHANGED", "DESTINATION_CHANGED"].includes(failure.code);
+  return { code: known || transferState ? failure.code : "CONTROL_STORAGE_FAILED",
+    message: known || transferState ? failure.message : "Control operation could not access its private state",
     retryable: failure.retryable === true };
 }
 module.exports = { validateTaskPage, publicFailure };
