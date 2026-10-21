@@ -1,6 +1,11 @@
 name: SSH Relay unattended hour
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/ssh-pro-startup-20261019]
+    paths:
+      - '.github/workflows/hour-stability.yml'
+      - 'tests/pro/unattended-hour.cjs'
 permissions:
   contents: read
 concurrency:
