@@ -14,6 +14,7 @@ class SessionManager {
     this.dir = folder(path.resolve(dir)); this.deviceId = operationId(deviceId); this.authorized = authorized;
     this.spawn = spawn; this.identityAvailable = !!identity(process.pid); this.osBoot = osBoot; this.platform = platform;
     this.reader = new SessionReader({ dir: this.dir, deviceId, authorized, osBoot, runnerLive });
+    this.reconcileAuthorization();
   }
   check(owner) {
     operationId(owner);
@@ -93,6 +94,8 @@ class SessionManager {
     if (receipt && (receipt.sessionId !== sessionId || receipt.requestId !== requestId)) throw failure("SESSION_CORRUPT", "Session response identity differs from request");
     if (record.method === "send" && fs.existsSync(path.join(dir, "commands", requestId, "manifest.json")))
       return this.reader.get(owner, { sessionId, requestId, ...paging });
+    if (receipt && record.method === "close" && receipt.ok === true && receipt.state === "lost")
+      return { sessionId, requestId, state: "lost", completed: true, stopRequested: true };
     if (receipt) return { sessionId, requestId, state: "unknown", completed: false, errorCode: receipt.ok ? null : "SESSION_REQUEST_REJECTED" };
     const inboxPresent = fs.existsSync(path.join(dir, "inbox", requestId + ".json"));
     return { sessionId, requestId, state: record.state === "prepared" || !inboxPresent ||
@@ -119,6 +122,35 @@ class SessionManager {
       } catch { if (owned) results.push({ sessionId, state: "unknown", errorCode: "SESSION_REVOCATION_FAILED" }); }
     }
     return results;
+  }
+  reconcileAuthorization() {
+    const owners = new Set();
+    for (const name of fs.readdirSync(this.dir)) {
+      if (!/^[a-f0-9-]{36}$/.test(name)) continue;
+      try {
+        const config = privateJSON(path.join(this.dir, name, "session.json"), null);
+        if (config?.deviceId === this.deviceId) owners.add(operationId(config.owner));
+      } catch {}
+    }
+    const results = [];
+    for (const owner of owners) if (typeof this.authorized !== "function" || !this.authorized(owner))
+      results.push(...this.revoke(owner));
+    return results;
+  }
+  tick() {
+    if (Date.now() - (this.lastAuthorizationCheck || 0) < 2000) return;
+    this.lastAuthorizationCheck = Date.now(); this.reconcileAuthorization();
+  }
+  handle(owner, method, params) {
+    if (!params || typeof params !== "object" || Array.isArray(params)) throw failure("SESSION_INVALID", "Session parameters must be an object");
+    switch (method) {
+      case "session.create": return this.create(owner, params);
+      case "session.status": return this.status(owner, params.sessionId);
+      case "session.send": return this.request(owner, { ...params, method: "send" });
+      case "session.get": return this.queryRequest(owner, params);
+      case "session.close": return this.request(owner, { ...params, method: "close" });
+      default: throw failure("SESSION_INVALID", "Unknown session control method");
+    }
   }
 }
 module.exports = { SessionManager };

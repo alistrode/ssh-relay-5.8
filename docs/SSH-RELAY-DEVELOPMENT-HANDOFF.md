@@ -376,3 +376,13 @@
 - 下一步仍是 Far 认证路由、撤销接线及原 MCP session 适配。公开 sessionResume 继续 false；本批未把内部服务暴露成可用功能。
 - 本上传节点只保存源码和交接，不运行验证。上一成功远端提交：1216efe2faaa3256ae7ef9fad455740bac2d924b。
 - 上次上传调用被用户消息中断，本段不能视为已推送成功；接续时补交并以实际远端提交号确认。
+
+## 2026-10-21 15:13（北京时间）Far 认证会话控制接线
+
+- Far Agent 创建 SessionManager，原 SSH 签名绑定的 controllerId 经 worker IPC 进入 session.create/status/send/get/close 路由；每次继续核对 authorized-clients，不读取参数中的 owner 作为身份。原 task 路由保留。
+- 撤销授权同时触发所属会话 revoke；Manager 启动及周期检查补写已移除 owner 的撤销标记，覆盖授权文件已提交但关闭标记未提交时的中断。Far Agent 正常退出不主动关闭独立会话宿主。
+- hello 与远端身份元数据增加 sessionProtocol=1、sessionResume 的进程身份能力条件。本环境条件不满足，继续报告 false；这不是 Windows 或原生 Linux 功能通过声明。原 MCP session 工具尚未切换到新协议。
+- close receipt 仅表示宿主已处理关闭请求，返回 lost/stopRequested，不保证 Windows 进程树已经停止。SESSION 错误进入固定结构化错误映射，底层私有存储错误仍隐藏路径。
+- 节点间十二项会话 Manager/执行器/宿主组合通过，新增 Agent 重启后授权丢失的撤销补写和自报 owner 不改变真实 owner 检查；另九项 Manager/Reader/TaskManager 组合通过。Agent/remote 修改通过语法检查，尚未启动真实 Agent/SSH 集成。
+- 下一步接近端 session 目录与请求 ID 记录、原 MCP session 工具恢复查询，并补认证控制路由的隔离检查。会话长期清理、多阶段业务和文件恢复仍未完成。
+- 本上传节点只保存源码和交接，不运行验证。上一成功远端提交：ebc4740786b0d29767af31ba7ef543c240812a45。

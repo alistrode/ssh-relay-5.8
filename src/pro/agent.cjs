@@ -26,6 +26,7 @@ const { Connections, fault } = require("./connections.cjs");
 const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
+const { SessionManager } = require("./session-manager.cjs");
 const { Operations } = require("./operations.cjs");
 const { publicFailure } = require("./task-result.cjs");
 const { jobCatalog } = require("./task-jobs.cjs");
@@ -116,6 +117,10 @@ class Agent {
       dir: this.file("operations"), deviceId: this.identity.deviceId, bootId: this.bootId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
+    if (this.role === "far") this.sessionManager = new SessionManager({
+      dir: this.file("sessions"), deviceId: this.identity.deviceId,
+      authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
+    });
     this.server = http.createServer((req, res) => this.api(req, res));
     await new Promise((resolve, reject) => {
       this.server.once("error", reject);
@@ -174,6 +179,8 @@ class Agent {
       taskProtocol: 1,
       persistentTasks: this.taskManager?.identityAvailable === true,
       taskJobs: jobCatalog(),
+      sessionProtocol: 1,
+      persistentSessions: this.sessionManager?.identityAvailable === true,
       clockSkewCorrection: true,
     });
   }
@@ -309,8 +316,13 @@ class Agent {
             return { protocol: 1, deviceId: this.identity.deviceId,
               capabilities: { persistentExec: this.taskManager?.identityAvailable === true, taskProtocol: 1,
                 taskJobs: jobCatalog(),
+                sessionProtocol: 1, sessionResume: this.sessionManager?.identityAvailable === true,
                 recovery: "verified-live-runner", maxFrameBytes: 1048576, maxConcurrent: 4,
                 maxOutputBytesPerStream: 67108864, maxPageBytesPerStream: 65536 } };
+          if (typeof message.method === "string" && message.method.startsWith("session.")) {
+            if (!this.sessionManager) throw fault("CONTROL_UNAVAILABLE", "Session manager is not ready", true);
+            return this.sessionManager.handle(message.controllerId, message.method, message.params);
+          }
           if (!this.taskManager) throw fault("CONTROL_UNAVAILABLE", "Task manager is not ready", true);
           return this.taskManager.handle(message.controllerId, message.method, message.params);
         }).then(result => {
@@ -448,6 +460,8 @@ class Agent {
     if (this.stopping) return;
     try { this.taskManager?.tick(); }
     catch (error) { this.log("task_manager_storage_error", { code: error.code || "TASK_STORAGE_FAILED" }); }
+    try { this.sessionManager?.tick(); }
+    catch (error) { this.log("session_manager_storage_error", { code: error.code || "SESSION_STORAGE_FAILED" }); }
     if (this.role === "far") {
       if (
         this.settings.enabled &&
@@ -987,7 +1001,8 @@ class Agent {
             clients = read(file, {});
           delete clients[key];
           write(file, clients);
-          value = { ok: true, revoked: true, operations: this.taskManager?.revoke(key) || [] };
+          value = { ok: true, revoked: true, operations: this.taskManager?.revoke(key) || [],
+            sessions: this.sessionManager?.revoke(key) || [] };
           this.children.get("far")?.child.send({ type:"revoke-controller", controllerId:key });
         }
         this.log("device_unpaired", { deviceId: key });

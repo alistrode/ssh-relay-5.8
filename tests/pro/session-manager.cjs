@@ -50,3 +50,12 @@ test("revocation remains idempotent after authorization removal and scopes the o
   assert.equal(fs.existsSync(path.join(f.dir, otherId, "revoke.json")), false);
   assert.throws(() => f.manager.status(f.owner, f.sessionId), { code: "AUTH_REVOKED" });
 });
+test("Agent restart reconciles removed authorization without spawning or trusting JSON owner", t => {
+  const f = fixture(t); f.manager.handle(f.owner, "session.create", { sessionId: f.sessionId, owner: crypto.randomUUID() });
+  const config = JSON.parse(fs.readFileSync(path.join(f.dir, f.sessionId, "session.json")));
+  assert.equal(config.owner, f.owner);
+  const restarted = new SessionManager({ ...f.options, authorized: () => false });
+  assert.equal(fs.existsSync(path.join(f.dir, f.sessionId, "revoke.json")), true);
+  assert.equal(f.spawns(), 1);
+  assert.throws(() => restarted.handle(f.owner, "session.status", { sessionId: f.sessionId }), { code: "AUTH_REVOKED" });
+});
