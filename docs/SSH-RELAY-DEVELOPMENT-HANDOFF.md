@@ -340,3 +340,11 @@
 - 节点间九项执行器/日志检查通过。执行器检查使用模拟进程和管道，不创建真实业务进程；覆盖一次 stdin、双流确认、落盘结果、超时失效、旧锁拒绝、PID 身份变化不发信号，以及不可证明宿主不 spawn。
 - 本类尚未作为独立 runner 进程运行，也未接 Far Agent/RPC/MCP。下一步需独立宿主与认证 inbox/查询、runner 心跳/所属路径证明及原生进程测试；sessionResume 仍为 false。文件分块第三阶段尚未开始。
 - 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：9332c1fb7eab69122982e75d2714c282d910cce4。
+
+## 2026-10-21 14:54（北京时间）独立会话宿主准备源码
+
+- 新增 session-runner.cjs，可作为独立进程宿主读取私有 session.json，核对设备/会话/owner、平台和 system boot，再创建内部执行器。私有 inbox 限 64 项，固定 owner 来自启动记录，响应不带原命令；不能把请求 JSON 的自报 owner 当认证。
+- 宿主写 runner 身份和两秒心跳；命令经同一执行器幂等，close/超时失效后收尾响应并退出。旧 engine.lock 不接管，不因旧任务未知而重新创建 shell。此入口尚未由 Far Agent 启动或暴露 RPC。
+- 节点间十项执行器/日志/宿主检查通过，其中一次实际启动独立 Node 宿主，在当前不匹配 /proc 的命名空间确认返回 PROCESS_IDENTITY_UNAVAILABLE，未创建 engine.lock 或命令目录；这是拒绝执行检查，不是持久 shell 功能通过。其余执行器使用模拟进程。
+- 下一步需 Far 侧认证 SessionManager、runner 所属路径核验、请求文件原子提交/结果查询及 MCP 原 session ID 适配。当前 sessionResume 仍 false，不能连接此私有 inbox 绕过 Agent 认证。Windows/匹配 /proc 的原生 Linux 存活及取消仍待实测。
+- 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：fd659c410d9468f83f10e7c2ff3407594c3b07de。

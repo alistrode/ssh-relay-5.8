@@ -136,7 +136,8 @@
       "src/pro/session-output.cjs",
       "src/pro/session-shell.cjs",
       "src/pro/session-log.cjs",
-      "src/pro/session-engine.cjs"
+      "src/pro/session-engine.cjs",
+      "src/pro/session-runner.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
