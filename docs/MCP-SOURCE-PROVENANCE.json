@@ -138,7 +138,8 @@
       "src/pro/session-log.cjs",
       "src/pro/session-engine.cjs",
       "src/pro/session-runner.cjs",
-      "src/pro/session-reader.cjs"
+      "src/pro/session-reader.cjs",
+      "src/pro/session-manager.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

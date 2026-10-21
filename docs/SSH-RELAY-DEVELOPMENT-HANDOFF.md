@@ -357,3 +357,12 @@
 - 节点间进程参数/TaskManager/独立宿主七项组合、执行器故障/归属/宿主八项组合和只读查询/日志七项组合通过。查询检查确认 owner 隔离、授权撤销拒绝、查询不改写运行日志和 shell 丢失后历史结果保留。Windows 参数检查是字符串检查，不是 Windows 原生进程证明。
 - 仍未接 SessionManager 创建/认证 inbox 提交与 Far RPC/MCP；sessionResume 继续 false。独立宿主真实持久 shell 在本环境不可证明，必须保留拒绝能力，不能放松进程身份校验。
 - 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：23ddaf3b709dd534dea1127a13a48eac693cbd07。
+
+## 2026-10-21 15:03（北京时间）内部 SessionManager 源码
+
+- 新增 session-manager.cjs，绑定 Far deviceId 与逐调用 controller 授权；会话 ID/规范化 startup cwd 幂等，先持久 session.json，再只 spawn 一次独立宿主。重复创建和 Manager 重启只查询原目录，不重新创建 shell；进程身份不可证明时拒绝新会话。
+- 命令 intent 先保存摘要与请求 ID，再发布一次私有 inbox；重复请求只查询旧记录。输入变化拒绝冲突；中断发布或 inbox/结果均缺失时返回 unknown，不重新发布或执行。私有 request metadata 不保存原命令。
+- 对创建记录和请求 inbox 分别加 64/10000 的有界容量；这是内部初始容量，不代表已完成长期清理策略。新增 startup metadata 校验及 null 字节输入拒绝；日志分页复用只读 owner 查询。
+- 节点间五项 Manager/Reader/宿主组合通过，覆盖创建及重启不 respawn、输入冲突、owner 隔离、丢失 inbox 不重发、不可证明身份不 spawn 和宿主实际拒绝检查。Manager spawn 使用测试桩，不能称实际独立会话功能已通过。
+- 下一步：Far control 认证 dispatch、撤销 owner 后关闭、near/MCP 原 session 工具适配、session 结果保留清理及真实平台运行。当前 Manager 未挂到 Agent，sessionResume 仍为 false。
+- 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：654e018c5e6a431fe918981929c395f8fa11f1a1。
