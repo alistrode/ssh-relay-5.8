@@ -29,6 +29,7 @@ const { TaskManager } = require("./tasks.cjs");
 const { SessionManager } = require("./session-manager.cjs");
 const { dispatchFarControl } = require("./far-control.cjs");
 const { Operations } = require("./operations.cjs");
+const { NearSessions } = require("./near-sessions.cjs");
 const { publicFailure } = require("./task-result.cjs");
 const { jobCatalog } = require("./task-jobs.cjs");
 class Agent {
@@ -113,6 +114,7 @@ class Agent {
     if (this.role === "near") {
       recoverPairTransactions(this);
       this.operations = new Operations(this);
+      this.sessions = new NearSessions(this);
     }
     if (this.role === "far") this.taskManager = new TaskManager({
       dir: this.file("operations"), deviceId: this.identity.deviceId, bootId: this.bootId,
@@ -846,6 +848,21 @@ class Agent {
         }
         return value;
       };
+      if (this.role === "near" && route === "/v1/sessions" && req.method === "POST") {
+        reply(200, this.sessions.register(data)); return;
+      }
+      if (this.role === "near" && route === "/v1/sessions" && req.method === "GET") {
+        reply(200, this.sessions.list()); return;
+      }
+      if (this.role === "near" && /^\/v1\/sessions\/ssh_[a-f0-9-]+\/requests$/.test(route)) {
+        const key = route.split("/")[3];
+        if (req.method === "POST") { reply(200, this.sessions.registerRequest(key, data)); return; }
+        if (req.method === "GET") { reply(200, this.sessions.requests(key)); return; }
+      }
+      if (this.role === "near" && req.method === "GET" && /^\/v1\/sessions\/ssh_[a-f0-9-]+$/.test(route)) {
+        reply(200, await this.sessions.get(route.split("/")[3], { ...pageParams(),
+          ...(apiUrl.searchParams.has("requestId") ? { requestId: apiUrl.searchParams.get("requestId") } : {}) })); return;
+      }
       if (this.role === "near" && req.method === "POST" && route === "/v1/operations") {
         value = this.operations.register(data);
         reply(200, value); return;

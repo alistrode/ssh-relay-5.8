@@ -166,6 +166,11 @@ async function ensureAgent(options = {}) {
   client.disconnect = (deviceId, requestId) => client.request("POST",
     "/v1/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });
   client.registerOperation = (input) => client.request("POST", "/v1/operations", input);
+  client.registerSession = input => client.request("POST", "/v1/sessions", input);
+  client.sessions = () => client.request("GET", "/v1/sessions");
+  client.session = (id, params = {}) => client.request("GET", "/v1/sessions/" + encodeURIComponent(id) + "?" + new URLSearchParams(params));
+  client.registerSessionRequest = (id, input) => client.request("POST", "/v1/sessions/" + encodeURIComponent(id) + "/requests", input);
+  client.sessionRequests = id => client.request("GET", "/v1/sessions/" + encodeURIComponent(id) + "/requests");
   client.markOperationDispatch = (key) => client.request("POST", "/v1/operations/" + encodeURIComponent(key) + "/dispatch", {});
   client.operationNotStarted = (key) => client.request("POST", "/v1/operations/" + encodeURIComponent(key) + "/not-started", {});
   client.operations = (params = {}) => client.request("GET", "/v1/operations?" + new URLSearchParams(params));

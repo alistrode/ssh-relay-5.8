@@ -88,15 +88,16 @@ class NearSessions {
         throw failure("CONTROL_RESULT_INVALID", "Remote session response identity is invalid");
       if (requestId && value.stdout && value.stderr) validateTaskPage({ ...value, operationId: requestId },
         { ...params, operationId: requestId, deviceId: record.deviceId });
-      if (requestId && (! ["submitted", "pending", "accepted", "running", "completed", "failed", "unknown", "lost"].includes(value.state) ||
+      if (requestId && (!["submitted", "pending", "accepted", "running", "completed", "failed", "unknown", "lost"].includes(value.state) ||
           typeof value.completed !== "boolean" ||
+          (request.kind === "send" && ["completed", "failed"].includes(value.state) !== value.completed) ||
           (value.completed && !(request.kind === "close" && value.state === "lost" && value.stopRequested === true) &&
             (!value.result || !value.stdout || !value.stderr || !["completed", "failed"].includes(value.state)))))
         throw failure("CONTROL_RESULT_INVALID", "Remote session completion metadata is invalid");
       if (!requestId && !["starting", "open", "busy", "unknown", "lost", "closed"].includes(value.state))
         throw failure("CONTROL_RESULT_INVALID", "Remote session state is invalid");
       if (!requestId) { record.state = value.state; record.observedAt = Date.now(); durableWrite(this.file(id), record); }
-      return { ...value, id, remoteSessionId: record.remoteSessionId };
+      return { ...this.public(record), ...value, id, remoteSessionId: record.remoteSessionId };
     } catch (error) { return { id, deviceId: record.deviceId, remoteSessionId: record.remoteSessionId,
       requestId: params.requestId, state: "unknown", completed: false, error: publicFailure(error) }; }
   }

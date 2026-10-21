@@ -142,7 +142,8 @@
       "src/pro/session-manager.cjs",
       "src/pro/far-control.cjs",
       "src/pro/session-spec.cjs",
-      "src/pro/near-sessions.cjs"
+      "src/pro/near-sessions.cjs",
+      "src/pro/session-call.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
