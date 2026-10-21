@@ -132,9 +132,10 @@ function healthy() {
     result.sourceHash = hashSource(); save();
     if (windows) {
       // Restrict only this freshly created fixture, never an existing user profile.
-      const script = "$ErrorActionPreference='Stop'; $user=[Security.Principal.WindowsIdentity]::GetCurrent().User; $acl=New-Object Security.AccessControl.DirectorySecurity; $acl.SetOwner($user); $acl.SetAccessRuleProtection($true,$false); $rule=New-Object Security.AccessControl.FileSystemAccessRule($user,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $acl.AddAccessRule($rule); Set-Acl -LiteralPath $env:RELAY_HOUR_NEW_FIXTURE -AclObject $acl";
+      const script = "$ErrorActionPreference='Stop'; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; & icacls.exe $env:RELAY_HOUR_NEW_FIXTURE /inheritance:r /grant:r ($sid + ':(OI)(CI)F'); if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}";
       const setup = cp.spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
         { env: { ...process.env, RELAY_HOUR_NEW_FIXTURE: root }, encoding: 'utf8', timeout: 30000 });
+      if (setup.status !== 0) console.error('FIXTURE SETUP', setup.error?.message || setup.stderr.slice(0, 3000));
       assert.equal(setup.status, 0, 'Could not create an account-private Windows test fixture');
     }
     far = new Agent({ role: 'far', dir: path.join(root, 'far'), allowCloudSelfTest: true, brokerUrl: broker });
