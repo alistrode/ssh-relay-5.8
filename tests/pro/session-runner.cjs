@@ -23,3 +23,16 @@ test("independent session runner refuses an unverifiable PID namespace before sh
   assert.equal(fs.existsSync(path.join(dir, "engine.lock")), false);
   assert.equal(fs.existsSync(path.join(dir, "commands")), false);
 });
+test("revocation before runner startup forbids shell creation", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-session-revoked-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const sessionId = crypto.randomUUID(), owner = crypto.randomUUID();
+  fs.writeFileSync(path.join(dir, "session.json"), JSON.stringify({ schemaVersion: 1, sessionId, owner,
+    deviceId: crypto.randomUUID(), platform: process.platform === "win32" ? "windows" : "linux", osBoot: systemBootId() }), { mode: 0o600 });
+  fs.writeFileSync(path.join(dir, "revoke.json"), JSON.stringify({ sessionId, owner, requestId: crypto.randomUUID() }), { mode: 0o600 });
+  const result = cp.spawnSync(process.execPath, [path.resolve(__dirname, "../../src/pro/session-runner.cjs"), dir],
+    { timeout: 10000, encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+  assert.equal(result.status, 1);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "runner-error.json"), "utf8")).errorCode, "AUTH_REVOKED");
+  assert.equal(fs.existsSync(path.join(dir, "engine.lock")), false);
+});

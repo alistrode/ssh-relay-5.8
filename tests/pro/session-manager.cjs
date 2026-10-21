@@ -40,3 +40,13 @@ test("unprovable process identity refuses a new session without spawn", t => {
   assert.equal(f.spawns(), 0);
   assert.equal(fs.existsSync(path.join(f.dir, f.sessionId)), false);
 });
+test("revocation remains idempotent after authorization removal and scopes the original owner", t => {
+  const f = fixture(t); f.manager.create(f.owner, { sessionId: f.sessionId });
+  const other = crypto.randomUUID(), otherId = crypto.randomUUID(); f.manager.create(other, { sessionId: otherId });
+  f.manager.authorized = () => false;
+  const first = f.manager.revoke(f.owner), second = f.manager.revoke(f.owner);
+  assert.equal(first.length, 1); assert.equal(first[0].state, "close_requested");
+  assert.equal(second[0].requestId, first[0].requestId);
+  assert.equal(fs.existsSync(path.join(f.dir, otherId, "revoke.json")), false);
+  assert.throws(() => f.manager.status(f.owner, f.sessionId), { code: "AUTH_REVOKED" });
+});

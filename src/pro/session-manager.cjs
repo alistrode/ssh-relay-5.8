@@ -98,5 +98,27 @@ class SessionManager {
     return { sessionId, requestId, state: record.state === "prepared" || !inboxPresent ||
       !this.status(owner, sessionId).shellAlive ? "unknown" : "pending", completed: false };
   }
+  revoke(owner) {
+    operationId(owner);
+    const results = [];
+    for (const sessionId of fs.readdirSync(this.dir)) {
+      if (!/^[a-f0-9-]{36}$/.test(sessionId)) continue;
+      const dir = this.directory(sessionId);
+      let owned = false;
+      try {
+        const config = privateJSON(path.join(dir, "session.json"), null);
+        if (!config || config.owner !== owner || config.deviceId !== this.deviceId) continue;
+        owned = true;
+        const file = path.join(dir, "revoke.json"), existing = privateJSON(file, null);
+        if (existing && (existing.owner !== owner || existing.sessionId !== sessionId))
+          throw failure("SESSION_CORRUPT", "Session revocation identity is invalid");
+        const record = existing || { owner, sessionId, requestId: crypto.randomUUID(), createdAt: Date.now() };
+        operationId(record.requestId);
+        if (!existing) durableWrite(file, record);
+        results.push({ sessionId, requestId: record.requestId, state: "close_requested" });
+      } catch { if (owned) results.push({ sessionId, state: "unknown", errorCode: "SESSION_REVOCATION_FAILED" }); }
+    }
+    return results;
+  }
 }
 module.exports = { SessionManager };

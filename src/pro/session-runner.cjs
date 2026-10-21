@@ -14,6 +14,16 @@ async function run(directory) {
   for (const name of ["sessionId", "deviceId", "owner"]) operationId(config[name]);
   const platform = process.platform === "win32" ? "windows" : process.platform === "linux" ? "linux" : null;
   if (!platform || config.platform !== platform) throw failure("SESSION_INVALID", "Session platform differs from the runner platform");
+  const revocationFile = path.join(directory, "revoke.json");
+  function revoked() {
+    const record = privateJSON(revocationFile, null);
+    if (!record) return null;
+    if (record.owner !== config.owner || record.sessionId !== config.sessionId)
+      throw failure("SESSION_INVALID", "Session revocation identity is invalid");
+    operationId(record.requestId);
+    return record;
+  }
+  if (revoked()) throw failure("AUTH_REVOKED", "Session controller authorization was revoked");
   const osBoot = systemBootId(), identity = processIdentity(process.pid);
   if (!identity || !osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session runner process identity cannot be verified");
   if (config.osBoot !== osBoot) throw failure("SESSION_LOST", "Session belongs to a previous system boot");
@@ -55,6 +65,13 @@ async function run(directory) {
     if (polling || finishing) return;
     polling = true;
     try {
+      const revocation = revoked();
+      if (revocation) {
+        engine.fail("AUTH_REVOKED"); finishing = true;
+        durableWrite(path.join(directory, "revoke-result.json"), { owner: config.owner, sessionId: config.sessionId,
+          requestId: revocation.requestId, state: "lost", stopRequested: true, observedAt: Date.now() });
+        return;
+      }
       const names = fs.readdirSync(inbox);
       if (names.length > 64) { engine.close(config.owner); finishing = true; return; }
       for (const name of names) {
@@ -91,7 +108,7 @@ async function run(directory) {
 async function main(directory) {
   try { await run(directory); }
   catch (error) {
-    const known = new Set(["PROCESS_IDENTITY_UNAVAILABLE", "SESSION_INVALID", "SESSION_LOST", "SESSION_ENGINE_EXISTS"]);
+    const known = new Set(["PROCESS_IDENTITY_UNAVAILABLE", "SESSION_INVALID", "SESSION_LOST", "SESSION_ENGINE_EXISTS", "AUTH_REVOKED"]);
     try { durableWrite(path.join(path.resolve(directory), "runner-error.json"), {
       errorCode: known.has(error.code) ? error.code : "SESSION_RUNNER_FAILED", finishedAt: Date.now() }); } catch {}
     process.exitCode = 1;

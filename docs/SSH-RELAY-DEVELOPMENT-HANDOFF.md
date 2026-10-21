@@ -366,3 +366,13 @@
 - 节点间五项 Manager/Reader/宿主组合通过，覆盖创建及重启不 respawn、输入冲突、owner 隔离、丢失 inbox 不重发、不可证明身份不 spawn 和宿主实际拒绝检查。Manager spawn 使用测试桩，不能称实际独立会话功能已通过。
 - 下一步：Far control 认证 dispatch、撤销 owner 后关闭、near/MCP 原 session 工具适配、session 结果保留清理及真实平台运行。当前 Manager 未挂到 Agent，sessionResume 仍为 false。
 - 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：654e018c5e6a431fe918981929c395f8fa11f1a1。
+
+## 2026-10-21 15:08（北京时间）会话撤销源码与架构必要性边界
+
+- SessionManager 增加可信内部 revoke(owner)，授权移除后仍可按原 owner 写私有撤销标记；重复撤销保留同一 requestId，不影响其他 owner。返回 close_requested，不声称进程树已停止或副作用已撤销。
+- 独立宿主在启动 shell 前检查撤销标记，并在处理新 inbox 前轮询检查；撤销后未决命令 unknown、会话 lost，写 stopRequested 观察记录。Windows 实际终止完成尚未证明，不返回 cancelled。
+- 节点间六项 Manager/宿主组合通过，包含授权移除后幂等撤销、owner 隔离和实际启动已撤销宿主时拒绝创建 shell。其余 Manager spawn 使用测试桩，不能当作原生持久会话通过。
+- 术语已澄清：近端/远端 Agent 都是后台服务，不是 AI Agent 或提示词工程。用户确认此前仅为名称误会，要求继续按既定文档开发，不改变架构目标或实施顺序。
+- 下一步仍是 Far 认证路由、撤销接线及原 MCP session 适配。公开 sessionResume 继续 false；本批未把内部服务暴露成可用功能。
+- 本上传节点只保存源码和交接，不运行验证。上一成功远端提交：1216efe2faaa3256ae7ef9fad455740bac2d924b。
+- 上次上传调用被用户消息中断，本段不能视为已推送成功；接续时补交并以实际远端提交号确认。
