@@ -405,3 +405,13 @@
 - 节点间三项调用器/近端记录组合通过，覆盖登记先于提交、一次提交后只 get、UTF-8、错目标和缺结果拒绝、丢失确认不重试；另共享 SDK/近端记录/Far 路由三项组合通过，Agent 修改通过语法检查。
 - 当前原 MCP sessions.js 仍是旧实现，下一步切换 facade 并保留 legacy 路径，同时让适配器退出只断开订阅、不关闭持久会话。尚未做真实 SSH/MCP 或 Windows/原生 Linux 持久运行检查。
 - 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：198d2623407eb024c7e2e76ac6cacb1fa3de811b。
+
+## 2026-10-21 15:28（北京时间）原 MCP 会话 facade 源码接线
+
+- 原 sessions.js 变为 facade，已有实现原样保存在 legacy-sessions.js 并登记来源。新目标按 sessionProtocol/sessionResume 走持久服务，先登记稳定 ID 再只 create 一次；旧目标继续旧 shell，并明确 persistent=false。
+- start/send/list/close 仍保留原工具 schema；列表可找回近端记住的 ID，发送前核对固定设备与上次请求终结，不对 unknown 自动重发。MCP 退出仅释放持久会话的本地引用，不关闭远端宿主；legacy 会话仍按原方式关闭。
+- ssh_operation_status 新增可选 sessionId，和 requestId 一起查询原命令及字节分页；未给 requestId 时列原请求 ID。普通 operationId 逻辑保留，取消会话继续使用原 ssh_session_close。
+- 原 close-all 改为最多四个并发、逐项返回未知结果，不因一台失败丢弃其他结果。会话 cwd/平台随可信状态保存，平台改变拒绝继续采用旧会话。
+- 节点间十项调用器/近端记录/只读查询/日志组合通过；facade、handlers/server 修改通过语法检查。facade 本身尚未做依赖隔离运行检查，更未做实际 SSH/MCP 或原生平台集成，上传不以这些待办通过为条件。
+- 下一步补 facade 的关闭/重启/未知结果隔离检查及并发序号预留；长期清理、实际平台运行、多阶段业务和文件恢复仍未完成。
+- 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：ed66cb478a98c42ebbef226db02f8d20fc0e1487。

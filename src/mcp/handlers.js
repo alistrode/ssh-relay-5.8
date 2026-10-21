@@ -11,6 +11,8 @@ import {
   sendSession,
   sessionInfo,
   closeSession,
+  getSession,
+  listSessions,
 } from "./sessions.js";
 import { tunnels, createTunnel, tunnelInfo, closeTunnel } from "./tunnels.js";
 import { shellQuote } from "./shell-quote.js";
@@ -407,8 +409,7 @@ export const handlers = {
   ssh_sync: sync,
   ssh_session_start: (a) => startSession(a.server, a.name),
   ssh_session_send: async (a) => {
-    const s = sessions.get(a.session);
-    if (!s) throw new Error("Unknown session");
+    const s = await getSession(a.session);
     const cmd = commandAlias.expandCommandAlias(a.command);
     policy(s.server, "ssh_session_send", cmd);
     const r = await sendSession(a.session, cmd, a.timeout);
@@ -422,17 +423,22 @@ export const handlers = {
   },
   ssh_session_list: async (a) => ({
     success: true,
-    sessions: [...sessions.values()]
-      .filter((s) => !a.server || s.server.includes(a.server.toLowerCase()))
-      .map(sessionInfo),
+    sessions: (await listSessions())
+      .filter((s) => !a.server || s.server.includes(a.server.toLowerCase())),
   }),
-  ssh_session_close: async (a) => ({
-    success: true,
-    closed:
-      a.session === "all"
-        ? [...sessions.keys()].map(closeSession)
-        : [closeSession(a.session)],
-  }),
+  ssh_session_close: async (a) => {
+    if (a.session === "all") await listSessions();
+    const ids = a.session === "all" ? [...sessions.keys()] : [a.session], closed = new Array(ids.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => {
+      while (next < ids.length) {
+        const index = next++;
+        try { closed[index] = await closeSession(ids[index]); }
+        catch (error) { closed[index] = { id: ids[index], closed: false, state: "unknown", errorCode: error.code || "SESSION_CLOSE_FAILED" }; }
+      }
+    }));
+    return { success: closed.every(value => value.closed === true), closed };
+  },
   ssh_health_check: health,
   ssh_service_status: serviceStatus,
   ssh_process_manager: processManager,
@@ -690,7 +696,7 @@ export const handlers = {
 };
 export async function invoke(name, args) {
   let server = args.server;
-  if (name === "ssh_session_send") server = sessions.get(args.session)?.server;
+  if (name === "ssh_session_send") server = (await getSession(args.session)).server;
   // Apply policies centrally to every remote operation; command-bearing handlers evaluate expanded aliases again.
   if (server) {
     const config = serverConfig(server);

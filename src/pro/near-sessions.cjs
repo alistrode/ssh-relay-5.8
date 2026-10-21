@@ -27,6 +27,7 @@ class NearSessions {
     const id = sessionKey(params.id), deviceId = operationId(params.deviceId);
     if (!this.agent.registry()[deviceId]) throw failure("DEVICE_NOT_FOUND", "Unknown paired device");
     if (typeof params.server !== "string" || !params.server || params.server.length > 128 ||
+        (params.platform !== undefined && !["linux", "windows"].includes(params.platform)) ||
         (params.name !== undefined && (typeof params.name !== "string" || params.name.length > 256)))
       throw failure("SESSION_INVALID", "Invalid session display metadata");
     if (fs.existsSync(this.file(id))) {
@@ -37,6 +38,7 @@ class NearSessions {
     if (fs.readdirSync(this.dir).length >= 10000) throw failure("SESSION_CAPACITY", "Remembered session capacity reached");
     folder(this.directory(id)); folder(path.join(this.directory(id), "requests"));
     const record = { id, remoteSessionId: id.slice(4), deviceId, server: params.server, name: params.name || params.server,
+      platform: params.platform || "unknown",
       profileId: this.agent.identity.deviceId, createdAt: Date.now(), state: "registered" };
     durableWrite(this.file(id), record); return this.public(record);
   }
@@ -98,7 +100,7 @@ class NearSessions {
         throw failure("CONTROL_RESULT_INVALID", "Remote session state is invalid");
       if (!requestId) { record.state = value.state; record.observedAt = Date.now(); durableWrite(this.file(id), record); }
       return { ...this.public(record), ...value, id, remoteSessionId: record.remoteSessionId };
-    } catch (error) { return { id, deviceId: record.deviceId, remoteSessionId: record.remoteSessionId,
+    } catch (error) { return { ...this.public(record), id, deviceId: record.deviceId, remoteSessionId: record.remoteSessionId,
       requestId: params.requestId, state: "unknown", completed: false, error: publicFailure(error) }; }
   }
 }

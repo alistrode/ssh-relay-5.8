@@ -120,9 +120,10 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_conne
   });
 if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_operation_status")))
   server.registerTool("ssh_operation_status", {
-    description: "Query a persistent operation by operationId, or list recent operations when omitted. Output is bounded byte pages with base64 encoding and next offsets. action=cancel requests cancellation; it does not undo prior effects.",
+    description: "Query an operation by operationId, or a session command by sessionId and requestId. Session query without requestId lists saved requests. Output uses bounded base64 byte pages. action=cancel applies to operations; use ssh_session_close for sessions.",
     inputSchema: {
       operationId: z.string().uuid().optional(),
+      sessionId: z.string().regex(/^ssh_[a-f0-9-]{36}$/).optional(),
       action: z.enum(["status", "cancel"]).optional(),
       requestId: z.string().uuid().optional(),
       server: z.string().optional(),
@@ -135,6 +136,12 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_opera
     try {
       const result = await withServerSnapshot(async () => {
         const client = await localAgentClient();
+        if (args.sessionId) {
+          if (args.operationId || args.action === "cancel") throw Error("Use a session query or an operation query separately");
+          if (!args.requestId) return { ...(await client.session(args.sessionId)), ...(await client.sessionRequests(args.sessionId)) };
+          return client.session(args.sessionId, Object.fromEntries(Object.entries({ requestId: args.requestId,
+            stdoutOffset: args.stdoutOffset, stderrOffset: args.stderrOffset, limitBytes: args.limitBytes }).filter(([, value]) => value !== undefined)));
+        }
         if (args.action === "cancel") {
           if (!args.operationId) throw Error("operationId is required for cancellation");
           return client.cancelOperation(args.operationId, args.requestId || crypto.randomUUID());

@@ -32,7 +32,8 @@ class SessionReader {
     const session = this.lookup(owner, sessionId);
     if (!requestId) return { sessionId, deviceId: this.deviceId, state: session.state,
       shellAlive: !["unknown", "lost", "closed"].includes(session.state),
-      nextSequence: session.journal.record.nextSequence };
+      nextSequence: session.journal.record.nextSequence, platform: session.journal.platform,
+      cwd: session.journal.record.cwd || null, createdAt: session.journal.record.createdAt };
     const command = session.journal.get(owner, operationId(requestId));
     const directory = session.journal.directory(requestId);
     const page = (name, offset) => {

@@ -160,7 +160,9 @@ class SessionJournal {
     this.validateResult(record, result);
     durableWrite(this.file(requestId, "result.json"), result);
     record.state = result.state; durableWrite(this.file(requestId, "manifest.json"), record);
-    this.record.activeRequestId = null; this.record.state = "open"; this.save();
+    this.record.activeRequestId = null; this.record.state = "open";
+    if (cwd !== undefined) this.record.cwd = cwd;
+    this.save();
     fs.rmSync(this.file(requestId, "input.json"), { force: true });
     return this.public(record);
   }

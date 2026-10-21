@@ -156,9 +156,15 @@
       "src/mcp/prompts.js",
       "src/remote.cjs",
       "src/mcp/jobs.js",
-      "src/mcp/jobs/schedule.cjs"
+      "src/mcp/jobs/schedule.cjs",
+      "src/mcp/sessions.js"
     ],
     "dependencies": "No new third-party dependency or replacement of OPAQUE, SSH or MQTT protocols.",
-    "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run."
+    "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run.",
+    "legacySessionCopy": {
+      "path": "src/mcp/legacy-sessions.js",
+      "source": "src/mcp/sessions.js@fab86aa83f3d064426f4533b7efb139d7df85d28",
+      "origin": "Unchanged copy of existing project compatibility implementation; not new third-party source."
+    }
   }
 }
