@@ -295,3 +295,12 @@
 - 节点间最近组合十四项通过，涵盖上述编排、并发上下文、归属/清理和任务轮询。另编排/分组/普通父操作十一项组合通过。这些均为本地受控检查，真实 SSH/MCP、五机和 Windows/原生 Linux 运行仍未验证。
 - 下一步继续第二阶段 session runner 与多阶段父操作；现有 session 仍依赖原 MCP shell，退出或断线不可恢复，文件恢复第三阶段尚未开始。
 - 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：2570bd167114b41f11b83c46ab48391fea9d624b。
+
+## 2026-10-21 14:36（北京时间）会话命令日志准备源码
+
+- 新增 session-journal.cjs，只实现远端独立会话 runner 将使用的私有命令日志，不创建 shell、不接控制 RPC、不改变 sessionResume=false 或原 session 工具行为。
+- 日志绑定 device/session/controller owner/platform/system boot；命令包含请求 ID 和严格递增序号，同 ID 同输入返回原记录、不同输入拒绝。一次性 execution.lock 在返回可执行输入前写入并 fsync；已认领请求不能再次认领。
+- 最终结果先持久保存再清理私有命令输入；重开日志只恢复既有结果，accepted/running 无结果记 unknown，不自动重跑。即使命令已完成也不推断原 shell 存活；system boot 变化禁止新命令并返回 SESSION_LOST。每会话最多一万条命令。
+- 节点间四项日志检查通过，覆盖幂等/冲突/owner、一次认领与命令序号、重开 unknown/boot lost、最终结果查询。这些仅为临时目录日志检查，未启动 shell 或模拟会话存活。
+- 下一步必须接独立 session runner 的单写者生命周期锁、进程身份核验、限额输出和协议，再允许恢复存活 shell；当前日志类本身不提供进程存活或多写者保证，不能单独对外启用会话恢复。原 MCP session 退出/断线仍不可恢复。
+- 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：fa5b398beeddeb05a9b31632db5202ce31d586b7。

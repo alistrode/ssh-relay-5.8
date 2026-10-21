@@ -131,7 +131,8 @@
       "src/pro/operation-groups.cjs",
       "src/mcp/operation-context.js",
       "src/mcp/group-operations.js",
-      "src/mcp/group-plan.js"
+      "src/mcp/group-plan.js",
+      "src/pro/session-journal.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
