@@ -211,6 +211,8 @@
       "ubuntu-24.04",
       "windows-2022"
     ],
-    "status": "Prepared; execution results tracked in development handoff"
+    "status": "Linux and Windows native acceptance passed, 10/10 each, no skips",
+    "verifiedCommit": "f95bf51388016b1da2c901a8aca623c8fc883bd5",
+    "workflowRun": "https://github.com/trlstdin/rororororo/actions/runs/39600492308"
   }
 }
