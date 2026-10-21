@@ -450,3 +450,11 @@
 - 这些不是实际 SSH/MCP 或 Windows/可证明 PID 的原生持久功能通过。会话命令与普通 TaskManager 的共享执行额度仍需接线，当前不能宣称所有命令统一满足默认并发二；会话端到端整体契约和平台验证仍待完成。
 - 下一步优先统一 Far 执行额度与恢复后的槽位记忆，再继续第二阶段多阶段父操作；文件恢复和运行包仍未交付。
 - 本上传节点只保存源码和交接，不运行验证。上一成功远端提交：3a5cb6aff89ec6681c2603edf21416e20a1b2208。
+
+## 2026-10-21 15:53（北京时间）共享执行调度器源码准备
+
+- 新增 execution-scheduler.cjs，默认两个共享槽位与 64 条等待额度，按全局 createdAt/固定 key 排序选择 task/session provider；provider 必须先持久执行 claim 才返回占位成功。调度器拒绝无效快照并防止重入重复派发。
+- TaskManager 增加可选 scheduler provider 接口，保留未配置时的原路径；队列容量和磁盘预留可计入共享状态，未知 active 继续占位。当前 Far Agent 尚未挂该调度器，SessionManager permit/恢复接线下一批完成；不能把准备源码当作共享额度已启用。
+- 节点间七项 TaskManager/调度器组合通过，覆盖全局先后次序、共享二槽、未知占位不释放、失败 start 和重入不超额，原 TaskManager 幂等/取消/不重放回归通过。provider 检查使用状态桩，非实际进程调度验证。
+- 下一步为会话派发加持久 permit，runner 无 permit 不执行；恢复时保留未知 permit，再把两个 provider 接到 Far Agent。关闭/撤销继续绕过业务额度。
+- 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：0588931a90650e6914ed1165acb922978c506649。

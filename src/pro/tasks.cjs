@@ -13,7 +13,7 @@ function failure(code, message, retryable = false) {
   return Object.assign(Error(message), { code, retryable });
 }
 class TaskManager {
-  constructor({ dir, deviceId, bootId, authorized, spawn = cp.spawn, processIdentityProvider = processIdentity }) {
+  constructor({ dir, deviceId, bootId, authorized, spawn = cp.spawn, processIdentityProvider = processIdentity, scheduler = null }) {
     this.dir = folder(path.resolve(dir));
     this.deviceId = operationId(deviceId);
     this.bootId = bootId;
@@ -25,6 +25,8 @@ class TaskManager {
     this.corrupt = new Set();
     this.stopping = false;
     this.recover();
+    this.scheduler = scheduler;
+    if (scheduler) scheduler.register("task", { snapshot: () => this.executionSnapshot(), start: request => this.startScheduled(request.key) });
   }
   directory(key) { return path.join(this.dir, operationId(key)); }
   file(key, name) { return path.join(this.directory(key), name); }
@@ -86,7 +88,7 @@ class TaskManager {
   }
   space() {
     const stat = fs.statfsSync(this.dir);
-    if (stat.bavail * stat.bsize < (this.active.size + 1) * 160 * 1024 * 1024)
+    if (stat.bavail * stat.bsize < ((this.scheduler?.activeCount() ?? this.active.size) + 1) * 160 * 1024 * 1024)
       throw failure("TASK_DISK_CAPACITY", "Insufficient free disk space for bounded task output", true);
   }
   lookup(owner, key, allowRevoked = false) {
@@ -130,6 +132,7 @@ class TaskManager {
     }
     this.cleanup();
     if (this.records.size + this.corrupt.size >= 10000 ||
+        (this.scheduler && this.scheduler.pendingCount() >= this.scheduler.queueLimit) ||
         [...this.records.values()].filter(record => record.state === "accepted").length >= 64)
       throw failure("TASK_CAPACITY", "Task queue or retained record capacity reached", true);
     this.space();
@@ -174,6 +177,22 @@ class TaskManager {
       });
     } catch { this.finishBeforeStart(record, "failed", "RUNNER_SPAWN_FAILED"); }
   }
+  executionSnapshot() {
+    return { active: this.active.size, queued: !this.identityAvailable || this.stopping ? [] :
+      [...this.records.values()].filter(record => record.state === "accepted").map(record => ({ key: record.operationId, createdAt: record.createdAt })) };
+  }
+  startScheduled(key) {
+    const record = this.records.get(key);
+    if (!record || record.state !== "accepted" || !this.identityAvailable || this.stopping) return false;
+    if (!this.authorized(record.owner)) { this.finishBeforeStart(record, "cancelled", "AUTH_REVOKED"); return false; }
+    try { this.start(record); return this.active.has(key); }
+    catch (error) {
+      if (error.code !== "TASK_DISK_CAPACITY") {
+        try { this.unknown(record, "TASK_START_FAILED", false); } catch { this.corrupt.add(key); }
+      }
+      return false;
+    }
+  }
   tick() {
     if (this.stopping) return;
     for (const key of [...this.active]) {
@@ -195,6 +214,7 @@ class TaskManager {
           this.unknown(record, "RUNNER_HEARTBEAT_LOST", true);
       } catch { this.corrupt.add(key); }
     }
+    if (this.scheduler) { this.scheduler.tick(); return; }
     if (this.active.size >= 2 || !this.identityAvailable) return;
     const queued = [...this.records.values()].filter(record => record.state === "accepted")
       .sort((a, b) => a.createdAt - b.createdAt || a.operationId.localeCompare(b.operationId));
