@@ -140,6 +140,11 @@ function healthy() {
     }
     far = new Agent({ role: 'far', dir: path.join(root, 'far'), allowCloudSelfTest: true, brokerUrl: broker });
     near = new Agent({ role: 'near', dir: path.join(root, 'near'), allowCloudSelfTest: true, brokerUrl: broker });
+    if (windows) {
+      const script = "$ErrorActionPreference='Stop'; $user=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; $trusted=@($user,'S-1-5-18','S-1-5-32-544'); foreach($p in @('far','near')) { $acl=Get-Acl -LiteralPath (Join-Path $env:RELAY_HOUR_NEW_FIXTURE $p); $owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value; $bad=@($acl.Access | Where-Object { $_.AccessControlType -eq 'Allow' -and $trusted -notcontains $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value }); Write-Output ($p + ': trustedOwner=' + ($trusted -contains $owner) + ', untrustedAllows=' + $bad.Count) }";
+      const diagnostic = cp.spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { env: { ...process.env, RELAY_HOUR_NEW_FIXTURE: root }, encoding: 'utf8', timeout: 30000 });
+      console.log('FIXTURE ACL DIAGNOSTIC', diagnostic.status, diagnostic.stdout, diagnostic.stderr);
+    }
     far.emit = observe; near.emit = observe;
     await bounded(far.start()); await bounded(near.start());
     const offer = await bounded(request(path.join(root, 'far'), '/pair/create', {}));
