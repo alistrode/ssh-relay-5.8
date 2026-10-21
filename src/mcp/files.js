@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { uploadSnapshot } from "./file-transfers.js";
 import { sftp, sftpCall, connect } from "./transport.js";
 export async function remotePath(server, input) {
   if (typeof input !== "string" || input.includes("\0"))
@@ -14,6 +15,10 @@ export async function remotePath(server, input) {
 export async function upload(a) {
   const s = await sftp(a.server);
   const target = await remotePath(a.server, a.remotePath);
+  const conn = await connect(a.server);
+  if (conn.config.agentDeviceId && conn.config.capabilities.fileProtocol === 1 && fs.statSync(a.localPath).size <= 4096 * 1024 * 1024)
+    return uploadSnapshot(a.server, a.localPath, path.posix.join(
+      await sftpCall(s, "realpath", path.posix.dirname(target)), path.posix.basename(target)));
   await sftpCall(s, "fastPut", path.resolve(a.localPath), target);
   const info = await sftpCall(s, "stat", target);
   if (info.size !== fs.statSync(a.localPath).size)
@@ -266,3 +271,4 @@ async function syncInternal(a, check) {
     changes: plan,
   };
 }
+

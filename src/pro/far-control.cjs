@@ -13,9 +13,13 @@ function dispatchFarControl(agent, owner, method, params) {
     if (params.protocol !== 1) throw failure("CONTROL_UNSUPPORTED_PROTOCOL", "Unsupported control protocol");
     return { protocol: 1, deviceId: agent.identity.deviceId,
       capabilities: { persistentExec: agent.taskManager?.identityAvailable === true, taskProtocol: 1,
-        taskJobs: jobCatalog(), sessionProtocol: 1, sessionResume: agent.sessionManager?.identityAvailable === true,
+        taskJobs: jobCatalog(), fileProtocol: agent.remoteFiles ? 1 : undefined, sessionProtocol: 1, sessionResume: agent.sessionManager?.identityAvailable === true,
         recovery: "verified-live-runner", maxFrameBytes: 1048576, maxConcurrent: 4,
         maxOutputBytesPerStream: 67108864, maxPageBytesPerStream: 65536 } };
+  }
+  if (method.startsWith("file.")) {
+    if (!agent.remoteFiles) throw failure("CONTROL_UNAVAILABLE", "File transfer service is not ready");
+    return agent.remoteFiles.handle(owner, method, params);
   }
   if (method.startsWith("session.")) {
     if (!agent.sessionManager) throw failure("CONTROL_UNAVAILABLE", "Session manager is not ready");

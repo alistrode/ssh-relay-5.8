@@ -509,3 +509,13 @@
 - remote-files.cjs 准备 owner/device 绑定的 prepare/status/block/commit：同目录临时文件、权限/路径检查、块 hash 与 fsync 后确认、提交前完整 hash 与目标变化检查；commit 先落盘 committing 再替换，未知结果不盲目重放。reject/rename 使用无覆盖 link，临时链接保留，不自动删除。
 - 模块当前未路由到 Far Agent，也未公布能力；原 SFTP 路径仍使用既有代码。后续继续接线上传、近端恢复状态，再开发下载。代码限制与跨平台细节待全部实现后统一验证。
 - 按用户要求，本批没有运行验证。本上传节点只保存源码与来源/交接；上一提交 9e85ea844df689d7965a45d49ac6328419ff03a4。
+
+## 2026-10-21 16:40（北京时间）上传恢复接线；开发 75%
+
+- 当前 18/24 = 75%，按既有清单新增上传源快照、远端 prepare/块确认、远端完整 hash/提交三项实现接线；未验证。
+- 原 upload 在同设备新协议且大小不超过 4 GiB 时使用 snapshot → prepare/status → SFTP offset 写块 → 远端重新 hash/fsync 确认 → 完整 hash/commit；超出能力范围和旧端继续原 SFTP。文件路径参数保持原样，内部对相对路径解析真实父目录。
+- Far Agent 增加 RemoteFiles，signed owner RPC 路由 file.*；SSH 能力报告 fileProtocol。MCP 新增 file-transfers.js，原上传错误返回 transferId；ssh_operation_status 增加可选 transferId/server/resumeTransfer，状态查询不写入文件，显式 resume 才补传/提交。
+- 重连只读取同一 snapshot/transferId；已确认块再次远端校验，不盲信原确认。新 prepare 重试使用同一声明 hash；committing 状态不重放替换。当前仍不能从提交中断窗口自动证明 rename 结果，返回需检查状态。
+- 私有记录 1 MiB 上限要求将单次恢复上传限制为 4096 块，保留原 fastPut 大文件兼容路径。Windows 路径规范化新增实现但未实测。
+- 剩余 6 项：隧道恢复、订阅恢复、下载恢复、传输状态/手动资源管理整项、简短 skill、运行包整合。文件状态查询已接部分，但该整项未计完成。
+- 按用户要求未运行验证；本上传节点只保存源码、来源与交接。上一提交 26e0a9c5545430552f1d17d6a439c0ab64f75edb。

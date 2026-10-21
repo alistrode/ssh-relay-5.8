@@ -270,6 +270,7 @@ server.listen(config.sshPort, "127.0.0.1", () => {
       persistentExec: config.taskProtocol === 1 && config.persistentTasks === true && process.connected,
       taskProtocol: config.taskProtocol === 1 && process.connected ? 1 : 0,
       taskJobs: config.taskJobs || {},
+      fileProtocol: config.fileProtocol === 1 && process.connected ? 1 : 0,
       sessionProtocol: config.sessionProtocol === 1 && process.connected ? 1 : 0,
       sessionResume: config.sessionProtocol === 1 && config.persistentSessions === true && process.connected,
       version: 3,

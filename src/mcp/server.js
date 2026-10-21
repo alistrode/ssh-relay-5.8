@@ -1,3 +1,4 @@
+import { resumeUpload } from "./file-transfers.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -123,6 +124,8 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_opera
     description: "Query an operation by operationId, or a session command by sessionId and requestId. Session query without requestId lists saved requests. Output uses bounded base64 byte pages. action=cancel applies to operations; use ssh_session_close for sessions.",
     inputSchema: {
       operationId: z.string().uuid().optional(),
+      transferId: z.string().uuid().optional(),
+      resumeTransfer: z.boolean().optional(),
       sessionId: z.string().regex(/^ssh_[a-f0-9-]{36}$/).optional(),
       action: z.enum(["status", "cancel"]).optional(),
       requestId: z.string().uuid().optional(),
@@ -135,6 +138,10 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_opera
   }, async args => {
     try {
       const result = await withServerSnapshot(async () => {
+        if (args.transferId) {
+          if (!args.server || args.operationId || args.sessionId || args.action === "cancel") throw Error("Specify server and transferId for transfer status or resume");
+          return resumeUpload(args.server, args.transferId, { statusOnly: !args.resumeTransfer });
+        }
         const client = await localAgentClient();
         if (args.sessionId) {
           if (args.operationId || args.action === "cancel") throw Error("Use a session query or an operation query separately");
@@ -186,7 +193,7 @@ for (const { name, config } of catalog) {
               text: sanitized(
                 { success: false, error: error.message, tool: name,
                   code: error.code, retryable: error.retryable,
-                  connectionTaskId: error.connectionTaskId, operationId: error.operationId,
+                  transferId: error.transferId, connectionTaskId: error.connectionTaskId, operationId: error.operationId,
                   childOperationId: error.childOperationId, workflowOperationId: error.workflowOperationId, state: error.state, completed: error.completed },
                 args,
               ),

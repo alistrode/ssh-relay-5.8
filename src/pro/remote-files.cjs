@@ -17,6 +17,7 @@ class RemoteFiles {
     return r;
   }
   target(input) {
+    if (process.platform === "win32" && typeof input === "string") input = input.replace(/^\/([a-z]:\/)/i, "$1");
     if (typeof input !== "string" || !input || input.includes("\0") || !path.isAbsolute(input)) fail("TRANSFER_PATH_INVALID", "Transfer requires an absolute target");
     const target = path.resolve(input), parent = path.dirname(target);
     const realParent = fs.realpathSync(parent);
@@ -31,7 +32,7 @@ class RemoteFiles {
   }
   prepare(owner, p) {
     this.check(owner); operationId(p.transferId);
-    if (!Number.isSafeInteger(p.size) || p.size < 0 || p.size > 8192 * BLOCK_BYTES || !/^[a-f0-9]{64}$/.test(p.sha256) ||
+    if (!Number.isSafeInteger(p.size) || p.size < 0 || p.size > 4096 * BLOCK_BYTES || !/^[a-f0-9]{64}$/.test(p.sha256) ||
         !Array.isArray(p.blocks) || p.blocks.length !== Math.ceil(p.size / BLOCK_BYTES) || p.blocks.some(h => !/^[a-f0-9]{64}$/.test(h)) ||
         !["overwrite", "reject", "rename"].includes(p.policy)) fail("TRANSFER_INVALID", "Invalid transfer declaration");
     const inputHash = digest(Buffer.from(JSON.stringify({ target: p.target, size: p.size, sha256: p.sha256, blocks: p.blocks, policy: p.policy })));

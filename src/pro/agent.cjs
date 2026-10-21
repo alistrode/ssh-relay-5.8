@@ -27,6 +27,7 @@ const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
 const { SessionManager } = require("./session-manager.cjs");
+const { RemoteFiles } = require("./remote-files.cjs");
 const { ExecutionScheduler } = require("./execution-scheduler.cjs");
 const { dispatchFarControl } = require("./far-control.cjs");
 const { Operations } = require("./operations.cjs");
@@ -126,6 +127,10 @@ class Agent {
       dir: this.file("sessions"), scheduler: this.executionScheduler, deviceId: this.identity.deviceId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
+    if (this.role === "far") this.remoteFiles = new RemoteFiles({
+      dir: this.file("transfers"), deviceId: this.identity.deviceId,
+      authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
+    });
     this.server = http.createServer((req, res) => this.api(req, res));
     await new Promise((resolve, reject) => {
       this.server.once("error", reject);
@@ -184,6 +189,7 @@ class Agent {
       taskProtocol: 1,
       persistentTasks: this.taskManager?.identityAvailable === true,
       taskJobs: jobCatalog(),
+      fileProtocol: this.remoteFiles ? 1 : undefined,
       sessionProtocol: 1,
       persistentSessions: this.sessionManager?.identityAvailable === true,
       clockSkewCorrection: true,
