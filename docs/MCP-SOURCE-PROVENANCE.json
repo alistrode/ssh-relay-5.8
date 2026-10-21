@@ -145,7 +145,9 @@
       "src/pro/near-sessions.cjs",
       "src/pro/session-call.cjs",
       "src/pro/session-retention.cjs",
-      "src/pro/execution-scheduler.cjs"
+      "src/pro/execution-scheduler.cjs",
+      "src/pro/session-executions.cjs",
+      "src/pro/manual-logs.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
@@ -167,6 +169,7 @@
       "path": "src/mcp/legacy-sessions.js",
       "source": "src/mcp/sessions.js@fab86aa83f3d064426f4533b7efb139d7df85d28",
       "origin": "Unchanged copy of existing project compatibility implementation; not new third-party source."
-    }
+    },
+    "userOverride": "2026-10-21: no disk-capacity inspection, no automatic expiry/deletion or log rotation; manual diagnostic-log clear UI only. Health tool retains entry with empty disk field."
   }
 }

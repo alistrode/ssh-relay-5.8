@@ -86,11 +86,6 @@ class TaskManager {
     record.updatedAt = Date.now(); this.save(record);
     if (!reserveSlot) this.active.delete(record.operationId);
   }
-  space() {
-    const stat = fs.statfsSync(this.dir);
-    if (stat.bavail * stat.bsize < ((this.scheduler?.activeCount() ?? this.active.size) + 1) * 160 * 1024 * 1024)
-      throw failure("TASK_DISK_CAPACITY", "Insufficient free disk space for bounded task output", true);
-  }
   lookup(owner, key, allowRevoked = false) {
     operationId(owner); operationId(key);
     if (!allowRevoked && !this.authorized(owner))
@@ -130,12 +125,10 @@ class TaskManager {
       if (actual !== spec.sourceHash)
         throw failure("JOB_VERSION_MISMATCH", "Controlled job version differs from the requested module");
     }
-    this.cleanup();
     if (this.records.size + this.corrupt.size >= 10000 ||
         (this.scheduler && this.scheduler.pendingCount() >= this.scheduler.queueLimit) ||
         [...this.records.values()].filter(record => record.state === "accepted").length >= 64)
       throw failure("TASK_CAPACITY", "Task queue or retained record capacity reached", true);
-    this.space();
     const directory = this.directory(key);
     try { fs.mkdirSync(directory, { mode: 0o700 }); }
     catch (error) {
@@ -154,7 +147,6 @@ class TaskManager {
   }
   start(record) {
     const key = record.operationId;
-    this.space();
     record.state = "starting"; record.agentBootId = this.bootId; record.launchAt = Date.now();
     record.updatedAt = Date.now(); this.save(record); this.active.add(key);
     let spawned = false, child;
@@ -275,8 +267,7 @@ class TaskManager {
     operationId(owner); operationId(params.operationId); operationId(params.requestId);
     if (!this.records.has(params.operationId) && !this.corrupt.has(params.operationId)) {
       if (!allowRevoked && !this.authorized(owner)) throw failure("AUTH_REVOKED", "Controller authorization is no longer valid");
-      this.cleanup();
-      if (this.records.size + this.corrupt.size >= 10000)
+        if (this.records.size + this.corrupt.size >= 10000)
         throw failure("TASK_CAPACITY", "Task cancellation record capacity reached", true);
       const key = params.operationId, directory = this.directory(key);
       try { fs.mkdirSync(directory, { mode: 0o700 }); }
@@ -312,14 +303,6 @@ class TaskManager {
       catch { results.push({ operationId: record.operationId, state: "unknown", cancelRequested: false }); }
     }
     return results;
-  }
-  cleanup() {
-    for (const [key, record] of this.records) {
-      if (!FINAL.has(record.state) || record.reserveSlot || this.active.has(key) ||
-          Date.now() - (record.updatedAt || record.createdAt) < 7 * 86400000) continue;
-      fs.rmSync(this.directory(key), { recursive: true });
-      this.records.delete(key);
-    }
   }
   handle(owner, method, params) {
     if (method === "submit") return this.submit(owner, params);

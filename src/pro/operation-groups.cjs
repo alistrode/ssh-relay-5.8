@@ -108,16 +108,6 @@ class OperationGroups {
     }
     return groups;
   }
-  cleanup() {
-    for (const name of fs.readdirSync(this.dir)) {
-      if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
-      let record;
-      try { record = this.record(name.slice(0, -5)); } catch { continue; }
-      if (["completed", "failed", "cancelled"].includes(record.state) &&
-          Number.isFinite(record.observedAt) && Date.now() - record.observedAt > 7 * 86400000)
-        fs.rmSync(this.file(record.operationId));
-    }
-  }
   async get(key, params = {}) {
     const record = this.record(key);
     if (params.stdoutOffset || params.stderrOffset)

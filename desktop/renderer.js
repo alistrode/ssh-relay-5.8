@@ -208,3 +208,10 @@ $("autoStart").onchange = () => $("saveStartup").click();
 $("startMode").onchange = () => {
   if ($("autoStart").checked) $("saveStartup").click();
 };
+
+
+$("clearLogs").onclick = () => action(async () => {
+  await window.relay.call("near", "/logs/clear", {});
+  await window.relay.call("far", "/logs/clear", {});
+  message("已清理连接日志；任务状态和请求记录保留。");
+});

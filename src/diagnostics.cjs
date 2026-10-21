@@ -11,14 +11,6 @@ function createTraceWriter(directory, role) {
     try {
       if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink())
         throw new Error("Diagnostic path is a symlink");
-      if (fs.existsSync(file) && fs.statSync(file).size >= limit) {
-        for (let i = 2; i >= 1; i--) {
-          const from = file + "." + i,
-            to = file + "." + (i + 1);
-          if (fs.existsSync(from)) fs.renameSync(from, to);
-        }
-        fs.renameSync(file, file + ".1");
-      }
       fs.appendFileSync(
         file,
         JSON.stringify({ time: new Date().toISOString(), role, ...entry }) +
@@ -32,3 +24,4 @@ function createTraceWriter(directory, role) {
   };
 }
 module.exports = { createTraceWriter };
+

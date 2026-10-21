@@ -906,6 +906,9 @@ class Agent {
         value = this.connections.disconnect(req.url.split("/")[3], data);
       }
       else if (req.method === "GET" && req.url === "/status") value = this.status();
+      else if (req.method === "POST" && req.url === "/logs/clear") {
+        value = require("./manual-logs.cjs").clearLogs(this.dir);
+      }
       else if (req.method === "GET" && req.url === "/logs") {
         let rows = [];
         for (const name of [

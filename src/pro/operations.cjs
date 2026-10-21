@@ -33,7 +33,6 @@ class Operations {
       createdAt: record.createdAt, observedAt: record.observedAt || null };
   }
   register(params) {
-    this.cleanup();
     if (params.kind === "exec-group") return this.groups.register(params);
     const key = operationId(params.operationId), deviceId = operationId(params.deviceId);
     if (this.groups.exists(key)) throw failure("REQUEST_CONFLICT", "Operation ID belongs to a group");
@@ -61,7 +60,6 @@ class Operations {
     return this.public(record);
   }
   list({ limit = 20, deviceId } = {}) {
-    this.cleanup();
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       throw failure("INVALID_LIMIT", "Operation list limit must be between 1 and 100");
     if (deviceId) operationId(deviceId);
@@ -127,16 +125,6 @@ class Operations {
     }
     return this.public(record);
   }
-  cleanup() {
-    this.groups.cleanup();
-    for (const name of fs.readdirSync(this.dir)) {
-      if (!/^[a-f0-9-]{36}$/.test(name)) continue;
-      let record;
-      try { record = this.record(name); } catch { continue; }
-      if (["completed", "failed", "cancelled", "not_started"].includes(record.state) &&
-          Number.isFinite(record.observedAt) && Date.now() - record.observedAt > 7 * 86400000)
-        fs.rmSync(path.dirname(this.file(name)), { recursive: true });
-    }
-  }
+
 }
 module.exports = { Operations };

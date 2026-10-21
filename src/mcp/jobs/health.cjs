@@ -1,7 +1,6 @@
 module.exports = async function (ARGS) {
   // Runs on the verified remote using its existing Node.js runtime.
-  const os = require("node:os"),
-    fs = require("node:fs");
+  const os = require("node:os");
   const cpu = () =>
     os.cpus().reduce(
       (a, c) => {
@@ -21,21 +20,6 @@ module.exports = async function (ARGS) {
       usedPercent: 100 * (1 - os.freemem() / os.totalmem()),
     };
     const disk = [];
-    for (const p of process.platform === "win32"
-      ? [process.env.SystemDrive + "\\"]
-      : ["/"]) {
-      try {
-        const s = fs.statfsSync(p);
-        disk.push({
-          path: p,
-          total: s.blocks * s.bsize,
-          free: s.bavail * s.bsize,
-          usedPercent: 100 * (1 - s.bavail / s.blocks),
-        });
-      } catch (e) {
-        disk.push({ path: p, error: e.code });
-      }
-    }
     return {
       hostname: os.hostname(),
       account: os.userInfo().username,
@@ -66,3 +50,4 @@ module.exports = async function (ARGS) {
   }
   return { success: true, samples };
 };
+

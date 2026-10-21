@@ -154,6 +154,7 @@ function create() {
 const routes = new Set([
   "/status",
   "/logs",
+  "/logs/clear",
   "/pair/create",
   "/pair/cancel",
   "/pair/connect",
@@ -177,7 +178,9 @@ ipcMain.handle("relay", async (event, role, route, body) => {
   )
     throw Error("Read-only validation window");
   if (!args.includes("--observe-only")) await ensure(role);
-  return request(role, route, body);
+  const result = await request(role, route, body);
+  if (route === "/logs/clear") require("../src/pro/manual-logs.cjs").clearLogs(diagnosticDirectory);
+  return result;
 });
 ipcMain.handle("pair-copy", async (event, code) => {
   if (event.sender !== window?.webContents || !/^\w{10}-\w{10}$/.test(code))
@@ -457,3 +460,4 @@ app.whenReady().then(async () => {
   app.exit(1);
 });
 app.on("window-all-closed", () => {});
+

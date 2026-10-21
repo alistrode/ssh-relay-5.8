@@ -290,7 +290,7 @@ SSH channel close 只取消订阅，不终止任务 runner。Agent 重启扫描 
 
 取消按 runner 所属进程树执行：Linux 独立进程组，Windows 使用受控进程树终止；先核对进程身份，禁止只凭旧 PID 杀进程。返回 cancel_requested，确实停止后才返回 cancelled。取消不撤销已发生副作用。
 
-输出默认每任务每流 64 MiB 上限，超限截断并标记 truncated，仍持续 drain 子进程管道避免死锁；结果默认保留 7 天，可配置。活动任务不按时间清理，磁盘不足在启动前拒绝，并记录执行中落盘失败。
+输出默认每任务每流 64 MiB 上限，超限截断并标记 truncated，仍持续 drain 子进程管道避免死锁；结果不自动过期或删除。不检查磁盘空间；实际写入失败仍如实记录或返回未知。只提供一个手动清理日志按钮，仅删除本软件日志，不删除任务状态、幂等记录或用户文件。健康监控保留原入口，但不读取磁盘容量。
 
 ### 6.3 原有作业、会话及管理工具
 
@@ -388,3 +388,4 @@ session 工具改为远端会话 runner 管理，sessionId 绑定 controllerId�
 ## 文档索引说明
 
 本项目文档统一放在 `/workspace/rororororo/docs/`：`SSH-RELAY-END-TO-END-DESIGN.md` 记录完整目标、用户接入方式、技术设计与实施顺序；`SSH-RELAY-DEVELOPMENT-HANDOFF.md` 记录最新实际进度、已完成检查、未完成事项及下一步；`SSH-RELAY-CONTINUE-DEVELOPMENT.md` 作为继续开发的简要提纲；`MCP-SOURCE-PROVENANCE.json` 记录源码来源、第三方实现与许可证依据。目标与设计不以局部进度代替，进度与验证不以设计预期代替。
+

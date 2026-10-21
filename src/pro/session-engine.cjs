@@ -4,7 +4,7 @@ const path = require("node:path");
 const cp = require("node:child_process");
 const crypto = require("node:crypto");
 const { SessionJournal } = require("./session-journal.cjs");
-const { SessionLog, assertSessionSpace } = require("./session-log.cjs");
+const { SessionLog } = require("./session-log.cjs");
 const { SessionOutput } = require("./session-output.cjs");
 const { sessionCommand } = require("./session-shell.cjs");
 const { processIdentity } = require("./task-process.cjs");
@@ -77,7 +77,6 @@ class SessionEngine {
     if (!this.matchesChild()) { this.fail("PROCESS_IDENTITY_UNCONFIRMED"); return Promise.resolve({ ...accepted, state: "unknown", completed: false }); }
     let log, input;
     try {
-      assertSessionSpace(this.dir);
       input = this.journal.claim(owner, params.requestId);
       log = new SessionLog(this.journal.directory(params.requestId));
     } catch (error) {

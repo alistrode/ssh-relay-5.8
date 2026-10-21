@@ -4,14 +4,6 @@ const path = require("node:path");
 const { folder } = require("./store.cjs");
 const { syncDirectory } = require("./task-store.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
-function assertSessionSpace(directory, minimumBytes = 160 * 1024 * 1024) {
-  let stat;
-  try { stat = fs.statfsSync(directory); }
-  catch { throw failure("SESSION_OUTPUT_STORAGE_FAILED", "Session output capacity could not be inspected"); }
-  const available = stat.bavail * stat.bsize;
-  if (!Number.isFinite(available) || available < minimumBytes)
-    throw failure("SESSION_DISK_CAPACITY", "Insufficient free disk space for bounded session output");
-}
 class SessionLog {
   constructor(directory, { limitBytes = 64 * 1024 * 1024 } = {}) {
     if (!Number.isSafeInteger(limitBytes) || limitBytes < 0 || limitBytes > 64 * 1024 * 1024)
@@ -76,4 +68,4 @@ class SessionLog {
     } finally { if (fd !== undefined) fs.closeSync(fd); }
   }
 }
-module.exports = { SessionLog, assertSessionSpace };
+module.exports = { SessionLog };

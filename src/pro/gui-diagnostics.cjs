@@ -28,13 +28,6 @@ function create(directory, { limit = 256 * 1024, copies = 3, runId = /^[a-f0-9-]
       check(directory);
       fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
       check(file);
-      if (fs.existsSync(file) && fs.statSync(file).size >= limit) {
-        for (let i = copies; i >= 1; i--) {
-          const source = i === 1 ? file : file + "." + (i - 1), dest = file + "." + i;
-          check(source); check(dest);
-          if (fs.existsSync(source)) fs.renameSync(source, dest);
-        }
-      }
       const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | (fs.constants.O_NOFOLLOW || 0), 0o600);
       try {
         fs.fchmodSync(fd, 0o600);
@@ -112,3 +105,4 @@ if (require.main === module) {
     exportDiagnostics(process.argv[2], process.argv[3]);
   } catch { process.stderr.write("Diagnostic export failed; preserve the local logs.\n"); process.exitCode = 1; }
 }
+
