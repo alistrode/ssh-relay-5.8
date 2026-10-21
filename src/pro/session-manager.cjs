@@ -6,20 +6,30 @@ const { processIdentity, ownedSessionRunner } = require("./task-process.cjs");
 const { privateJSON, durableWrite } = require("./task-store.cjs");
 const { SessionReader } = require("./session-reader.cjs");
 const { normalizeSessionRequest } = require("./session-spec.cjs");
+const { ExecutionScheduler } = require("./execution-scheduler.cjs");
+const { SessionExecutions } = require("./session-executions.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 function hash(value) { return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 // Far-side owner-bound service reached through authenticated control RPC.
 class SessionManager {
   constructor({ dir, deviceId, authorized, spawn = cp.spawn, identity = processIdentity,
-    runnerLive = ownedSessionRunner, osBoot = systemBootId(), platform = process.platform === "win32" ? "windows" : "linux" }) {
+    runnerLive = ownedSessionRunner, scheduler = null, osBoot = systemBootId(), platform = process.platform === "win32" ? "windows" : "linux" }) {
     this.dir = folder(path.resolve(dir)); this.deviceId = operationId(deviceId); this.authorized = authorized;
     this.spawn = spawn; this.identityAvailable = !!identity(process.pid); this.osBoot = osBoot; this.platform = platform;
     this.reader = new SessionReader({ dir: this.dir, deviceId, authorized, osBoot, runnerLive });
+    this.scheduler = scheduler || new ExecutionScheduler();
+    this.executions = new SessionExecutions(this);
+    this.scheduler.register("session", { snapshot: () => this.executions.snapshot(), start: request => this.executions.start(request) });
     this.reconcileAuthorization();
   }
   check(owner) {
     operationId(owner);
     if (typeof this.authorized !== "function" || !this.authorized(owner)) throw failure("AUTH_REVOKED", "Session controller authorization is unavailable");
+  }
+  ownerForSession(sessionId) {
+    const config = privateJSON(path.join(this.directory(sessionId), "session.json"), null);
+    if (!config || config.deviceId !== this.deviceId || config.sessionId !== sessionId) throw failure("SESSION_NOT_FOUND", "Unknown session");
+    return operationId(config.owner);
   }
   directory(sessionId) { return path.join(this.dir, operationId(sessionId)); }
   lookup(owner, sessionId) {
@@ -43,7 +53,7 @@ class SessionManager {
     if (!this.identityAvailable || !this.osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session process identity cannot be verified");
     if (fs.readdirSync(this.dir).length >= 64) throw failure("SESSION_CAPACITY", "Session record capacity reached");
     try { fs.mkdirSync(dir, { mode: 0o700 }); } catch { throw failure("SESSION_CORRUPT", "Existing session directory cannot be replaced"); }
-    durableWrite(file, { schemaVersion: 1, sessionId, owner, deviceId: this.deviceId, platform: this.platform,
+    durableWrite(file, { schemaVersion: 1, executionBudgetVersion: 1, sessionId, owner, deviceId: this.deviceId, platform: this.platform,
       osBoot: this.osBoot, cwd: normalized.cwd, requestHash, createdAt: Date.now() });
     folder(path.join(dir, "inbox")); folder(path.join(dir, "requests"));
     const spawnFailed = () => { try { durableWrite(path.join(dir, "runner-error.json"), { errorCode: "SESSION_RUNNER_SPAWN_FAILED", finishedAt: Date.now() }); } catch {} };
@@ -63,7 +73,7 @@ class SessionManager {
       errorCode: error ? "SESSION_RUNNER_UNAVAILABLE" : null };
   }
   request(owner, { sessionId, requestId, sequence, spec, method = "send" }) {
-    const { dir } = this.lookup(owner, sessionId); operationId(requestId);
+    const { dir, config } = this.lookup(owner, sessionId); operationId(requestId);
     const normalizedRequest = normalizeSessionRequest({ sessionId, requestId, sequence, spec, method }, this.platform);
     const normalized = normalizedRequest.spec, requestHash = normalizedRequest.requestHash;
     const file = path.join(dir, "requests", requestId + ".json"), existing = privateJSON(file, null);
@@ -71,6 +81,10 @@ class SessionManager {
       if (existing.requestHash !== requestHash || existing.owner !== owner) throw failure("REQUEST_CONFLICT", "Session request ID was used for different input");
       return this.queryRequest(owner, { sessionId, requestId });
     }
+    if (method === "send" && config.executionBudgetVersion !== 1)
+      throw failure("SESSION_UNAVAILABLE", "This session predates shared execution scheduling; query or close its original shell");
+    if (method === "send" && this.scheduler.pendingCount() >= this.scheduler.queueLimit)
+      throw failure("SESSION_CAPACITY", "Shared execution queue capacity reached");
     const closeFile = path.join(dir, "close.json");
     if (method === "send" && (fs.existsSync(closeFile) || fs.existsSync(path.join(dir, "revoke.json"))))
       throw failure("SESSION_UNAVAILABLE", "Session is closing or its controller was revoked");
@@ -86,10 +100,11 @@ class SessionManager {
     else durableWrite(path.join(dir, "inbox", requestId + ".json"), { sessionId, requestId, method,
       params: { requestId, sequence, spec: normalized } });
     record.state = "submitted"; durableWrite(file, record);
+    if (method === "send") this.scheduler.tick();
     return { sessionId, deviceId: this.deviceId, requestId, state: "submitted", completed: false };
   }
   queryRequest(owner, { sessionId, requestId, ...paging }) {
-    const { dir } = this.lookup(owner, sessionId); operationId(requestId);
+    const { dir, config } = this.lookup(owner, sessionId); operationId(requestId);
     const record = privateJSON(path.join(dir, "requests", requestId + ".json"), null);
     if (!record || record.owner !== owner || record.sessionId !== sessionId || record.requestId !== requestId)
       throw failure("SESSION_REQUEST_NOT_FOUND", "Unknown session command request");
@@ -141,6 +156,7 @@ class SessionManager {
     return results;
   }
   tick() {
+    this.scheduler.tick();
     if (Date.now() - (this.lastAuthorizationCheck || 0) < 2000) return;
     this.lastAuthorizationCheck = Date.now(); this.reconcileAuthorization();
   }

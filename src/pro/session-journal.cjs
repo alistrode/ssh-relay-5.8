@@ -182,6 +182,7 @@ class SessionJournal {
       const command = this.read(this.record.activeRequestId);
       if (!["completed", "failed"].includes(command.state)) {
         command.state = "unknown"; command.errorCode = errorCode;
+        this.record.unresolvedCommands = true;
         durableWrite(this.file(command.requestId, "manifest.json"), command);
       }
     }

@@ -27,6 +27,7 @@ const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
 const { SessionManager } = require("./session-manager.cjs");
+const { ExecutionScheduler } = require("./execution-scheduler.cjs");
 const { dispatchFarControl } = require("./far-control.cjs");
 const { Operations } = require("./operations.cjs");
 const { NearSessions } = require("./near-sessions.cjs");
@@ -116,12 +117,13 @@ class Agent {
       this.operations = new Operations(this);
       this.sessions = new NearSessions(this);
     }
+    if (this.role === "far") this.executionScheduler = new ExecutionScheduler();
     if (this.role === "far") this.taskManager = new TaskManager({
-      dir: this.file("operations"), deviceId: this.identity.deviceId, bootId: this.bootId,
+      dir: this.file("operations"), scheduler: this.executionScheduler, deviceId: this.identity.deviceId, bootId: this.bootId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
     if (this.role === "far") this.sessionManager = new SessionManager({
-      dir: this.file("sessions"), deviceId: this.identity.deviceId,
+      dir: this.file("sessions"), scheduler: this.executionScheduler, deviceId: this.identity.deviceId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
     this.server = http.createServer((req, res) => this.api(req, res));

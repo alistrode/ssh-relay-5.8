@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { SessionEngine } = require("./session-engine.cjs");
 const { operationId } = require("./task-spec.cjs");
+const { normalizeSessionRequest } = require("./session-spec.cjs");
 const { processIdentity } = require("./task-process.cjs");
 const { folder, systemBootId } = require("./store.cjs");
 const { privateJSON, durableWrite } = require("./task-store.cjs");
@@ -37,6 +38,7 @@ async function run(directory) {
       sessionId: config.sessionId, requestId: initialClose.requestId, ok: true, state: "lost", stopRequested: true });
     throw failure("SESSION_CLOSED", "Session was closed before shell startup");
   }
+  if (config.executionBudgetVersion !== 1) throw failure("SESSION_INVALID", "Session execution budget version is unsupported");
   const osBoot = systemBootId(), identity = processIdentity(process.pid);
   if (!identity || !osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session runner process identity cannot be verified");
   if (config.osBoot !== osBoot) throw failure("SESSION_LOST", "Session belongs to a previous system boot");
@@ -61,7 +63,15 @@ async function run(directory) {
         receipt(requestId, { ok: true, ...engine.close(config.owner) }); finishing = true;
       } else {
         if (envelope.params?.requestId !== requestId) throw failure("SESSION_INVALID", "Session command request ID differs from envelope");
-        const result = await engine.send(config.owner, envelope.params);
+        const permit = privateJSON(path.join(directory, "permit.json"), null);
+        const intent = privateJSON(path.join(directory, "requests", requestId + ".json"), null);
+        const normalized = normalizeSessionRequest({ sessionId: config.sessionId, method: "send", ...envelope.params }, config.platform);
+        if (!permit || permit.owner !== config.owner || permit.deviceId !== config.deviceId || permit.sessionId !== config.sessionId ||
+            permit.requestId !== requestId || permit.requestHash !== normalized.requestHash ||
+            !intent || intent.owner !== config.owner || intent.sessionId !== config.sessionId || intent.requestId !== requestId ||
+            intent.method !== "send" || intent.requestHash !== normalized.requestHash)
+          throw failure("SESSION_INVALID", "Session execution permit differs from saved command intent");
+        const result = await engine.send(config.owner, { requestId, sequence: normalized.sequence, spec: normalized.spec });
         receipt(requestId, { ok: true, ...result });
         if (engine.closed) finishing = true;
       }
@@ -97,6 +107,10 @@ async function run(directory) {
         if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
         const requestId = operationId(name.slice(0, -5));
         if (pending.has(requestId)) continue;
+        // Business input waits for the single persisted permit. Stop/revoke was
+        // handled above and never waits for a business slot.
+        const permit = privateJSON(path.join(directory, "permit.json"), null);
+        if (!permit || permit.requestId !== requestId) continue;
         const file = path.join(inbox, name);
         pending.set(requestId, null);
         const work = handle(file, requestId).catch(() => { engine.close(config.owner); finishing = true; });
