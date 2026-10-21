@@ -437,7 +437,7 @@ export const handlers = {
             ? { memory: s.memory, timestamp: s.timestamp }
             : a.type === "disk"
               ? { disk: s.disk, timestamp: s.timestamp }
-              : { network: s.network, timestamp: s.timestamp },
+              : { network: s.network, ...(s.networkError ? { networkError: s.networkError } : {}), timestamp: s.timestamp },
       );
     }
     return r;

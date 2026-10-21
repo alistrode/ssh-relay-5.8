@@ -20,6 +20,9 @@ module.exports = async function (ARGS) {
       usedPercent: 100 * (1 - os.freemem() / os.totalmem()),
     };
     const disk = [];
+    let network = null, networkError;
+    try { network = os.networkInterfaces(); }
+    catch { networkError = "NETWORK_INTERFACES_UNAVAILABLE"; }
     return {
       hostname: os.hostname(),
       account: os.userInfo().username,
@@ -33,7 +36,8 @@ module.exports = async function (ARGS) {
             (1 - (after.idle - before.idle) / (after.total - before.total)),
       memory,
       disk,
-      network: os.networkInterfaces(),
+      network,
+      ...(networkError ? { networkError } : {}),
       timestamp: new Date().toISOString(),
     };
   }

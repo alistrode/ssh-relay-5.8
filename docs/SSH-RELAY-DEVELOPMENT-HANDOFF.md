@@ -608,3 +608,12 @@
 - 新增完整 legacy report MCP stdio → 真实 loopback SSH → 实际 shell/SFTP 检查：21 次调用、17 个原工具通过。覆盖 stdout/stderr/exit 7、上传下载字节往返、会话环境/cwd、别名、sync dryRun/复制、文件备份/恢复、部署及权限、tail、历史、连接状态。所有业务数据在隔离临时目录，未连接用户数据库或改系统计划任务。
 - 该检查验证旧 --connection 入口的一部分真实业务路径，不是全部 37 工具的行为通过，也不是 Windows 或用户目标设备验收。新 Agent 持久任务与实际独立进程能力仍需按环境身份守卫单列。
 - 本节点只上传源码与交接，不启动验证。下一步运行包内容/固定运行时 hash 核对和最终源码归档。上一提交 006f88f0a038693b82bec7ce93d4b993874eb0b5。
+
+## 2026-10-21 19:58（北京时间）扩大旧工具检查与环境限制；开发仍 95.8%
+
+- 当前 23/24 = 95.8%。上一冻结版本三个包均通过源码、依赖、完整固定运行时 executable hash 和 DEB 所有权/沙箱权限检查；随后发现健康采样问题并改源码，必须重建对应新包后才能计第 24 项。旧包检查结果只适用于修复前版本。
+- 扩大 legacy MCP 检查时，实际 os.networkInterfaces 在当前受限环境抛 uv_interface_addresses 错误，导致整个健康命令失败。已改为 network=null 和明确 NETWORK_INTERFACES_UNAVAILABLE，同时保留实际 CPU/内存等可读采样；网络监控也透传该不可用状态。不检查磁盘，disk 仍为空数组。新增能力缺失用例通过。
+- 后续进程 info 遇到 ps 的 fatal library error, lookup self；这是当前 /proc 环境能力限制，保留真实失败，不伪造进程结果、不放宽进程身份守卫。扩大入口检查允许记录该能力失败，不能将其算作进程查询正向功能通过。
+- 数据库负例参数使用原 schema 的 dbHost/dbPort，指向测试自身的非数据库 loopback 端口；不连接用户数据库。备份 schedule 仅检查非法计划拒绝，不改系统计划任务。
+- 包内 Node 也报告 processIdentityAvailable=false；本环境不能验证独立持久 runner 正向存活/取消功能。已有拒绝启动守卫检查可用，不能把拒绝检查当原生持久功能通过。
+- 本节点只上传源码/交接，不启动验证。下一步完成扩大后的入口检查，冻结健康修复并重建包。上一提交 105889deb1d22e5292de702bd1d671095f08393f。

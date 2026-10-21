@@ -11,7 +11,7 @@ import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 const require = createRequire(import.meta.url), { Server, utils } = require("ssh2");
 const { keyPair } = require("../../src/pro/keys.cjs"), { serveSftp } = require("../../src/sftp.cjs"), { attachForwarding } = require("../../src/forwarding.cjs");
-test("original MCP calls perform isolated operations through the legacy SSH report path", { timeout: 60000 }, async t => {
+test("all original MCP entry points execute isolated operations or report capability errors through legacy SSH", { timeout: 60000, skip: process.platform !== "linux" }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "relay-mcp-legacy-e2e-"));
   const host = keyPair(), credential = keyPair(), key = utils.parseKey(credential.privateKey), peers = new Set(), children = new Set();
   const home = path.join(root, "remote-home"); fs.mkdirSync(home);
@@ -50,16 +50,21 @@ test("original MCP calls perform isolated operations through the legacy SSH repo
   const client = new McpClient({ name: "legacy-real-ssh-check", version: "1" });
   const transport = new StdioClientTransport({ command: process.execPath, args: [path.resolve("src/mcp.cjs"), "--connection", report,
     "--name", "linux", "--state-dir", path.join(root, "mcp-state"), "--allow-cloud-self-test", "yes"], stderr: "pipe" });
-  const calls = [];
+  const calls = [], capabilityErrors = [];
+  const auxiliary = [], auxiliarySockets = new Set();
   t.after(async () => {
     await client.close().catch(() => {}); for (const peer of peers) peer.end(); for (const child of children) child.kill("SIGTERM");
+    for (const socket of auxiliarySockets) socket.destroy();
+    await Promise.all(auxiliary.map(listener => new Promise(resolve => listener.close(resolve))));
     await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
   });
   await client.connect(transport);
   const call = async (name, args = {}, expectError = false) => {
     const response = await client.callTool({ name, arguments: args }, undefined, { timeout: 20000 });
     const value = JSON.parse(response.content[0].text); calls.push(name);
-    assert.equal(!!response.isError, expectError, name + ": " + JSON.stringify(value)); return value;
+    if (response.isError) capabilityErrors.push(name);
+    if (expectError !== null) assert.equal(!!response.isError, expectError, name + ": " + JSON.stringify(value));
+    return value;
   };
   await call("ssh_list_servers");
   const execution = await call("ssh_execute", { server: "linux", command: "printf stdout-marker; printf stderr-marker >&2; exit 7" }, true);
@@ -91,5 +96,38 @@ test("original MCP calls perform isolated operations through the legacy SSH repo
   assert.deepEqual(fs.readFileSync(remote), fs.readFileSync(source)); assert.equal(fs.statSync(remote).mode & 0o777, 0o600);
   await call("ssh_tail", { server: "linux", file: source, follow: false, lines: 1 });
   await call("ssh_history"); await call("ssh_connection_status", { action: "status" });
-  console.log(JSON.stringify({ scope: "isolated legacy report MCP over actual loopback SSH", calls: calls.length, originalToolNames: new Set(calls).size }));
+  await call("ssh_command_alias", { action: "add", alias: "fixture-command", command: "printf command-alias-ok" });
+  assert.equal((await call("ssh_execute", { server: "linux", command: "fixture-command" })).stdout, "command-alias-ok");
+  await call("ssh_command_alias", { action: "remove", alias: "fixture-command" });
+  await call("ssh_hooks", { action: "list" }); await call("ssh_profile", { action: "list" });
+  await call("ssh_group_manage", { action: "create", name: "fixture-group", servers: ["linux"] });
+  await call("ssh_execute_group", { group: "fixture-group", command: "printf group-ok", strategy: "rolling", delay: 0 });
+  await call("ssh_group_manage", { action: "delete", name: "fixture-group" });
+  await call("ssh_key_manage", { server: "linux", action: "verify" });
+  await call("ssh_health_check", { server: "linux" }); await call("ssh_monitor", { server: "linux", type: "memory" });
+  const diagnosticPid = Number(fs.readFileSync("/proc/self/stat", "utf8").split(" ")[0]);
+  // Restricted /proc environments can make the native ps command unavailable.
+  await call("ssh_process_manager", { server: "linux", action: "info", pid: diagnosticPid }, null);
+  await call("ssh_service_status", { server: "linux", services: ["relay-fixture-nonexistent-service"] }, true);
+  await call("ssh_alert_setup", { server: "linux", action: "get" }); await call("ssh_alert_setup", { server: "linux", action: "check" });
+  await call("ssh_backup_schedule", { server: "linux", type: "files", name: "fixture", schedule: "invalid", paths: [tree] }, true);
+  const notDatabase = net.createServer(socket => { auxiliarySockets.add(socket); socket.on("close", () => auxiliarySockets.delete(socket)); socket.on("error", () => {}); socket.end(); });
+  await new Promise(resolve => notDatabase.listen(0, "127.0.0.1", resolve)); auxiliary.push(notDatabase);
+  for (const action of ["dump", "import", "list", "query"]) await call("ssh_db_" + action, {
+    server: "linux", type: "postgresql", dbHost: "127.0.0.1", dbPort: notDatabase.address().port, database: "relay_fixture_missing",
+    ...(action === "dump" ? { outputFile: path.join(root, "db.sql") } : action === "import" ? { inputFile: path.join(root, "missing.sql") } : action === "query" ? { query: "SELECT 1" } : {}),
+  }, true);
+  await call("ssh_execute_sudo", { server: "linux", command: "true" }, null);
+  const echo = net.createServer(socket => { auxiliarySockets.add(socket); socket.on("close", () => auxiliarySockets.delete(socket)); socket.on("error", () => {}); socket.pipe(socket); });
+  await new Promise(resolve => echo.listen(0, "127.0.0.1", resolve)); auxiliary.push(echo);
+  const reservation = net.createServer(); await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
+  const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
+  const tunnel = await call("ssh_tunnel_create", { server: "linux", type: "local", localPort: port, remoteHost: "127.0.0.1", remotePort: echo.address().port });
+  await new Promise((resolve, reject) => { const socket = net.connect(port, "127.0.0.1"), timer = setTimeout(() => { socket.destroy(); reject(Error("Forwarded echo timed out")); }, 3000);
+    socket.once("connect", () => socket.write("mcp-tunnel")); socket.once("data", bytes => { clearTimeout(timer); socket.destroy(); try { assert.equal(bytes.toString(), "mcp-tunnel"); resolve(); } catch (e) { reject(e); } }); socket.once("error", e => { clearTimeout(timer); reject(e); }); });
+  await call("ssh_tunnel_list"); await call("ssh_tunnel_close", { tunnelId: tunnel.id });
+  await call("ssh_connection_status", { server: "linux", action: "disconnect" });
+  assert.equal(new Set(calls).size, 37);
+  console.log(JSON.stringify({ scope: "isolated legacy report MCP over actual loopback SSH", calls: calls.length,
+    originalToolNames: new Set(calls).size, errorPathTools: [...new Set(capabilityErrors)] }));
 });
