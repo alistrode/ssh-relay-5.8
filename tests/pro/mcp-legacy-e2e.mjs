@@ -43,12 +43,12 @@ test("all original MCP entry points execute isolated operations or report capabi
   const state = path.join(root, "connection"); fs.mkdirSync(state);
   fs.writeFileSync(path.join(state, "client_key"), credential.privateKey, { mode: 0o600 });
   fs.writeFileSync(path.join(state, "runtime.json"), JSON.stringify({ port: server.address().port }));
-  fs.writeFileSync(path.join(state, "peer.json"), JSON.stringify({ fingerprint: host.fingerprint, hostname: os.hostname(), capabilities: { forwarding: "loopback-only", nodeExecutable: process.execPath }, relayProtocol: 2, receivedAt: Date.now() }));
+  fs.writeFileSync(path.join(state, "peer.json"), JSON.stringify({ fingerprint: host.fingerprint, hostname: os.hostname(), capabilities: { forwarding: "loopback-only", nodeExecutable: process.execPath, nodeMode: process.versions.electron ? "electron" : "node" }, relayProtocol: 2, receivedAt: Date.now() }));
   const report = path.join(root, "connection.json");
   fs.writeFileSync(report, JSON.stringify({ connected: true, state_directory: state, host_fingerprint: host.fingerprint,
     remote_hostname: os.hostname(), remote_user: os.userInfo().username, target: "linux", cloud_self_test: true }));
   const client = new McpClient({ name: "legacy-real-ssh-check", version: "1" });
-  const transport = new StdioClientTransport({ command: process.execPath, args: [path.resolve("src/mcp.cjs"), "--connection", report,
+  const transport = new StdioClientTransport({ command: process.execPath, env: { PATH: process.env.PATH, HOME: root, ELECTRON_RUN_AS_NODE: "1" }, args: [path.resolve("src/mcp.cjs"), "--connection", report,
     "--name", "linux", "--state-dir", path.join(root, "mcp-state"), "--allow-cloud-self-test", "yes"], stderr: "pipe" });
   const calls = [], capabilityErrors = [];
   const auxiliary = [], auxiliarySockets = new Set();
@@ -108,7 +108,8 @@ test("all original MCP entry points execute isolated operations or report capabi
   const diagnosticPid = Number(fs.readFileSync("/proc/self/stat", "utf8").split(" ")[0]);
   // Restricted /proc environments can make the native ps command unavailable.
   await call("ssh_process_manager", { server: "linux", action: "info", pid: diagnosticPid }, null);
-  await call("ssh_service_status", { server: "linux", services: ["relay-fixture-nonexistent-service"] }, true);
+  const serviceStatus = await call("ssh_service_status", { server: "linux", services: ["relay-fixture-nonexistent-service"] }, null);
+  assert.equal(serviceStatus.services?.[0]?.name, "relay-fixture-nonexistent-service");
   await call("ssh_alert_setup", { server: "linux", action: "get" }); await call("ssh_alert_setup", { server: "linux", action: "check" });
   await call("ssh_backup_schedule", { server: "linux", type: "files", name: "fixture", schedule: "invalid", paths: [tree] }, true);
   const notDatabase = net.createServer(socket => { auxiliarySockets.add(socket); socket.on("close", () => auxiliarySockets.delete(socket)); socket.on("error", () => {}); socket.end(); });
