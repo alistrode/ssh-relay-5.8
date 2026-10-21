@@ -7,9 +7,9 @@ const enabled = process.env.SSH_RELAY_NATIVE_ACCEPTANCE === "1", windows = proce
 const native = { skip: !enabled, timeout: 120000 }, pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const quote = text => "'" + text.replace(/'/g, windows ? "''" : "'\\''") + "'";
 async function until(read, accept, timeout = 90000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) { const value = await read(); if (accept(value)) return value; await pause(150); }
-  throw Error("Native acceptance timed out before the required observable state");
+  const deadline = Date.now() + timeout; let value;
+  while (Date.now() < deadline) { value = await read(); if (accept(value)) return value; await pause(150); }
+  throw Error("Native acceptance timed out before the required observable state: " + JSON.stringify(value));
 }
 function fixture(t) {
   assert.ok(["linux", "win32"].includes(process.platform));
@@ -77,7 +77,8 @@ test("native session keeps the original shell across Manager recreation", native
     const runnerFile = path.join(sessions.directory(sessionId), "runner.json");
     await until(() => { const runner = privateJSON(runnerFile, null); return runner ? processState(runner) : "exited"; }, state => state === "exited", 30000);
   };
-  await until(() => sessions.status(f.owner, sessionId), value => value.shellAlive);
+  await until(() => ({ ...sessions.status(f.owner, sessionId),
+    runnerError: privateJSON(path.join(sessions.directory(sessionId), "runner-error.json"), null) }), value => value.shellAlive);
   const first = { sessionId, requestId: crypto.randomUUID(), sequence: 1, spec: { command: windows
     ? "Set-Location -LiteralPath " + quote(f.root) + "; $env:RELAY_NATIVE_SESSION='retained'; [Console]::Write('ready')"
     : "cd -- " + quote(f.root) + "; export RELAY_NATIVE_SESSION=retained; printf ready", timeoutMs: 60000 } };

@@ -33,13 +33,20 @@ test("duplicate submit reuses operation and rejects changed input or another own
   assert.throws(() => manager.get(other, { operationId: request.operationId }), { code: "OPERATION_NOT_FOUND" });
   assert.equal(JSON.stringify(manager.get(owner, request)).includes("fixture command"), false);
 });
-test("restart does not respawn a starting operation without proven runner identity", t => {
+test("restart preserves the original runner startup window without respawning", t => {
   const { manager, starts, options } = fixture(t), request = input();
   manager.submit(owner, request);
   manager.close();
   const recovered = new TaskManager({ ...options, bootId: crypto.randomUUID() });
   recovered.tick();
+  assert.equal(recovered.get(owner, request).state, "starting");
+  assert.equal(recovered.active.size, 1);
+  assert.equal(starts(), 1);
+  const record = recovered.records.get(request.operationId);
+  record.launchAt = Date.now() - 31000; recovered.save(record);
+  recovered.tick();
   assert.equal(recovered.get(owner, request).state, "unknown");
+  assert.equal(recovered.active.size, 1);
   assert.equal(starts(), 1);
 });
 test("cancel queued work before execution; output pagination is byte bounded", t => {
