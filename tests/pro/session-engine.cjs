@@ -65,3 +65,9 @@ test("a final metadata read failure still resolves the caller as unknown", { tim
   assert.equal(result.state, "unknown"); assert.equal(result.completed, false);
   assert.equal(f.engine.closed, true);
 });
+test("disk capacity failure refuses a command before shell input", async t => {
+  const f = fixture(t); t.mock.method(fs, "statfsSync", () => ({ bavail: 0, bsize: 4096 }));
+  const result = await f.engine.send(f.options.owner, input());
+  assert.equal(result.state, "unknown"); assert.equal(result.errorCode, "SESSION_DISK_CAPACITY");
+  assert.equal(f.writes.length, 0);
+});

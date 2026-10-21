@@ -7,9 +7,10 @@ const { privateJSON, durableWrite } = require("./task-store.cjs");
 const { SessionReader } = require("./session-reader.cjs");
 const { normalizeSessionRequest } = require("./session-spec.cjs");
 const { cleanupSessions } = require("./session-retention.cjs");
+const { assertSessionSpace } = require("./session-log.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 function hash(value) { return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
-// Internal service; no public capability or Far RPC is enabled here.
+// Far-side owner-bound service reached through authenticated control RPC.
 class SessionManager {
   constructor({ dir, deviceId, authorized, spawn = cp.spawn, identity = processIdentity,
     runnerLive = ownedSessionRunner, osBoot = systemBootId(), platform = process.platform === "win32" ? "windows" : "linux" }) {
@@ -42,8 +43,9 @@ class SessionManager {
       return this.status(owner, sessionId);
     }
     if (!this.identityAvailable || !this.osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session process identity cannot be verified");
-    if (fs.readdirSync(this.dir).length >= 64) cleanupSessions(this.dir, this.deviceId);
+    if (fs.readdirSync(this.dir).length >= 64) this.cleanup();
     if (fs.readdirSync(this.dir).length >= 64) throw failure("SESSION_CAPACITY", "Session record capacity reached");
+    assertSessionSpace(this.dir, 16 * 1024 * 1024);
     try { fs.mkdirSync(dir, { mode: 0o700 }); } catch { throw failure("SESSION_CORRUPT", "Existing session directory cannot be replaced"); }
     durableWrite(file, { schemaVersion: 1, sessionId, owner, deviceId: this.deviceId, platform: this.platform,
       osBoot: this.osBoot, cwd: normalized.cwd, requestHash, createdAt: Date.now() });
@@ -82,6 +84,7 @@ class SessionManager {
         fs.readdirSync(path.join(dir, "requests")).length >= (method === "close" ? 10001 : 10000))
       throw failure("SESSION_CAPACITY", "Session request capacity reached");
     // Save intent before the only inbox publication. Duplicates only query.
+    if (method === "send") assertSessionSpace(this.dir);
     const record = { owner, sessionId, requestId, requestHash, method, state: "prepared", createdAt: Date.now() };
     durableWrite(file, record);
     if (method === "close") durableWrite(closeFile, { sessionId, owner, requestId, createdAt: Date.now() });
@@ -146,8 +149,12 @@ class SessionManager {
     if (Date.now() - (this.lastAuthorizationCheck || 0) < 2000) return;
     this.lastAuthorizationCheck = Date.now(); this.reconcileAuthorization();
     if (Date.now() - (this.lastCleanup || 0) >= 300000) {
-      this.lastCleanup = Date.now(); cleanupSessions(this.dir, this.deviceId);
+      this.lastCleanup = Date.now(); this.cleanup();
     }
+  }
+  cleanup() {
+    return cleanupSessions(this.dir, this.deviceId, { startAfter: this.cleanupCursor,
+      onExamined: sessionId => { this.cleanupCursor = sessionId; } });
   }
   handle(owner, method, params) {
     if (!params || typeof params !== "object" || Array.isArray(params)) throw failure("SESSION_INVALID", "Session parameters must be an object");
