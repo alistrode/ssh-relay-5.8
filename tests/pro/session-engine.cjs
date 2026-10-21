@@ -55,3 +55,13 @@ test("unprovable host process identity refuses all shell creation", () => {
   assert.throws(() => new SessionEngine({}, { identity: () => null, spawn: () => { spawns++; } }), { code: "PROCESS_IDENTITY_UNAVAILABLE" });
   assert.equal(spawns, 0);
 });
+test("a final metadata read failure still resolves the caller as unknown", { timeout: 1000 }, async t => {
+  const f = fixture(t), request = input(), pending = f.engine.send(f.options.owner, request);
+  const marker = f.writes[0].match(/RELAY_[a-f0-9]{32}/)[0];
+  f.engine.journal.get = () => { throw Error("simulated final read failure"); };
+  f.child.stdout.emit("data", Buffer.from("\n" + marker + ":0:L3RtcA==\n"));
+  f.child.stderr.emit("data", Buffer.from("\n" + marker + ":END\n"));
+  const result = await pending;
+  assert.equal(result.state, "unknown"); assert.equal(result.completed, false);
+  assert.equal(f.engine.closed, true);
+});

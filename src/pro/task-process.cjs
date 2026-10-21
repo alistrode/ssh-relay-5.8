@@ -37,12 +37,20 @@ function sameProcess(expected) {
   const current = processIdentity(expected?.pid);
   return current && current.osBoot === expected.osBoot && current.startToken === expected.startToken ? current : null;
 }
-function ownedRunner(record, directory) {
-  const current = sameProcess(record);
-  if (!current || path.resolve(record.operationDir || "") !== path.resolve(directory)) return false;
-  if (current.args)
-    return current.args.includes(path.resolve(directory)) && current.args.some(arg => /[/\\]task-runner\.cjs$/.test(arg));
-  const command = (current.command || "").replace(/\\/g, "/").toLowerCase();
-  return command.includes("/task-runner.cjs") && command.includes(path.resolve(directory).replace(/\\/g, "/").toLowerCase());
+function runnerArgumentsMatch(current, directory, script, windows = process.platform === "win32") {
+  const normalize = value => windows ? value.replace(/\\/g, "/").toLowerCase() : value;
+  const expected = normalize(path.resolve(directory));
+  const args = current.args || (current.command || "").match(/"[^"]*"|\S+/g)?.map(arg =>
+    arg.startsWith('"') && arg.endsWith('"') ? arg.slice(1, -1) : arg);
+  if (!Array.isArray(args)) return false;
+  const normalized = args.map(normalize);
+  return normalized.includes(expected) && normalized.some(arg => arg === script || arg.endsWith("/" + script));
 }
-module.exports = { processIdentity, sameProcess, ownedRunner };
+function ownedProcessRunner(record, directory, script, directoryField) {
+  const current = sameProcess(record);
+  if (!current || path.resolve(record[directoryField] || "") !== path.resolve(directory)) return false;
+  return runnerArgumentsMatch(current, directory, script);
+}
+function ownedRunner(record, directory) { return ownedProcessRunner(record, directory, "task-runner.cjs", "operationDir"); }
+function ownedSessionRunner(record, directory) { return ownedProcessRunner(record, directory, "session-runner.cjs", "sessionDir"); }
+module.exports = { processIdentity, sameProcess, ownedRunner, ownedSessionRunner, runnerArgumentsMatch };

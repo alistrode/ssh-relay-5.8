@@ -348,3 +348,12 @@
 - 节点间十项执行器/日志/宿主检查通过，其中一次实际启动独立 Node 宿主，在当前不匹配 /proc 的命名空间确认返回 PROCESS_IDENTITY_UNAVAILABLE，未创建 engine.lock 或命令目录；这是拒绝执行检查，不是持久 shell 功能通过。其余执行器使用模拟进程。
 - 下一步需 Far 侧认证 SessionManager、runner 所属路径核验、请求文件原子提交/结果查询及 MCP 原 session ID 适配。当前 sessionResume 仍 false，不能连接此私有 inbox 绕过 Agent 认证。Windows/匹配 /proc 的原生 Linux 存活及取消仍待实测。
 - 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：fd659c410d9468f83f10e7c2ff3407594c3b07de。
+
+## 2026-10-21 14:58（北京时间）会话只读查询与进程归属源码
+
+- task-process 增加 ownedSessionRunner，并将旧 task runner 的 Windows 命令行匹配改为完整参数边界；相同目录前缀或脚本后缀不能当成所属进程。仍必须先核对系统 boot/startToken，不绕过本环境 PID 限制。
+- 新增 SessionJournal.reader，只读命令和最终结果，不 recover、不改写 manifest、不创建缺失目录；写入方法明确拒绝。新增 session-reader.cjs，每次检查 controller 授权和 owner/device/session，逐命令字节分页；shell 未证明存活时返回 unknown，已证实换 boot 或已 lost 时返回 lost，历史最终结果仍可查询。
+- 修复执行器结果收尾异常：最终 metadata 读取抛错时仍保留 active waiter，使调用方收到 unknown，不因先清空 active 而永远等待。
+- 节点间进程参数/TaskManager/独立宿主七项组合、执行器故障/归属/宿主八项组合和只读查询/日志七项组合通过。查询检查确认 owner 隔离、授权撤销拒绝、查询不改写运行日志和 shell 丢失后历史结果保留。Windows 参数检查是字符串检查，不是 Windows 原生进程证明。
+- 仍未接 SessionManager 创建/认证 inbox 提交与 Far RPC/MCP；sessionResume 继续 false。独立宿主真实持久 shell 在本环境不可证明，必须保留拒绝能力，不能放松进程身份校验。
+- 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：23ddaf3b709dd534dea1127a13a48eac693cbd07。

@@ -65,3 +65,18 @@ test("changed private command input cannot be claimed and missing final result i
   const result = journal.get(options.owner, input.requestId);
   assert.equal(result.state, "unknown"); assert.equal(result.completed, false);
 });
+test("status readers never recover or rewrite a live writer's journal", t => {
+  const { options, journal } = fixture(t), input = command(1);
+  journal.accept(options.owner, input); journal.claim(options.owner, input.requestId);
+  const before = fs.readFileSync(journal.manifest, "utf8");
+  const reader = SessionJournal.reader(options);
+  assert.equal(reader.get(options.owner, input.requestId).state, "running");
+  assert.equal(fs.readFileSync(journal.manifest, "utf8"), before);
+  assert.throws(() => reader.lose(options.owner), { code: "SESSION_READ_ONLY" });
+  assert.throws(() => reader.claim(options.owner, input.requestId), { code: "SESSION_READ_ONLY" });
+  assert.throws(() => reader.accept(options.owner, command(2)), { code: "SESSION_READ_ONLY" });
+  assert.throws(() => SessionJournal.reader({ ...options, owner: crypto.randomUUID() }), { code: "SESSION_NOT_FOUND" });
+  const missing = path.join(options.dir, "missing");
+  assert.throws(() => SessionJournal.reader({ ...options, dir: missing }), { code: "SESSION_NOT_FOUND" });
+  assert.equal(fs.existsSync(missing), false);
+});

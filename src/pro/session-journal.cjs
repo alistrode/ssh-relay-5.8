@@ -8,6 +8,21 @@ const { durableWrite, privateJSON, syncDirectory } = require("./task-store.cjs")
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 // Private command journal only. This module does not create or recover a shell.
 class SessionJournal {
+  static reader({ dir, deviceId, sessionId, owner }) {
+    const journal = Object.create(SessionJournal.prototype);
+    journal.dir = path.resolve(dir); journal.deviceId = operationId(deviceId);
+    journal.sessionId = operationId(sessionId); journal.owner = operationId(owner);
+    journal.commands = path.join(journal.dir, "commands"); journal.manifest = path.join(journal.dir, "manifest.json");
+    const record = privateJSON(journal.manifest, null);
+    if (!record || record.owner !== owner || record.deviceId !== deviceId || record.sessionId !== sessionId)
+      throw failure("SESSION_NOT_FOUND", "Unknown session");
+    if (!["linux", "windows"].includes(record.platform) ||
+        !["open", "busy", "unknown", "lost", "closed"].includes(record.state) ||
+        !Number.isInteger(record.nextSequence) || record.nextSequence < 1)
+      throw failure("SESSION_CORRUPT", "Session journal metadata is invalid");
+    journal.platform = record.platform; journal.record = record; journal.readOnly = true;
+    return journal;
+  }
   constructor({ dir, deviceId, sessionId, owner, platform, osBoot }) {
     this.dir = folder(path.resolve(dir));
     this.deviceId = operationId(deviceId); this.sessionId = operationId(sessionId);
@@ -29,7 +44,8 @@ class SessionJournal {
       this.save();
     }
   }
-  save() { durableWrite(this.manifest, this.record); }
+  writable() { if (this.readOnly) throw failure("SESSION_READ_ONLY", "Session queries cannot modify the command journal"); }
+  save() { this.writable(); durableWrite(this.manifest, this.record); }
   checkOwner(owner) {
     if (owner !== this.owner) throw failure("SESSION_NOT_FOUND", "Unknown session");
   }
@@ -53,6 +69,7 @@ class SessionJournal {
       sessionId: this.sessionId, sequence, spec })).digest("hex");
   }
   recover() {
+    this.writable();
     if (!Number.isInteger(this.record.nextSequence) || this.record.nextSequence < 1 ||
         !["open", "busy", "unknown", "lost", "closed"].includes(this.record.state))
       throw failure("SESSION_CORRUPT", "Session journal metadata is invalid");
@@ -79,6 +96,7 @@ class SessionJournal {
     this.record.unresolvedCommands = unresolved; this.save();
   }
   accept(owner, { requestId, sequence, spec }) {
+    this.writable();
     this.checkOwner(owner); operationId(requestId);
     const normalized = normalizeSpec(spec, this.platform);
     const hash = this.hash(sequence, normalized);
@@ -100,6 +118,7 @@ class SessionJournal {
     return this.public(record);
   }
   claim(owner, requestId) {
+    this.writable();
     this.checkOwner(owner);
     const record = this.read(requestId);
     if (this.record.state !== "busy" || this.record.activeRequestId !== requestId || record.state !== "accepted")
@@ -130,6 +149,7 @@ class SessionJournal {
     }
   }
   complete(owner, requestId, { exitCode, cwd, output }) {
+    this.writable();
     this.checkOwner(owner); const record = this.read(requestId);
     if (record.state !== "running" || this.record.activeRequestId !== requestId || !Number.isInteger(exitCode))
       throw failure("SESSION_COMMAND_UNKNOWN", "Session command cannot be completed in its current state");
@@ -153,6 +173,7 @@ class SessionJournal {
       finishedAt: result.finishedAt, cwd: result.cwd, output: result.output } } : {}) };
   }
   lose(owner, errorCode = "SESSION_LOST") {
+    this.writable();
     this.checkOwner(owner);
     if (!/^[A-Z_]{1,64}$/.test(errorCode)) throw failure("SESSION_INVALID", "Invalid session loss reason");
     if (this.record.activeRequestId) {

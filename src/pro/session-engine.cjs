@@ -89,8 +89,9 @@ class SessionEngine {
               truncated: result.output.stdout.truncated },
               stderr: { totalBytes: result.output.stderr.totalBytes, bytes: stored.stderr.bytes, truncated: result.output.stderr.truncated } };
             this.journal.complete(owner, params.requestId, { exitCode: result.exitCode, cwd: result.cwd, output });
+            const final = this.journal.get(owner, params.requestId);
             clearTimeout(active.timer); this.active = null;
-            resolve(this.journal.get(owner, params.requestId));
+            resolve(final);
           } catch { this.fail("SESSION_OUTPUT_STORAGE_FAILED"); }
         } });
       active.timer = setTimeout(() => this.fail("SESSION_COMMAND_TIMEOUT"), input.spec.timeoutMs);
