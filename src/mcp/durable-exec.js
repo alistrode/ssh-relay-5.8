@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { connect, run, psQuote } from "./transport.js";
 import { localAgentClient } from "./config.js";
 import { shellQuote } from "./shell-quote.js";
+import { plannedOperation, hasOperationPlan } from "./operation-context.js";
 const require = createRequire(import.meta.url);
 const { openControl } = require("../pro/agent-control.cjs");
 const { normalizeSpec, normalizeJobSpec, requestHash } = require("../pro/task-spec.cjs");
@@ -22,10 +23,17 @@ async function submitTask(conn, kind, spec, timeout) {
   if (kind === "job" && control.capabilities.taskJobs?.[spec.name] !== spec.sourceHash)
     throw Object.assign(Error("Controlled job versions differ; use matching application packages"),
       { code: "JOB_VERSION_MISMATCH" });
-  const operationId = crypto.randomUUID(), childOperationId = crypto.randomUUID();
+  const plan = plannedOperation(config.agentDeviceId);
+  if (hasOperationPlan() && !plan)
+    throw Object.assign(Error("Target differs from the saved group plan"), { code: "REQUEST_CONFLICT" });
+  const operationId = plan?.operationId || crypto.randomUUID();
+  const childOperationId = plan?.childOperationId || crypto.randomUUID();
   const hash = requestHash(config.agentDeviceId, kind, spec, config.platform);
+  if (plan && (kind !== "exec" || plan.requestHash !== hash))
+    throw Object.assign(Error("Execution differs from the saved group plan"), { code: "REQUEST_CONFLICT", operationId });
   const agent = await localAgentClient();
-  await agent.registerOperation({ operationId, childOperationId, deviceId: config.agentDeviceId, kind, requestHash: hash });
+  await agent.registerOperation({ operationId, childOperationId, deviceId: config.agentDeviceId, kind, requestHash: hash,
+    ...(plan ? { groupOperationId: plan.groupOperationId } : {}) });
   await agent.markOperationDispatch(operationId);
   const result = await executeTask(control,
     { operationId: childOperationId, kind, requestHash: hash, spec },
@@ -39,13 +47,21 @@ async function submitTask(conn, kind, spec, timeout) {
 }
 export async function durableExec(name, command, { cwd, timeout }) {
   const conn = await connect(name), config = conn.config;
+  if (hasOperationPlan() && !plannedOperation(config.agentDeviceId))
+    throw Object.assign(Error("Target differs from the saved group plan"), { code: "REQUEST_CONFLICT" });
+  if (plannedOperation(config.agentDeviceId) &&
+      (!config.capabilities.persistentExec || config.capabilities.taskProtocol !== 1))
+    throw Object.assign(Error("Saved group target no longer supports persistent tasks"), { code: "TASK_UNSUPPORTED" });
   if (!config.agentDeviceId || !config.capabilities.persistentExec || config.capabilities.taskProtocol !== 1)
     return { ...(await run(name, command, { cwd, timeout })), persistent: false, recovery: "legacy-ssh-channel" };
+  return submitTask(conn, "exec", execSpec(config, command, { cwd, timeout }), timeout);
+}
+export function execSpec(config, command, { cwd, timeout }) {
   let script = command;
   if (cwd) script = config.platform === "windows"
     ? "Set-Location -LiteralPath " + psQuote(cwd) + ";\n" + script
     : "cd -- " + shellQuote(cwd) + " && " + script;
-  return submitTask(conn, "exec", normalizeSpec({ command: script, timeoutMs: timeout }, config.platform), timeout);
+  return normalizeSpec({ command: script, timeoutMs: timeout }, config.platform);
 }
 export async function durableJob(server, name, args, timeout, sourceHash) {
   const conn = await connect(server);

@@ -24,6 +24,7 @@ import { readState, writeState } from "./state.js";
 import { logger } from "./logger.js";
 import { durableExec } from "./durable-exec.js";
 import { planGroupTargets } from "./group-targets.js";
+import { prepareGroupOperations } from "./group-operations.js";
 groups.setServerConfigProvider(servers);
 const need = (a, key) => {
   if (a[key] === undefined || a[key] === "")
@@ -620,6 +621,17 @@ export const handlers = {
     const targets = planGroupTargets(group.servers, serverConfig);
     const strategy = a.strategy || group.strategy || "parallel";
     if (!["parallel", "sequential", "rolling"].includes(strategy)) throw new Error("Unknown group strategy");
+    const delay = bounded(a.delay ?? group.delay, 1000, 0, 30000);
+    const stopOnError = a.stopOnError ?? group.stopOnError;
+    const command = commandAlias.expandCommandAlias(need(a, "command"));
+    const configs = targets.map(name => {
+      let config;
+      try { config = serverConfig(name); } catch { return { name, config: null }; }
+      policy(name, "ssh_execute", command);
+      return { name, config };
+    });
+    const plan = await prepareGroupOperations(configs, command,
+      { cwd: a.cwd, timeout: 120000, strategy, stopOnError, delay });
     const results = [];
     const call = async (name) => {
       try {
@@ -628,22 +640,40 @@ export const handlers = {
           ...(await execute({ server: name, command: a.command, cwd: a.cwd })),
         };
       } catch (e) {
-        return { server: name, success: false, error: e.message };
+        const child = plan?.children.find(child => child.deviceId === configs.find(target => target.name === name)?.config?.agentDeviceId);
+        return { server: name, success: false, error: e.message,
+          operationId: e.operationId || child?.operationId, childOperationId: child?.childOperationId,
+          state: e.state || (child ? "unknown" : undefined) };
       }
     };
+    const perform = async () => {
     if (strategy === "parallel")
       results.push(...(await Promise.all(targets.map(call))));
     else
       for (const name of targets) {
         const r = await call(name);
         results.push(r);
-        if (!r.success && (a.stopOnError ?? group.stopOnError)) break;
+        if (!r.success && stopOnError) break;
         if (strategy === "rolling")
           await new Promise((res) =>
-            setTimeout(res, bounded(a.delay ?? group.delay, 1000, 0, 30000)),
+            setTimeout(res, delay),
           );
       }
-    return { success: results.every((r) => r.success), strategy, results };
+    };
+    try { if (plan) await plan.run(perform); else await perform(); }
+    finally {
+      if (plan) {
+        const observations = await plan.finish();
+        for (const target of configs) {
+          if (results.some(result => result.server === target.name)) continue;
+          const child = observations.find(child => child.deviceId === target.config.agentDeviceId);
+          results.push({ server: target.name, success: false, operationId: child?.operationId,
+            childOperationId: child?.childOperationId, state: child?.state || "unknown" });
+        }
+      }
+    }
+    return { success: results.every((r) => r.success), strategy, results,
+      ...(plan ? { operationId: plan.operationId, persistent: true, children: plan.children.map(({ requestHash, ...child }) => child) } : { persistent: false }) };
   },
   ssh_history: async (a) => ({
     success: true,
