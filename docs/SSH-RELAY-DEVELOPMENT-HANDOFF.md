@@ -625,3 +625,11 @@
 - 服务状态保留 systemctl 包装器的真实 stdout/code；当前容器文字说明 systemd 未运行但命令退出码可为 0，测试不把该返回当作服务健康。未为此改应用服务逻辑。进程 info 在本次运行可读目标测试进程，但先前 ps lookup self 限制仍需保留记录，持久 PID 守卫未放宽。
 - 使用包内 Electron 44.8.0 / Node 24.22.0 运行组合检查：72 项中 71 项通过、1 项夹具启动失败。原因是 MCP SDK 默认子进程环境不继承 ELECTRON_RUN_AS_NODE，夹具已显式设置；之后夹具远端能力记录未填 nodeMode，导致把 Electron 当 GUI 启动，现按生产 remote.cjs 的实际 nodeMode 记录补齐，等待定向复验。没有用 --no-sandbox 绕过保护，也不修改正确的生产模式声明。
 - 本节点只上传源码/交接，不启动验证；下一步定向复验 Node 24 端到端和等待最终包。上一提交 8785296c0d1a723daef0c6d1c5ba9e58bed96289。
+
+## 2026-10-21 20:11（北京时间）Node 24 定向复验与原生平台验收准备；开发仍 95.8%
+
+- 当前 23/24 = 95.8%，健康修复的新 Linux TAR 已生成，DEB/Windows 仍在重建。
+- 正确传递 ELECTRON_RUN_AS_NODE 并在测试远端报告 nodeMode 后，包内 Node 24 的 legacy MCP 定向检查通过：46 调用、37 入口。原先 72 项组合的其他 71 项已通过；未将初次组合失败隐去，也不简单重复相加。
+- 新增实际 TaskManager/SessionManager 与同一个 ExecutionScheduler 的集成：两个槽位分别由 task 和 session permit 占用，第三个等待；重建 Manager 后保留占位，原 task 结果落盘后第三个才启动。1 项通过，进程创建是桩，因此不是 native runner 正向验收。
+- 当前 /proc 身份不一致阻止持久 runner 正向验证；准备通过原生 Windows/Linux CI 完成该项，而不是绕过守卫。已读取官方 actions/checkout v4、actions/setup-node v4 的固定 commit，以及 Node v24.22.0 tag 元数据，尚未加入或运行 workflow。后续如 CI 无法运行，将明确保留验证缺口。
+- 本节点只上传源码/交接，不启动验证。上一提交 e5617914977f4f92b57725b57f364b505f6f36a7。
