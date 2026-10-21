@@ -583,3 +583,12 @@
 - 检查控制桥发现 publicFailure 尚未保留新 TRANSFER_* 和 SOURCE_CHANGED/DESTINATION_CHANGED；已接入结构化错误，避免首次 file.status 的 TRANSFER_NOT_FOUND 被误换为存储错误而阻断 prepare。新增真实 loopback SSH/SFTP + owner-bound FileService 检查，运行中，结果后续登记。
 - 包检查脚本按当前设计/交接/来源和内置 MCP prompts 检查，不再要求已删除的旧 skill/旧验证文件。下一步冻结源码，重建最终包并验证内容一致性；Windows 与原生 Linux 持久任务实测仍单列。
 - 本上传节点只保存源码与交接，不启动验证。上一成功提交 70e96e0505f3244ed3256c597b59db1d9c7274e6。
+
+## 2026-10-21 19:42（北京时间）原 37 工具 schema 与实际 SSH 传输；开发仍 95.8%
+
+- 当前 23/24 = 95.8%；当前源码已冻结重建运行包，压缩仍在进行，不以初版文件存在计作整合完成。
+- 更新旧断言后，66 项任务/会话/组/父操作/文件 worker 组合全部通过，无跳过。另相关 21 项通过包含设备错误码、GUI 日志保留和启动拒绝契约，不能与组合简单相加宣称独立覆盖数。
+- 新增实际 loopback SSH/SFTP：使用真实 ssh2 公钥认证、host key 校验、控制帧与 FileService worker；加载真实 MCP file-transfers.js（仅配置/连接提供器用隔离目标替代），注入写入确认丢失后保留同 transferId，修改原源文件后从快照恢复，确认已确认块未重写，并完成下载往返。最新 1 项通过，非用户设备或跨平台验收。首轮失败源于测试清场调用了 SSH server 连接不存在的 destroy，已改为 end，业务传输代码未因此改动。
+- 从来源记录指向的 b724289 原 src/index.js 独立抽取 37 个工具输入 schema，新增固定基线和回归。37 个名字、类型、约束、required/optional、默认值无差异；排除说明文案和 JSON Schema 版本注记。该检查不等于 37 项业务行为全部验证。
+- tail 新增 UTF-8 跨调用尾字节与源替换检查，1 项通过。MCP stdio 原 39 工具发现与 5 prompts 冒烟已通过，但仍不代替远端业务操作。
+- 本节点只上传源码/来源/交接，不启动验证。上一成功提交 957742d9654f3504ceaef318ff3e9e3003192855。

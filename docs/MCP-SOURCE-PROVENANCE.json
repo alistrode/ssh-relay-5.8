@@ -185,5 +185,10 @@
     "source": "trlstdin/rororororo@b724289:sources/stable/near/mcp-ssh-manager/LICENSE",
     "sourceBlob": "33814762b4bd8bc913959892269ced8010cde2de",
     "modification": "CRLF normalized to LF and final newline added; copyright and permission text preserved. Root deleted documentation/skill files are not restored."
+  },
+  "originalToolSchemaBaseline": {
+    "path": "tests/fixtures/mcp-original-schemas.json",
+    "source": "trlstdin/rororororo@b724289:sources/stable/near/mcp-ssh-manager/src/index.js",
+    "derivation": "Extract 37 registerToolConditional configuration objects without executing handlers; convert their Zod input shapes using current Zod to JSON Schema, excluding descriptions and schema-version annotations. Tool names, types, constraints, required/optional and defaults are retained."
   }
 }
