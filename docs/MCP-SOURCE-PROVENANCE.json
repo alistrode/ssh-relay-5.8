@@ -177,5 +177,11 @@
       "origin": "Unchanged copy of existing project compatibility implementation; not new third-party source."
     },
     "userOverride": "2026-10-21: no disk-capacity inspection, no automatic expiry/deletion or log rotation; manual diagnostic-log clear UI only. Health tool retains entry with empty disk field."
+  },
+  "packagedMcpLicense": {
+    "path": "assets/licenses/mcp-ssh-manager.LICENSE",
+    "source": "trlstdin/rororororo@b724289:sources/stable/near/mcp-ssh-manager/LICENSE",
+    "sourceBlob": "33814762b4bd8bc913959892269ced8010cde2de",
+    "modification": "CRLF normalized to LF and final newline added; copyright and permission text preserved. Root deleted documentation/skill files are not restored."
   }
 }

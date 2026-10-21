@@ -30,14 +30,15 @@ def appFiles(app):
  shutil.copyfile(ROOT/'package.json',app/'package.json')
  for name in ['LICENSE.mcp-ssh-manager','README.md','AGENTS.md']:
   if (ROOT/name).is_file():shutil.copyfile(ROOT/name,app/name)
- if not (ROOT/'LICENSE.mcp-ssh-manager').is_file():
-  raise RuntimeError('Original MCP license notice is absent; restore from the documented source before distributing a runtime package')
+ if not (app/'assets/licenses/mcp-ssh-manager.LICENSE').is_file() and not (app/'LICENSE.mcp-ssh-manager').is_file():
+  raise RuntimeError('Original MCP license notice is absent from application inputs')
  for name in production():
   source=ROOT/'node_modules'/name
   if source.exists():shutil.copytree(source,app/'node_modules'/name,dirs_exist_ok=True,ignore=shutil.ignore_patterns('test','tests','__tests__','examples','bench','benchmarks','.github'))
 
 def main():
- assert hashlib.sha256((CACHE/INPUTS['winsw']['file']).read_bytes()).hexdigest()==INPUTS['winsw']['sha256']
+ if os.environ.get('PRO_BUILD_PLATFORM') in [None,'win32']:
+  assert hashlib.sha256((CACHE/INPUTS['winsw']['file']).read_bytes()).hexdigest()==INPUTS['winsw']['sha256']
  for item in INPUTS['electron']['files']:
   if os.environ.get('PRO_BUILD_PLATFORM')and item['platform']!=os.environ['PRO_BUILD_PLATFORM']:continue
   assert hashlib.sha256((CACHE/item['file']).read_bytes()).hexdigest()==item['sha256']
