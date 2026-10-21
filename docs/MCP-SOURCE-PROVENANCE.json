@@ -190,5 +190,27 @@
     "path": "tests/fixtures/mcp-original-schemas.json",
     "source": "trlstdin/rororororo@b724289:sources/stable/near/mcp-ssh-manager/src/index.js",
     "derivation": "Extract 37 registerToolConditional configuration objects without executing handlers; convert their Zod input shapes using current Zod to JSON Schema, excluding descriptions and schema-version annotations. Tool names, types, constraints, required/optional and defaults are retained."
+  },
+  "nativeAcceptanceCI": {
+    "implementation": "Repository-authored native TaskManager/SessionManager acceptance tests; no third-party test implementation copied",
+    "workflow": ".github/workflows/native-acceptance.yml",
+    "actions": [
+      {
+        "source": "https://github.com/actions/checkout",
+        "ref": "v4",
+        "commit": "11d5960a326750d5838078e36cf38b85af677262"
+      },
+      {
+        "source": "https://github.com/actions/setup-node",
+        "ref": "v4",
+        "commit": "49933ea5288caeca8642d1e84afbd3f7d6820020"
+      }
+    ],
+    "runtime": "Node.js 24.22.0",
+    "platforms": [
+      "ubuntu-24.04",
+      "windows-2022"
+    ],
+    "status": "Prepared; execution results tracked in development handoff"
   }
 }

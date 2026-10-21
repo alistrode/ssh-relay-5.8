@@ -633,3 +633,10 @@
 - 新增实际 TaskManager/SessionManager 与同一个 ExecutionScheduler 的集成：两个槽位分别由 task 和 session permit 占用，第三个等待；重建 Manager 后保留占位，原 task 结果落盘后第三个才启动。1 项通过，进程创建是桩，因此不是 native runner 正向验收。
 - 当前 /proc 身份不一致阻止持久 runner 正向验证；准备通过原生 Windows/Linux CI 完成该项，而不是绕过守卫。已读取官方 actions/checkout v4、actions/setup-node v4 的固定 commit，以及 Node v24.22.0 tag 元数据，尚未加入或运行 workflow。后续如 CI 无法运行，将明确保留验证缺口。
 - 本节点只上传源码/交接，不启动验证。上一提交 e5617914977f4f92b57725b57f364b505f6f36a7。
+
+## 2026-10-21 20:19（北京时间）原生 CI 源码准备；开发仍 95.8%
+
+- 当前 23/24 = 95.8%。健康修复后的三个运行包重建进程已成功退出，尚未重新执行最终内容核对，旧核对结果不代替新包结果。
+- 新增 Linux/Windows 原生 CI：固定官方 checkout/setup-node commit，Node 24.22.0，仅安装锁定生产依赖且不运行生命周期脚本。新增真实独立提交进程退出后的任务存活/同 ID 不重放、取消命令树、超时，以及会话 Manager 重建后 cwd/环境保持和明确关闭检查。
+- 原生测试要求真实进程身份可证明；启用 CI 后身份失败会直接失败，不跳过、不放宽生产守卫。目前只有语法检查完成，尚无原生通过结果。来源记录登记官方 action pins，未复制第三方实现。
+- 本节点只保存并上传源码和交接，不启动验证。上一成功提交 0b8893094f77737f87ba829b87e6fbecb80485c3。
