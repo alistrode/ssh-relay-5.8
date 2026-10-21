@@ -71,12 +71,12 @@ if windows:
 else:subprocess.run(['sudo','systemctl','stop','mysql','postgresql'],capture_output=True,timeout=60)
 account=getpass.getuser();pgdata=root/'postgres';pgport=5432
 run([pgbin/('initdb.exe'if windows else'initdb'),'-D',pgdata,'-U',account,'--auth=trust','--encoding=UTF8','--no-locale'])
-launch([pgbin/('postgres.exe'if windows else'postgres'),'-D',pgdata,'-h','127.0.0.1','-p',pgport],'postgres',pgport)
+launch([pgbin/('postgres.exe'if windows else'postgres'),'-D',pgdata,'-h','127.0.0.1','-p',pgport]+([]if windows else['-k',pgdata]),'postgres',pgport)
 run([pgbin/('createdb.exe'if windows else'createdb'),'-h','127.0.0.1','-p',pgport,'-U',account,'relay_ai'])
 run([psql,'-h','127.0.0.1','-p',pgport,'-U',account,'-d','relay_ai','-c',"CREATE TABLE ai_probe(value text); INSERT INTO ai_probe VALUES ('ai-database-marker');"])
 mydata=root/'mysql';myport=3306
 run([mysqld,'--no-defaults','--initialize-insecure','--datadir='+str(mydata)])
-launch([mysqld,'--no-defaults','--datadir='+str(mydata),'--port='+str(myport),'--bind-address=127.0.0.1','--mysqlx=0'],'mysql',myport)
+launch([mysqld,'--no-defaults','--datadir='+str(mydata),'--port='+str(myport),'--bind-address=127.0.0.1','--mysqlx=0','--pid-file='+str(root/'mysql.pid')]+([]if windows else['--socket='+str(root/'mysql.sock')]),'mysql',myport)
 run([mysql,'--no-defaults','-h','127.0.0.1','-P',myport,'-u','root','-e',"CREATE DATABASE relay_ai; CREATE TABLE relay_ai.ai_probe(value varchar(100)); INSERT INTO relay_ai.ai_probe VALUES ('ai-database-marker');"])
 safe_account=account.replace("'","''")
 run([mysql,'--no-defaults','-h','127.0.0.1','-P',myport,'-u','root','-e',"CREATE USER IF NOT EXISTS '"+safe_account+"'@'localhost'; GRANT ALL ON relay_ai.* TO '"+safe_account+"'@'localhost';"])
