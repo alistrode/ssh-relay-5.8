@@ -2,6 +2,7 @@
 // Public broker; fresh owned near/far profiles. Never upload profiles or raw logs.
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
 const crypto = require('node:crypto'), assert = require('node:assert/strict');
+const cp = require('node:child_process');
 const { performance } = require('node:perf_hooks');
 const { Agent } = require('../../src/pro/agent.cjs');
 const { request } = require('../../src/pro/cli.cjs');
@@ -129,6 +130,13 @@ function healthy() {
 (async () => {
   try {
     result.sourceHash = hashSource(); save();
+    if (windows) {
+      // Restrict only this freshly created fixture, never an existing user profile.
+      const script = "$ErrorActionPreference='Stop'; $user=[Security.Principal.WindowsIdentity]::GetCurrent().User; $acl=New-Object Security.AccessControl.DirectorySecurity; $acl.SetOwner($user); $acl.SetAccessRuleProtection($true,$false); $rule=New-Object Security.AccessControl.FileSystemAccessRule($user,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $acl.AddAccessRule($rule); Set-Acl -LiteralPath $env:RELAY_HOUR_NEW_FIXTURE -AclObject $acl";
+      const setup = cp.spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+        { env: { ...process.env, RELAY_HOUR_NEW_FIXTURE: root }, encoding: 'utf8', timeout: 30000 });
+      assert.equal(setup.status, 0, 'Could not create an account-private Windows test fixture');
+    }
     far = new Agent({ role: 'far', dir: path.join(root, 'far'), allowCloudSelfTest: true, brokerUrl: broker });
     near = new Agent({ role: 'near', dir: path.join(root, 'near'), allowCloudSelfTest: true, brokerUrl: broker });
     far.emit = observe; near.emit = observe;
