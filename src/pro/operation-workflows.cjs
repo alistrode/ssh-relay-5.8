@@ -18,7 +18,7 @@ class OperationWorkflows {
   }
   register(p) {
     const id = operationId(p.operationId), deviceId = operationId(p.deviceId);
-    if (!["deploy", "backup-restore", "database"].includes(p.workflow) || !/^[a-f0-9]{64}$/.test(p.requestHash) ||
+    if (!["deploy", "backup", "backup-restore", "database"].includes(p.workflow) || !/^[a-f0-9]{64}$/.test(p.requestHash) ||
         !Array.isArray(p.stages) || p.stages.length < 1 || p.stages.length > 256 ||
         p.stages.some(s => typeof s !== "string" || !/^[a-z0-9_-]{1,64}$/.test(s)) || new Set(p.stages).size !== p.stages.length)
       fail("INVALID_REQUEST", "Invalid workflow plan");
@@ -41,6 +41,7 @@ class OperationWorkflows {
     if (index < 0) fail("INVALID_REQUEST", "Unknown workflow stage");
     const s = r.stages[index], requestId = operationId(p.requestId);
     if (p.action === "claim") {
+      if (r.cancelRequestId) fail("OPERATION_CANCELLED", "Workflow cancellation blocks further stages");
       if (s.requestId) {
         if (s.requestId !== requestId) fail("REQUEST_CONFLICT", "Stage already has an execution identity");
         return { ...s, granted: false };
@@ -56,6 +57,7 @@ class OperationWorkflows {
       return { ...s, granted: true };
     }
     if (p.action === "bind") {
+      if (r.cancelRequestId) fail("OPERATION_CANCELLED", "Workflow cancellation blocks new children");
       if (s.requestId !== requestId || s.state !== "dispatching") fail("REQUEST_CONFLICT", "Stage is not dispatching");
       const child = this.operations.record(operationId(p.childOperationId));
       if (child.deviceId !== r.deviceId || (s.childOperationId && s.childOperationId !== child.operationId))
@@ -70,8 +72,23 @@ class OperationWorkflows {
     }
     s.state = p.state; s.finishedAt = Date.now();
     if (p.errorCode && /^[A-Z_]{1,64}$/.test(p.errorCode)) s.errorCode = p.errorCode;
-    r.state = p.state === "completed" ? (r.stages.every(v => v.state === "completed") ? "completed" : "running") : p.state;
+    r.state = r.cancelRequestId ? "cancel_requested" : p.state === "completed" ? (r.stages.every(v => v.state === "completed") ? "completed" : "running") : p.state;
     r.observedAt = Date.now(); durableWrite(this.file(id), r); return s;
+  }
+  async cancel(id, params) {
+    const r = this.record(id), requestId = operationId(params.requestId);
+    if (["completed", "failed", "cancelled"].includes(r.state)) return { ...r, ok: true };
+    if (!r.cancelRequestId) {
+      r.cancelRequestId = requestId; r.observedAt = Date.now();
+      r.state = r.stages.every(s => s.state === "not_started") ? "cancelled" : "cancel_requested";
+      durableWrite(this.file(id), r);
+    }
+    const results = [];
+    for (const s of r.stages) if (s.childOperationId && !["completed", "failed"].includes(s.state)) {
+      try { results.push(await this.operations.cancel(s.childOperationId, { requestId: r.cancelRequestId })); }
+      catch { results.push({ operationId: s.childOperationId, state: "unknown" }); }
+    }
+    return { ...r, ok: true, children: results };
   }
   list(deviceId) {
     const out = [];

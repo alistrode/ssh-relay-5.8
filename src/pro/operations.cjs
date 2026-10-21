@@ -97,6 +97,7 @@ class Operations {
     }
   }
   async cancel(key, params) {
+    if (this.workflows.exists(key)) return this.workflows.cancel(key, params);
     if (this.groups.exists(key)) return this.groups.cancel(key, params);
     const record = this.record(key), requestId = operationId(params.requestId);
     if (["registered", "not_started"].includes(record.state) && !record.dispatchStartedAt) {

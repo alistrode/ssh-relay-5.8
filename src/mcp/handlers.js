@@ -139,9 +139,14 @@ async function health(a) {
   );
 }
 async function backupCreate(a) {
-  if (["files", "full"].includes(a.type))
-    return job(a.server, "backup", { ...a, action: "create" }, 300000);
-  return job(a.server, "database", { ...a, action: "backup" }, 300000);
+  return workflow(serverConfig(a.server), "backup", a, ["create"], stage => stage("create", () =>
+    ["files", "full"].includes(a.type)
+      ? job(a.server, "backup", { ...a, action: "create" }, 300000)
+      : job(a.server, "database", { ...a, action: "backup" }, 300000)));
+}
+async function databaseMutation(a, action) {
+  return workflow(serverConfig(a.server), "database", { ...a, action }, [action],
+    stage => stage(action, () => job(a.server, "database", { ...a, action }, 300000)));
 }
 async function backupRestore(a) {
   const target = serverConfig(a.server);
@@ -266,77 +271,60 @@ async function deploy(a) {
     throw new Error(
       "Deployment uses inherited remote permissions; use ssh_execute_sudo explicitly for privileged staging",
     );
-  await executeHook("pre-deploy", { server: a.server });
-  const s = await sftp(a.server),
-    results = [];
-  for (const file of a.files) {
-    const dest = await remotePath(a.server, file.remote),
-      tmp = dest + ".relay-upload-" + crypto.randomBytes(6).toString("hex");
-    let backup = null;
-    try {
-      await upload({
-        server: a.server,
-        localPath: file.local,
-        remotePath: tmp,
-      });
-      let exists;
+  const stages = ["pre_hook"];
+  a.files.forEach((_file, i) => {
+    stages.push("upload_" + i, "replace_" + i);
+    if (a.options?.permissions) stages.push("permissions_" + i);
+    if (a.options?.owner) stages.push("owner_" + i);
+  });
+  if (a.options?.restart) stages.push("restart");
+  stages.push("post_hook");
+  return workflow(config, "deploy", a, stages, async stage => {
+    await stage("pre_hook", () => executeHook("pre-deploy", { server: a.server }));
+    const s = await sftp(a.server), results = [];
+    for (const [i, file] of a.files.entries()) {
+      const dest = await remotePath(a.server, file.remote),
+        tmp = dest + ".relay-upload-" + crypto.randomBytes(6).toString("hex");
+      let backup = null;
       try {
-        exists = await sftpCall(s, "lstat", dest);
+        await stage("upload_" + i, () => upload({ server: a.server, localPath: file.local, remotePath: tmp }));
+        await stage("replace_" + i, async () => {
+          let exists;
+          try { exists = await sftpCall(s, "lstat", dest); }
+          catch (e) { if (e.code !== 2) throw e; }
+          if (exists?.isSymbolicLink() || exists?.isDirectory()) throw Error("Deployment target must be a regular file");
+          if (exists && a.options?.backup !== false) {
+            backup = dest + ".bak-" + Date.now();
+            await sftpCall(s, "rename", dest, backup);
+          }
+          try { await sftpCall(s, "rename", tmp, dest); }
+          catch (e) {
+            if (backup) await sftpCall(s, "rename", backup, dest);
+            throw e;
+          }
+          return { success: true };
+        });
+        if (a.options?.permissions) await stage("permissions_" + i, async () => checked(await durableExec(
+          a.server, `chmod ${a.options.permissions} -- ${shellQuote(dest)}`, { timeout: 120000 })));
+        if (a.options?.owner) await stage("owner_" + i, async () => checked(await durableExec(
+          a.server, `chown ${shellQuote(a.options.owner)} -- ${shellQuote(dest)}`, { timeout: 120000 })));
+        results.push({ local: file.local, remote: dest, backup, success: true });
       } catch (e) {
-        if (e.code !== 2) throw e;
+        // Preserve the parent's identity and completed stage records. No retry.
+        throw Object.assign(Error("Deployment failed for " + dest + ": " + e.message +
+          "; prior completed files may already be deployed"), { operationId: e.operationId,
+          workflowOperationId: e.workflowOperationId, childOperationId: e.childOperationId });
       }
-      if (exists?.isSymbolicLink() || exists?.isDirectory())
-        throw new Error("Deployment target must be a regular file");
-      if (exists && a.options?.backup !== false) {
-        backup = dest + ".bak-" + Date.now();
-        await sftpCall(s, "rename", dest, backup);
-      }
-      try {
-        await sftpCall(s, "rename", tmp, dest);
-      } catch (e) {
-        if (backup) await sftpCall(s, "rename", backup, dest);
-        throw e;
-      }
-      if (a.options?.permissions)
-        checked(
-          await run(
-            a.server,
-            `chmod ${a.options.permissions} -- ${shellQuote(dest)}`,
-          ),
-        );
-      if (a.options?.owner)
-        checked(
-          await run(
-            a.server,
-            `chown ${shellQuote(a.options.owner)} -- ${shellQuote(dest)}`,
-          ),
-        );
-      results.push({ local: file.local, remote: dest, backup, success: true });
-    } catch (e) {
-      try {
-        await sftpCall(s, "unlink", tmp);
-      } catch {}
-      throw new Error(
-        "Deployment failed for " +
-          dest +
-          ": " +
-          e.message +
-          "; prior completed files may already be deployed",
-      );
     }
-  }
-  if (a.options?.restart)
-    checked(
-      await run(
-        a.server,
-        config.platform === "windows"
-          ? `Restart-Service -Name ${psQuote(a.options.restart)} -ErrorAction Stop`
-          : `systemctl restart -- ${shellQuote(a.options.restart)}`,
-      ),
-    );
-  await executeHook("post-deploy", { server: a.server });
-  return { success: true, files: results };
+    if (a.options?.restart) await stage("restart", async () => checked(await durableExec(a.server,
+      config.platform === "windows"
+        ? `Restart-Service -Name ${psQuote(a.options.restart)} -ErrorAction Stop`
+        : `systemctl restart -- ${shellQuote(a.options.restart)}`, { timeout: 120000 })));
+    await stage("post_hook", () => executeHook("post-deploy", { server: a.server }));
+    return { success: true, files: results };
+  });
 }
+
 async function keyManage(a) {
   const all = servers(),
     revoked = readState("revoked-keys.json", {});
@@ -470,14 +458,11 @@ export const handlers = {
   ssh_backup_list: (a) => job(a.server, "backup", { ...a, action: "list" }),
   ssh_backup_restore: backupRestore,
   ssh_backup_schedule: schedule,
-  ssh_db_dump: (a) =>
-    job(a.server, "database", { ...a, action: "dump" }, 300000),
-  ssh_db_import: (a) =>
-    job(a.server, "database", { ...a, action: "import" }, 300000),
+  ssh_db_dump: (a) => databaseMutation(a, "dump"),
+  ssh_db_import: (a) => databaseMutation(a, "import"),
   ssh_db_list: (a) =>
     job(a.server, "database", { ...a, action: "list" }, 300000),
-  ssh_db_query: (a) =>
-    job(a.server, "database", { ...a, action: "query" }, 300000),
+  ssh_db_query: (a) => databaseMutation(a, "query"),
   ssh_deploy: deploy,
   ssh_alias: async (a) => {
     if (a.action === "list")

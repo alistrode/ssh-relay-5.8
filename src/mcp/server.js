@@ -187,7 +187,7 @@ for (const { name, config } of catalog) {
                 { success: false, error: error.message, tool: name,
                   code: error.code, retryable: error.retryable,
                   connectionTaskId: error.connectionTaskId, operationId: error.operationId,
-                  childOperationId: error.childOperationId, state: error.state, completed: error.completed },
+                  childOperationId: error.childOperationId, workflowOperationId: error.workflowOperationId, state: error.state, completed: error.completed },
                 args,
               ),
             },
