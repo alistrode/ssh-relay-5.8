@@ -31,7 +31,10 @@ class TaskManager {
   save(record) { durableWrite(this.file(record.operationId, "manifest.json"), record); }
   validate(record, key) {
     if (!record || record.operationId !== key || record.deviceId !== this.deviceId ||
-        !["exec", "job"].includes(record.kind) || !/^[a-f0-9]{64}$/.test(record.requestHash) ||
+        (!["exec", "job"].includes(record.kind) &&
+          !(record.kind === "cancelled" && record.cancelledBeforeSubmit)) ||
+        (!/^[a-f0-9]{64}$/.test(record.requestHash) &&
+          !(record.cancelledBeforeSubmit && record.requestHash === null)) ||
         !["accepted", "starting", "running", ...FINAL].includes(record.state))
       throw failure("OPERATION_CORRUPT", "Operation manifest is invalid");
     operationId(record.owner);
@@ -106,6 +109,9 @@ class TaskManager {
       throw failure("REQUEST_HASH_MISMATCH", "Task request hash does not match normalized input");
     if (this.records.has(key)) {
       const record = this.lookup(owner, key);
+      if (record.cancelledBeforeSubmit && record.requestHash === null) {
+        record.requestHash = hash; record.kind = kind; this.save(record);
+      }
       if (record.requestHash !== hash) throw failure("REQUEST_CONFLICT", "operationId was used for different task input");
       return this.get(owner, { operationId: key });
     }
@@ -246,6 +252,23 @@ class TaskManager {
     try { fs.unlinkSync(this.file(record.operationId, "input.json")); } catch (error) { if (error.code !== "ENOENT") throw error; }
   }
   cancel(owner, params, allowRevoked = false) {
+    operationId(owner); operationId(params.operationId); operationId(params.requestId);
+    if (!this.records.has(params.operationId) && !this.corrupt.has(params.operationId)) {
+      if (!allowRevoked && !this.authorized(owner)) throw failure("AUTH_REVOKED", "Controller authorization is no longer valid");
+      this.cleanup();
+      if (this.records.size + this.corrupt.size >= 10000)
+        throw failure("TASK_CAPACITY", "Task cancellation record capacity reached", true);
+      const key = params.operationId, directory = this.directory(key);
+      try { fs.mkdirSync(directory, { mode: 0o700 }); }
+      catch { throw failure("OPERATION_CORRUPT", "Unrecognized operation directory cannot be replaced"); }
+      const record = { schemaVersion: 1, operationId: key, owner, deviceId: this.deviceId,
+        kind: "cancelled", requestHash: null, cancelledBeforeSubmit: true, state: "accepted",
+        createdAt: Date.now(), updatedAt: Date.now(),
+        durability: { fileFsync: true, directoryFsync: syncDirectory(this.dir) && syncDirectory(directory) } };
+      this.save(record); this.records.set(key, record);
+      this.finishBeforeStart(record, "cancelled", "CANCELLED_BEFORE_SUBMIT");
+      return this.get(owner, { operationId: key }, allowRevoked);
+    }
     const record = this.lookup(owner, params.operationId, allowRevoked);
     const requestId = operationId(params.requestId), key = record.operationId;
     if (this.result(record)) return this.get(owner, { operationId: key }, allowRevoked);

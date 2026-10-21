@@ -57,3 +57,12 @@ test("cancel queued work before execution; output pagination is byte bounded", t
   assert.throws(() => manager.get(owner, { operationId: queued.operationId, stdoutOffset: 7 }), { code: "INVALID_OFFSET" });
   assert.throws(() => manager.get(owner, { operationId: queued.operationId, limitBytes: 65537 }), { code: "INVALID_LIMIT" });
 });
+test("cancel arriving before submit prevents the later command and survives restart", t => {
+  const { manager, starts, options } = fixture(t), request = input();
+  const cancelled = manager.cancel(owner, { operationId: request.operationId, requestId: crypto.randomUUID() });
+  assert.equal(cancelled.state, "cancelled");
+  const recovered = new TaskManager({ ...options, bootId: crypto.randomUUID() });
+  assert.equal(recovered.submit(owner, request).state, "cancelled");
+  assert.equal(starts(), 0);
+  assert.throws(() => recovered.submit(owner, input(request.operationId, "changed")), { code: "REQUEST_CONFLICT" });
+});

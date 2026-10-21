@@ -26,6 +26,7 @@ async function submitTask(conn, kind, spec, timeout) {
   const hash = requestHash(config.agentDeviceId, kind, spec, config.platform);
   const agent = await localAgentClient();
   await agent.registerOperation({ operationId, childOperationId, deviceId: config.agentDeviceId, kind, requestHash: hash });
+  await agent.markOperationDispatch(operationId);
   const result = await executeTask(control,
     { operationId: childOperationId, kind, requestHash: hash, spec },
     { parentOperationId: operationId, deviceId: config.agentDeviceId, timeout });

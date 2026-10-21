@@ -865,6 +865,12 @@ class Agent {
         value = await this.operations.cancel(route.split("/")[3], data);
         reply(value.state === "cancel_requested" ? 202 : 200, value); return;
       }
+      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/dispatch$/.test(route)) {
+        reply(200, this.operations.markDispatch(route.split("/")[3])); return;
+      }
+      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/not-started$/.test(route)) {
+        reply(200, this.operations.notStarted(route.split("/")[3])); return;
+      }
       if (req.url.startsWith("/v1/") && req.url !== "/v1/health" && this.role !== "near")
         throw fault("ROLE_MISMATCH", "Device connection API requires a near Agent");
       if (req.method === "GET" && req.url === "/v1/health")

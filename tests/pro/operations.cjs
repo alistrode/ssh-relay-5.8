@@ -59,6 +59,7 @@ test("cancellation retains the original request ID across uncertain replies", as
   } }) });
   service.register(input);
   const first = crypto.randomUUID();
+  service.markDispatch(input.operationId);
   await service.cancel(input.operationId, { requestId: first });
   await service.cancel(input.operationId, { requestId: crypto.randomUUID() });
   assert.deepEqual(seen, [first, first]);

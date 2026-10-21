@@ -127,7 +127,8 @@
       "src/pro/task-jobs.cjs",
       "src/pro/job-executor.cjs",
       "src/pro/task-call.cjs",
-      "src/mcp/group-targets.js"
+      "src/mcp/group-targets.js",
+      "src/pro/operation-groups.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
@@ -146,3 +147,4 @@
     "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run."
   }
 }
+
