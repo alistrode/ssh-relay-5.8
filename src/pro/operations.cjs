@@ -128,11 +128,12 @@ class Operations {
     return this.public(record);
   }
   cleanup() {
+    this.groups.cleanup();
     for (const name of fs.readdirSync(this.dir)) {
       if (!/^[a-f0-9-]{36}$/.test(name)) continue;
       let record;
       try { record = this.record(name); } catch { continue; }
-      if (["completed", "failed", "cancelled"].includes(record.state) &&
+      if (["completed", "failed", "cancelled", "not_started"].includes(record.state) &&
           Number.isFinite(record.observedAt) && Date.now() - record.observedAt > 7 * 86400000)
         fs.rmSync(path.dirname(this.file(name)), { recursive: true });
     }

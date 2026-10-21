@@ -48,6 +48,13 @@ class OperationGroups {
       createdAt: record.createdAt, observedAt: record.observedAt || null,
       children: record.children.map(({ operationId, childOperationId, deviceId }) => ({ operationId, childOperationId, deviceId })) };
   }
+  verifyChild(child, groupId) {
+    const record = this.operations.record(child.operationId);
+    if (record.groupOperationId !== groupId || record.deviceId !== child.deviceId ||
+        record.childOperationId !== child.childOperationId || record.requestHash !== child.requestHash ||
+        record.kind !== child.kind)
+      throw failure("OPERATION_CORRUPT", "Child operation does not belong to this group plan");
+  }
   register(params) {
     const key = operationId(params.operationId);
     if (this.operations.exists(key)) throw failure("REQUEST_CONFLICT", "Operation ID already belongs to a single target");
@@ -65,6 +72,15 @@ class OperationGroups {
       ids.add(value.operationId); ids.add(value.childOperationId); devices.add(value.deviceId);
       return value;
     });
+    // Check every existing ID before saving a plan or creating any new child.
+    for (const child of children) {
+      if (!this.agent.registry()[child.deviceId]) throw failure("DEVICE_NOT_FOUND", "Unknown paired device");
+      if (this.exists(child.operationId)) throw failure("REQUEST_CONFLICT", "Child ID belongs to a group");
+      if (this.operations.exists(child.operationId)) {
+        try { this.verifyChild(child, key); }
+        catch { throw failure("REQUEST_CONFLICT", "Child ID belongs to different task metadata"); }
+      }
+    }
     let record;
     if (this.exists(key)) {
       record = this.record(key);
@@ -92,12 +108,22 @@ class OperationGroups {
     }
     return groups;
   }
+  cleanup() {
+    for (const name of fs.readdirSync(this.dir)) {
+      if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
+      let record;
+      try { record = this.record(name.slice(0, -5)); } catch { continue; }
+      if (["completed", "failed", "cancelled"].includes(record.state) &&
+          Number.isFinite(record.observedAt) && Date.now() - record.observedAt > 7 * 86400000)
+        fs.rmSync(this.file(record.operationId));
+    }
+  }
   async get(key, params = {}) {
     const record = this.record(key);
     if (params.stdoutOffset || params.stderrOffset)
       throw failure("INVALID_GROUP_CURSOR", "Paginate each child operationId using its own byte offsets");
     const results = await Promise.all(record.children.map(async child => {
-      try { return await this.operations.get(child.operationId, params); }
+      try { this.verifyChild(child, key); return await this.operations.get(child.operationId, params); }
       catch (error) { return { operationId: child.operationId, deviceId: child.deviceId,
         state: "unknown", errorCode: error.code || "OPERATION_QUERY_FAILED" }; }
     }));
@@ -112,7 +138,7 @@ class OperationGroups {
   async cancel(key, params) {
     const record = this.record(key), requestId = operationId(params.requestId);
     const results = await Promise.all(record.children.map(async child => {
-      try { return await this.operations.cancel(child.operationId,
+      try { this.verifyChild(child, key); return await this.operations.cancel(child.operationId,
         { requestId: childCancelId(requestId, child.operationId) }); }
       catch (error) { return { operationId: child.operationId, deviceId: child.deviceId,
         state: "unknown", cancelRequested: false, errorCode: error.code || "CANCEL_FAILED" }; }
