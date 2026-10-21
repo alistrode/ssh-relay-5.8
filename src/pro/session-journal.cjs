@@ -48,6 +48,10 @@ class SessionJournal {
     return { sessionId: this.sessionId, requestId: record.requestId, sequence: record.sequence,
       state: record.state, completed: ["completed", "failed"].includes(record.state) };
   }
+  hash(sequence, spec) {
+    return crypto.createHash("sha256").update(JSON.stringify({ deviceId: this.deviceId,
+      sessionId: this.sessionId, sequence, spec })).digest("hex");
+  }
   recover() {
     if (!Number.isInteger(this.record.nextSequence) || this.record.nextSequence < 1 ||
         !["open", "busy", "unknown", "lost", "closed"].includes(this.record.state))
@@ -77,8 +81,7 @@ class SessionJournal {
   accept(owner, { requestId, sequence, spec }) {
     this.checkOwner(owner); operationId(requestId);
     const normalized = normalizeSpec(spec, this.platform);
-    const hash = crypto.createHash("sha256").update(JSON.stringify({ deviceId: this.deviceId,
-      sessionId: this.sessionId, sequence, spec: normalized })).digest("hex");
+    const hash = this.hash(sequence, normalized);
     if (fs.existsSync(this.file(requestId, "manifest.json"))) {
       const existing = this.read(requestId);
       if (existing.requestHash !== hash) throw failure("REQUEST_CONFLICT", "Session request ID was used for different command input");
@@ -101,13 +104,16 @@ class SessionJournal {
     const record = this.read(requestId);
     if (this.record.state !== "busy" || this.record.activeRequestId !== requestId || record.state !== "accepted")
       throw failure("SESSION_COMMAND_UNKNOWN", "Session command is not available for first execution");
+    const input = privateJSON(this.file(requestId, "input.json"), null);
+    if (!input || this.hash(record.sequence, normalizeSpec(input.spec, this.platform)) !== record.requestHash)
+      throw failure("SESSION_CORRUPT", "Session command input differs from its saved request");
     let fd;
     try { fd = fs.openSync(this.file(requestId, "execution.lock"), "wx", 0o600); fs.fsyncSync(fd); }
     catch { throw failure("SESSION_COMMAND_UNKNOWN", "Session command may already have started"); }
     finally { if (fd !== undefined) fs.closeSync(fd); }
     syncDirectory(this.directory(requestId));
     record.state = "running"; durableWrite(this.file(requestId, "manifest.json"), record);
-    return privateJSON(this.file(requestId, "input.json"));
+    return input;
   }
   validateResult(record, result) {
     if (result.requestId !== record.requestId || result.sessionId !== this.sessionId || result.owner !== this.owner ||
@@ -130,7 +136,8 @@ class SessionJournal {
     this.checkOwner(owner); const record = this.read(requestId);
     const result = privateJSON(this.file(requestId, "result.json"), null);
     if (result) this.validateResult(record, result);
-    return { ...this.public(record), ...(result ? { result: { state: result.state, exitCode: result.exitCode, finishedAt: result.finishedAt } } : {}) };
+    const state = result ? result.state : ["completed", "failed"].includes(record.state) ? "unknown" : record.state;
+    return { ...this.public({ ...record, state }), ...(result ? { result: { state: result.state, exitCode: result.exitCode, finishedAt: result.finishedAt } } : {}) };
   }
 }
 module.exports = { SessionJournal };

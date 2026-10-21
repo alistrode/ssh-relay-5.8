@@ -53,3 +53,15 @@ test("completed results remain queryable after restart without claiming shell su
   assert.equal(reopened.record.state, "unknown");
   assert.throws(() => reopened.accept(options.owner, command(2)), { code: "SESSION_UNAVAILABLE" });
 });
+test("changed private command input cannot be claimed and missing final result is unknown", t => {
+  const { options, journal } = fixture(t), input = command(1);
+  journal.accept(options.owner, input);
+  fs.writeFileSync(journal.file(input.requestId, "input.json"), JSON.stringify({ spec: { command: "different" } }));
+  assert.throws(() => journal.claim(options.owner, input.requestId), { code: "SESSION_CORRUPT" });
+  assert.equal(fs.existsSync(journal.file(input.requestId, "execution.lock")), false);
+  fs.writeFileSync(journal.file(input.requestId, "input.json"), JSON.stringify({ spec: input.spec }));
+  journal.claim(options.owner, input.requestId); journal.complete(options.owner, input.requestId, { exitCode: 0 });
+  fs.rmSync(journal.file(input.requestId, "result.json"));
+  const result = journal.get(options.owner, input.requestId);
+  assert.equal(result.state, "unknown"); assert.equal(result.completed, false);
+});
