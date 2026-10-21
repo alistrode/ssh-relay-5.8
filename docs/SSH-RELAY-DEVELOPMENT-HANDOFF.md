@@ -484,3 +484,11 @@
 - 本批将 Far Agent 的 TaskManager/SessionManager 接到同一个二槽/64 等待调度器；SessionManager 登记 session provider，创建新宿主保存 executionBudgetVersion；发布命令后与 tick 调度持久 permit。
 - runner 无匹配 permit 不处理业务 inbox；收到 permit 后核对固定 owner/device/session/request 和原意图 hash，规范化同一输入后才调用 engine。旧会话不重新启动，允许查询/关闭，不能绕过共享额度发送新命令。失联未完成命令保留 unresolvedCommands，恢复时保守占位。关闭/撤销仍优先，不排业务额度。
 - 这是新增接线源码，尚未验证；真实 SSH/MCP 和原生平台功能仍待全部实现后统一验证。上一远端提交 94a21032f05a9c017d47028b58a61c918bd78d9f。
+
+## 2026-10-21 16:29（北京时间）多阶段父操作；开发 54.2%
+
+- 实现登记 13/24 = 54.2%，新增第 13 项多阶段父操作；数据库/备份整项仍进行中，部署和文件恢复未计完成。分母沿用 24 项。
+- 新增 workflow 近端元数据：固定设备与输入 hash，阶段按顺序一次认领；认领先持久记录，再运行闭包；已认领阶段不能重新获得执行许可。finish 只保存状态/固定错误码，不保存业务输入、凭据或原始输出；查询只观察原子操作，不推进工作流。
+- SDK/API 增加阶段 claim/bind/finish；MCP AsyncLocalStorage 绑定当前阶段，durable-exec 注册子操作后、实际提交前保存父阶段到子操作关联。换设备或替换子操作拒绝。
+- 备份 restore 已开始接线为 verify/restore 两阶段，返回 workflowOperationId；验证未完成、断线或业务失败不进入后续阶段。数据库其他入口、部署、多阶段远端平台能力仍待继续实现；本批不能宣称这些整项完成。
+- 按用户要求未运行测试、构建或验证。本节点只上传源码/来源/交接；上一提交 f9e243923b9f8909b8635f6867a821ca3e480f28。

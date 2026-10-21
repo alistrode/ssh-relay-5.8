@@ -6,12 +6,14 @@ const { operationId } = require("./task-spec.cjs");
 const { durableWrite, privateJSON } = require("./task-store.cjs");
 const { agentControl } = require("./agent-control.cjs");
 const { validateTaskPage, publicFailure } = require("./task-result.cjs");
+const { OperationWorkflows } = require("./operation-workflows.cjs");
 const { OperationGroups } = require("./operation-groups.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 class Operations {
   constructor(agent, { control = agentControl } = {}) {
     this.agent = agent; this.dir = folder(agent.file("operations")); this.control = control;
     this.groups = new OperationGroups(this);
+    this.workflows = new OperationWorkflows(this);
   }
   exists(key) { return fs.existsSync(this.file(key)); }
   file(key) { return path.join(this.dir, operationId(key), "manifest.json"); }
@@ -33,6 +35,8 @@ class Operations {
       createdAt: record.createdAt, observedAt: record.observedAt || null };
   }
   register(params) {
+    if (params.kind === "workflow") return this.workflows.register(params);
+    if (this.workflows.exists(params.operationId)) throw failure("REQUEST_CONFLICT", "Operation ID belongs to a workflow");
     if (params.kind === "exec-group") return this.groups.register(params);
     const key = operationId(params.operationId), deviceId = operationId(params.deviceId);
     if (this.groups.exists(key)) throw failure("REQUEST_CONFLICT", "Operation ID belongs to a group");
@@ -64,7 +68,7 @@ class Operations {
       throw failure("INVALID_LIMIT", "Operation list limit must be between 1 and 100");
     if (deviceId) operationId(deviceId);
     const records = [];
-    records.push(...this.groups.list(deviceId));
+    records.push(...this.groups.list(deviceId), ...this.workflows.list(deviceId));
     for (const name of fs.readdirSync(this.dir)) {
       if (!/^[a-f0-9-]{36}$/.test(name)) continue;
       try {
@@ -75,6 +79,7 @@ class Operations {
     return { ok: true, operations: records.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limit) };
   }
   async get(key, params = {}) {
+    if (this.workflows.exists(key)) return this.workflows.get(key);
     if (this.groups.exists(key)) return this.groups.get(key, params);
     const record = this.record(key);
     if (record.state === "not_started" || record.localCancelled)

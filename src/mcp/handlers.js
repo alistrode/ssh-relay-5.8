@@ -24,6 +24,7 @@ import * as groups from "./server-groups.js";
 import { hooks, toggleHook, executeHook } from "./hooks.js";
 import { readState, writeState } from "./state.js";
 import { logger } from "./logger.js";
+import { workflow } from "./workflows.js";
 import { durableExec } from "./durable-exec.js";
 import { planGroupTargets } from "./group-targets.js";
 import { prepareGroupOperations } from "./group-operations.js";
@@ -143,28 +144,17 @@ async function backupCreate(a) {
   return job(a.server, "database", { ...a, action: "backup" }, 300000);
 }
 async function backupRestore(a) {
-  const verified = checked(
-    await job(a.server, "backup", {
-      action: "verify",
-      backupId: a.backupId,
-      backupDir: a.backupDir,
-    }),
-  );
-  const meta = verified.backup;
-  if (["files", "full"].includes(meta.type))
-    return job(a.server, "backup", { ...a, action: "restore" }, 300000);
-  return job(
-    a.server,
-    "database",
-    {
-      ...a,
-      type: meta.type,
-      database: a.database || meta.database,
-      inputFile: meta.file,
-      action: "import",
-    },
-    300000,
-  );
+  const target = serverConfig(a.server);
+  return workflow(target, "backup-restore", a, ["verify", "restore"], async stage => {
+    const verified = checked(await stage("verify", () => job(a.server, "backup", {
+      action: "verify", backupId: a.backupId, backupDir: a.backupDir,
+    })));
+    const meta = verified.backup;
+    return stage("restore", () => ["files", "full"].includes(meta.type)
+      ? job(a.server, "backup", { ...a, action: "restore" }, 300000)
+      : job(a.server, "database", { ...a, type: meta.type,
+          database: a.database || meta.database, inputFile: meta.file, action: "import" }, 300000));
+  });
 }
 
 async function schedule(a) {

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { connect, run, psQuote } from "./transport.js";
 import { localAgentClient } from "./config.js";
 import { shellQuote } from "./shell-quote.js";
+import { currentWorkflowStage } from "./workflows.js";
 import { plannedOperation, hasOperationPlan } from "./operation-context.js";
 const require = createRequire(import.meta.url);
 const { openControl } = require("../pro/agent-control.cjs");
@@ -34,6 +35,12 @@ async function submitTask(conn, kind, spec, timeout) {
   const agent = await localAgentClient();
   await agent.registerOperation({ operationId, childOperationId, deviceId: config.agentDeviceId, kind, requestHash: hash,
     ...(plan ? { groupOperationId: plan.groupOperationId } : {}) });
+  const stage = currentWorkflowStage();
+  if (stage) {
+    if (stage.deviceId !== config.agentDeviceId) throw Object.assign(Error("Workflow target differs"), { code: "REQUEST_CONFLICT" });
+    await stage.agent.workflowStage(stage.operationId, { action: "bind", name: stage.name,
+      requestId: stage.requestId, childOperationId: operationId });
+  }
   await agent.markOperationDispatch(operationId);
   const result = await executeTask(control,
     { operationId: childOperationId, kind, requestHash: hash, spec },

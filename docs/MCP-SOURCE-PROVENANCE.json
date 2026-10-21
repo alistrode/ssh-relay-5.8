@@ -146,7 +146,9 @@
       "src/pro/session-call.cjs",
       "src/pro/execution-scheduler.cjs",
       "src/pro/session-executions.cjs",
-      "src/pro/manual-logs.cjs"
+      "src/pro/manual-logs.cjs",
+      "src/pro/operation-workflows.cjs",
+      "src/mcp/workflows.js"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

@@ -883,6 +883,9 @@ class Agent {
         value = await this.operations.cancel(route.split("/")[3], data);
         reply(value.state === "cancel_requested" ? 202 : 200, value); return;
       }
+      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/stage$/.test(route)) {
+        reply(200, this.operations.workflows.stage(route.split("/")[3], data)); return;
+      }
       if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/dispatch$/.test(route)) {
         reply(200, this.operations.markDispatch(route.split("/")[3])); return;
       }
