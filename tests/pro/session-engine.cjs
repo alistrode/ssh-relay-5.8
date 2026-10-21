@@ -65,9 +65,12 @@ test("a final metadata read failure still resolves the caller as unknown", { tim
   assert.equal(result.state, "unknown"); assert.equal(result.completed, false);
   assert.equal(f.engine.closed, true);
 });
-test("disk capacity failure refuses a command before shell input", async t => {
-  const f = fixture(t); t.mock.method(fs, "statfsSync", () => ({ bavail: 0, bsize: 4096 }));
-  const result = await f.engine.send(f.options.owner, input());
-  assert.equal(result.state, "unknown"); assert.equal(result.errorCode, "SESSION_DISK_CAPACITY");
-  assert.equal(f.writes.length, 0);
+test("commands do not inspect disk capacity", async t => {
+  const f = fixture(t); t.mock.method(fs, "statfsSync", () => { throw Error("Disk inspection forbidden"); });
+  const pending = f.engine.send(f.options.owner, input());
+  assert.equal(f.writes.length, 1);
+  const marker = f.writes[0].match(/RELAY_[a-f0-9]{32}/)[0];
+  f.child.stdout.emit("data", Buffer.from("\n" + marker + ":0:L3RtcA==\n"));
+  f.child.stderr.emit("data", Buffer.from("\n" + marker + ":END\n"));
+  assert.equal((await pending).completed, true);
 });

@@ -18,7 +18,7 @@ function fixture(t) {
     processIdentityProvider: () => ({ fixture: true }),
     spawn() { starts++; return Object.assign(new EventEmitter(), { unref() {} }); } };
   const manager = new TaskManager(options);
-  manager.space = () => {}; // Disk policy is independent of identity/queue behavior.
+  t.mock.method(fs, "statfsSync", () => { throw Error("Disk inspection forbidden"); });
   return { options, manager, starts: () => starts };
 }
 function input(operationId = crypto.randomUUID(), command = "fixture command") {
