@@ -9,26 +9,26 @@ class RemoteDownloads {
     this.files.check(owner); operationId(p.transferId);
     const source = this.files.target(p.source), info = fs.lstatSync(source);
     if (info.size > 4096 * 1024 * 1024) throw Object.assign(Error("Download snapshot exceeds recovery capacity"), { code: "TRANSFER_CAPACITY" });
-    const file = path.join(this.snapshots.directory(p.transferId), "owner.json");
+    const file = path.join(this.files.dir, "download-owner-" + p.transferId + ".json");
     if (fs.existsSync(file)) {
       const r = privateJSON(file);
       if (r.owner !== owner || r.source !== source) throw Object.assign(Error("Download ID belongs to a different source"), { code: "REQUEST_CONFLICT" });
       return this.status(owner, p.transferId);
     }
-    this.snapshots.create({ transferId: p.transferId, deviceId: this.files.deviceId, localPath: source, remotePath: source });
     durableWrite(file, { owner, source, transferId: p.transferId });
+    this.snapshots.create({ transferId: p.transferId, deviceId: this.files.deviceId, localPath: source, remotePath: source });
     return this.status(owner, p.transferId);
   }
   cancel(owner, id) {
     this.files.check(owner); operationId(id);
-    const file = path.join(this.snapshots.directory(id), "owner.json"), r = privateJSON(file, null);
+    const file = path.join(this.files.dir, "download-owner-" + id + ".json"), r = privateJSON(file, null);
     if (!r || r.owner !== owner || r.transferId !== id) throw Object.assign(Error("Unknown download"), { code: "TRANSFER_NOT_FOUND" });
     r.cancelled = true; durableWrite(file, r);
     return { transferId: id, deviceId: this.files.deviceId, direction: "download", state: "cancelled" };
   }
   status(owner, id) {
     this.files.check(owner); operationId(id);
-    const dir = this.snapshots.directory(id), bind = privateJSON(path.join(dir, "owner.json"), null);
+    const dir = this.snapshots.directory(id), bind = privateJSON(path.join(this.files.dir, "download-owner-" + id + ".json"), null);
     if (!bind || bind.owner !== owner || bind.transferId !== id) throw Object.assign(Error("Unknown download"), { code: "TRANSFER_NOT_FOUND" });
     if (bind.cancelled) return { transferId: id, deviceId: this.files.deviceId, direction: "download", state: "cancelled" };
     const r = this.snapshots.record(id);

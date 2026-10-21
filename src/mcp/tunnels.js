@@ -226,7 +226,8 @@ export async function closeTunnel(id, { remember = false } = {}) {
   const t = tunnels.get(id);
   if (!t) throw new Error("Unknown tunnel");
   t.closed = true; clearTimeout(t.recoveryTimer);
-  save(t, remember);
+  let storageError;
+  try { save(t, remember); } catch (error) { storageError = error; }
   tunnels.delete(id);
   t.state = "closed";
   for (const s of t.sockets) s.destroy();
@@ -239,6 +240,7 @@ export async function closeTunnel(id, { remember = false } = {}) {
       );
   }
   t.client?.removeListener("close", t.onClose);
+  if (storageError) throw storageError;
   return { id, closed: true };
 }
 

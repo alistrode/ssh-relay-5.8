@@ -450,7 +450,9 @@ export const handlers = {
     const result = await job(a.server, "tail", { ...a, ...(saved?.cursor ? { cursor: saved.cursor } : {}) }, 20000);
     if (result.success && result.cursor && Number.isSafeInteger(result.cursor.offset) && result.cursor.offset >= 0) {
       const fresh = readState("tail-cursors.json", {});
-      fresh[key] = { deviceId: target.agentDeviceId, cursor: result.cursor, observedAt: Date.now() };
+      const previous = fresh[key]?.cursor;
+      if (!previous || previous.fileIdentity !== result.cursor.fileIdentity || previous.offset <= result.cursor.offset)
+        fresh[key] = { deviceId: target.agentDeviceId, cursor: result.cursor, observedAt: Date.now() };
       writeState("tail-cursors.json", fresh);
     }
     return result;

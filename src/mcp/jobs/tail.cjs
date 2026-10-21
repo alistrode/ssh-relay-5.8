@@ -15,6 +15,19 @@ module.exports = async function (ARGS) {
   let rotated = false;
   const savedCursor = ARGS.cursor;
   const resume = savedCursor && savedCursor.fileIdentity === fileIdentity && Number.isSafeInteger(savedCursor.offset) && savedCursor.offset >= 0 && savedCursor.offset <= initialStat.size;
+  let carry = resume && typeof savedCursor.pendingUTF8 === "string" && /^[A-Za-z0-9+/=]{0,4}$/.test(savedCursor.pendingUTF8)
+    ? Buffer.from(savedCursor.pendingUTF8, "base64") : Buffer.alloc(0);
+  if (carry.length > 3) throw Error("Invalid tail UTF-8 cursor");
+  const decode = input => {
+    const bytes = Buffer.concat([carry, input]); let end = bytes.length;
+    let start = bytes.length - 1;
+    while (start >= Math.max(0, bytes.length - 4) && (bytes[start] & 0xc0) === 0x80) start--;
+    if (start >= 0) {
+      const c = bytes[start], need = c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 1;
+      if (need > bytes.length - start) end = start;
+    }
+    carry = Buffer.from(bytes.subarray(end)); return bytes.subarray(0, end).toString("utf8");
+  };
   const read = () => {
     const stat = fs.statSync(file), size = stat.size;
     if (identity(stat) !== fileIdentity) throw Error("Log source changed before reading");
@@ -25,7 +38,7 @@ module.exports = async function (ARGS) {
       const start = resume ? savedCursor.offset : size - n;
       const length = Math.min(size - start, 2 * 1024 * 1024), bytes = Buffer.alloc(length);
       const count = fs.readSync(fd, bytes, 0, length, start);
-      return { size: start + count, text: bytes.subarray(0, count).toString("utf8") };
+      return { size: start + count, text: decode(bytes.subarray(0, count)) };
     } finally {
       fs.closeSync(fd);
     }
@@ -52,8 +65,7 @@ module.exports = async function (ARGS) {
           const b = Buffer.alloc(n);
           count = fs.readSync(fd, b, 0, n, position);
           output.push(
-            ...b.subarray(0, count)
-              .toString("utf8")
+            ...decode(b.subarray(0, count))
               .split(/\r?\n/)
               .filter((l) => l && (!filter || filter.test(l))),
           );
@@ -71,7 +83,7 @@ module.exports = async function (ARGS) {
     follow: ARGS.follow !== false,
     followWindowSeconds: ARGS.follow === false ? 0 : 5,
     offset: position,
-    cursor: { fileIdentity, offset: position },
+    cursor: { fileIdentity, offset: position, pendingUTF8: carry.toString("base64") },
     cursorReset: !!savedCursor && !resume,
     sourceRotated: rotated,
     note: "Follow is bounded to five seconds per MCP call; call again to obtain a fresh window. No background stream is left running.",
