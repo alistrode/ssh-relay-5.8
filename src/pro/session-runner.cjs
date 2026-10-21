@@ -24,6 +24,19 @@ async function run(directory) {
     return record;
   }
   if (revoked()) throw failure("AUTH_REVOKED", "Session controller authorization was revoked");
+  function closing() {
+    const record = privateJSON(path.join(directory, "close.json"), null);
+    if (!record) return null;
+    if (record.owner !== config.owner || record.sessionId !== config.sessionId)
+      throw failure("SESSION_INVALID", "Session close identity is invalid");
+    operationId(record.requestId); return record;
+  }
+  const initialClose = closing();
+  if (initialClose) {
+    durableWrite(path.join(directory, "responses", initialClose.requestId + ".json"), {
+      sessionId: config.sessionId, requestId: initialClose.requestId, ok: true, state: "lost", stopRequested: true });
+    throw failure("SESSION_CLOSED", "Session was closed before shell startup");
+  }
   const osBoot = systemBootId(), identity = processIdentity(process.pid);
   if (!identity || !osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session runner process identity cannot be verified");
   if (config.osBoot !== osBoot) throw failure("SESSION_LOST", "Session belongs to a previous system boot");
@@ -72,6 +85,12 @@ async function run(directory) {
           requestId: revocation.requestId, state: "lost", stopRequested: true, observedAt: Date.now() });
         return;
       }
+      const closeRequest = closing();
+      if (closeRequest) {
+        engine.close(config.owner); finishing = true;
+        receipt(closeRequest.requestId, { ok: true, state: "lost", stopRequested: true });
+        return;
+      }
       const names = fs.readdirSync(inbox);
       if (names.length > 64) { engine.close(config.owner); finishing = true; return; }
       for (const name of names) {
@@ -108,7 +127,7 @@ async function run(directory) {
 async function main(directory) {
   try { await run(directory); }
   catch (error) {
-    const known = new Set(["PROCESS_IDENTITY_UNAVAILABLE", "SESSION_INVALID", "SESSION_LOST", "SESSION_ENGINE_EXISTS", "AUTH_REVOKED"]);
+    const known = new Set(["PROCESS_IDENTITY_UNAVAILABLE", "SESSION_INVALID", "SESSION_LOST", "SESSION_ENGINE_EXISTS", "AUTH_REVOKED", "SESSION_CLOSED"]);
     try { durableWrite(path.join(path.resolve(directory), "runner-error.json"), {
       errorCode: known.has(error.code) ? error.code : "SESSION_RUNNER_FAILED", finishedAt: Date.now() }); } catch {}
     process.exitCode = 1;

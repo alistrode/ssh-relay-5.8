@@ -52,7 +52,9 @@ class NearSessions {
   }
   sequenceIndex(id) {
     const dir = folder(path.join(this.directory(id), "sequences")), marker = path.join(dir, "ready.json");
-    if (!fs.existsSync(marker)) {
+    const ready = privateJSON(marker, null);
+    if (ready && ready.id !== id) throw failure("SESSION_CORRUPT", "Session sequence index identity is invalid");
+    if (!ready) {
       for (const name of fs.readdirSync(path.join(this.directory(id), "requests"))) {
         if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
         const request = privateJSON(path.join(this.directory(id), "requests", name), null);
@@ -80,7 +82,8 @@ class NearSessions {
       if (previous.requestId !== requestId || previous.kind !== record.kind || previous.sequence !== record.sequence || previous.requestHash !== record.requestHash)
         throw failure("REQUEST_CONFLICT", "Session request ID was used for different input");
     }
-    if (!previous && fs.readdirSync(path.dirname(file)).length >= 10000) throw failure("SESSION_CAPACITY", "Session request metadata capacity reached");
+    if (!previous && fs.readdirSync(path.dirname(file)).length >= (kind === "close" ? 10001 : 10000))
+      throw failure("SESSION_CAPACITY", "Session request metadata capacity reached");
     if (kind === "send") {
       const sequenceFile = path.join(this.sequenceIndex(id), params.sequence + ".json"), reservation = privateJSON(sequenceFile, null);
       if (reservation && (reservation.requestId !== requestId || reservation.requestHash !== record.requestHash))

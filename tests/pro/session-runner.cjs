@@ -36,3 +36,16 @@ test("revocation before runner startup forbids shell creation", t => {
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "runner-error.json"), "utf8")).errorCode, "AUTH_REVOKED");
   assert.equal(fs.existsSync(path.join(dir, "engine.lock")), false);
 });
+test("close before shell startup is acknowledged without creating an engine", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-session-closed-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const sessionId = crypto.randomUUID(), owner = crypto.randomUUID(), requestId = crypto.randomUUID();
+  fs.writeFileSync(path.join(dir, "session.json"), JSON.stringify({ schemaVersion: 1, sessionId, owner,
+    deviceId: crypto.randomUUID(), platform: process.platform === "win32" ? "windows" : "linux", osBoot: systemBootId() }), { mode: 0o600 });
+  fs.writeFileSync(path.join(dir, "close.json"), JSON.stringify({ sessionId, owner, requestId }), { mode: 0o600 });
+  const result = cp.spawnSync(process.execPath, [path.resolve(__dirname, "../../src/pro/session-runner.cjs"), dir],
+    { timeout: 10000, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+  assert.equal(result.status, 1);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "runner-error.json"))).errorCode, "SESSION_CLOSED");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "responses", requestId + ".json"))).stopRequested, true);
+  assert.equal(fs.existsSync(path.join(dir, "engine.lock")), false);
+});

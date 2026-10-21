@@ -82,7 +82,8 @@ export async function sendSession(id, command, timeout = 30000, record = true) {
   if (session.state !== "ready") return { success: false, session: id, state: session.state, persistent: true,
     completed: false, requestId: session.lastRequestId, errorCode: status.error?.code || "SESSION_UNAVAILABLE" };
   const requests = (await agent.sessionRequests(id)).requests;
-  const latest = requests.sort((a, b) => (b.createdAt - a.createdAt) || ((b.sequence || 0) - (a.sequence || 0)))[0];
+  const latest = requests.find(value => value.kind === "close") ||
+    requests.sort((a, b) => (b.createdAt - a.createdAt) || ((b.sequence || 0) - (a.sequence || 0)))[0];
   if (latest) {
     const previous = await agent.session(id, { requestId: latest.requestId });
     if (!previous.completed || latest.kind === "close") return { success: false, session: id, requestId: latest.requestId,
@@ -102,6 +103,12 @@ export async function closeSession(id) {
   if (!session.persistent) return legacy.closeSession(id);
   const agent = await localAgentClient(), status = await agent.session(id);
   if (["lost", "closed"].includes(status.state)) { sessions.delete(id); return { id, closed: true, state: "lost", persistent: true }; }
+  const previous = (await agent.sessionRequests(id)).requests.find(value => value.kind === "close");
+  if (previous) {
+    const result = await agent.session(id, { requestId: previous.requestId });
+    if (result.completed && result.stopRequested) { sessions.delete(id); return { id, closed: true, state: "lost", persistent: true, stopRequested: true, requestId: previous.requestId }; }
+    return { id, closed: false, state: "unknown", persistent: true, requestId: previous.requestId };
+  }
   const requestId = crypto.randomUUID(), request = normalizeSessionRequest({ sessionId: session.remoteSessionId, requestId, method: "close" }, session.platform);
   try {
     await agent.registerSessionRequest(id, { requestId, requestHash: request.requestHash, kind: "close" });

@@ -59,3 +59,15 @@ test("Agent restart reconciles removed authorization without spawning or trustin
   assert.equal(f.spawns(), 1);
   assert.throws(() => restarted.handle(f.owner, "session.status", { sessionId: f.sessionId }), { code: "AUTH_REVOKED" });
 });
+test("closing a starting or full session publishes a priority stop and blocks new commands", t => {
+  const f = fixture(t); f.manager.create(f.owner, { sessionId: f.sessionId });
+  const dir = path.join(f.dir, f.sessionId), requestId = crypto.randomUUID(), realReadDir = fs.readdirSync;
+  t.mock.method(fs, "readdirSync", function (file, ...args) {
+    if (String(file) === path.join(dir, "requests")) return Array(10000).fill("retained.json");
+    if (String(file) === path.join(dir, "inbox")) return Array(64).fill("pending.json");
+    return realReadDir.call(fs, file, ...args);
+  });
+  assert.equal(f.manager.request(f.owner, { sessionId: f.sessionId, requestId, method: "close" }).state, "submitted");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "close.json"))).requestId, requestId);
+  assert.throws(() => f.manager.request(f.owner, { sessionId: f.sessionId, requestId: crypto.randomUUID(), sequence: 1, spec: { command: "later" } }), { code: "SESSION_UNAVAILABLE" });
+});

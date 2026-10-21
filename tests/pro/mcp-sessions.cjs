@@ -64,3 +64,9 @@ test("legacy session retains original shutdown behavior and explicit recovery li
   const result = await f.api.startSession("fixed"); assert.equal(result.persistent, false);
   f.api.closeSessions(); assert.equal(f.calls.filter(v => v === "legacy.close").length, 1);
 });
+test("repeated explicit close reuses the saved request instead of submitting again", options, async () => {
+  const f = await fixture(), started = await f.api.startSession("fixed");
+  assert.equal((await f.api.closeSession(started.id)).closed, true);
+  assert.equal((await f.api.closeSession(started.id)).closed, true);
+  assert.equal(f.calls.filter(value => value === "session.close").length, 1);
+});

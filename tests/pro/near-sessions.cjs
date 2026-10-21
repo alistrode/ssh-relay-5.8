@@ -36,3 +36,12 @@ test("one near Agent reserves a sequence for one request even across adapters", 
   assert.throws(() => second.registerRequest(id, { ...input, requestId: crypto.randomUUID() }), { code: "REQUEST_CONFLICT" });
   assert.equal(second.requests(id).requests.length, 1);
 });
+test("near metadata retains one close slot after all command slots are occupied", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-near-close-capacity-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const deviceId = crypto.randomUUID(), id = "ssh_" + crypto.randomUUID(), agent = { identity: { deviceId: crypto.randomUUID() }, file: name => path.join(dir, name), registry: () => ({ [deviceId]: {} }) };
+  const service = new NearSessions(agent); service.register({ id, deviceId, server: "fixed" });
+  const requestDir = path.join(service.directory(id), "requests"), realReadDir = fs.readdirSync;
+  t.mock.method(fs, "readdirSync", function (file, ...args) { return String(file) === requestDir ? Array(10000).fill("retained.json") : realReadDir.call(fs, file, ...args); });
+  const result = service.registerRequest(id, { requestId: crypto.randomUUID(), kind: "close", requestHash: "b".repeat(64) });
+  assert.equal(result.kind, "close");
+});

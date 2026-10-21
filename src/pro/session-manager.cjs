@@ -71,14 +71,20 @@ class SessionManager {
       if (existing.requestHash !== requestHash || existing.owner !== owner) throw failure("REQUEST_CONFLICT", "Session request ID was used for different input");
       return this.queryRequest(owner, { sessionId, requestId });
     }
-    if (!this.status(owner, sessionId).shellAlive) throw failure("SESSION_UNAVAILABLE", "Original session runner identity is not confirmed");
-    if (fs.readdirSync(path.join(dir, "inbox")).length >= 64 || fs.readdirSync(path.join(dir, "requests")).length >= 10000)
+    const closeFile = path.join(dir, "close.json");
+    if (method === "send" && (fs.existsSync(closeFile) || fs.existsSync(path.join(dir, "revoke.json"))))
+      throw failure("SESSION_UNAVAILABLE", "Session is closing or its controller was revoked");
+    if (method === "send" && !this.status(owner, sessionId).shellAlive) throw failure("SESSION_UNAVAILABLE", "Original session runner identity is not confirmed");
+    if (method === "close" && fs.existsSync(closeFile)) throw failure("SESSION_CLOSE_PENDING", "Query the original session close request before retrying");
+    if ((method === "send" && fs.readdirSync(path.join(dir, "inbox")).length >= 64) ||
+        fs.readdirSync(path.join(dir, "requests")).length >= (method === "close" ? 10001 : 10000))
       throw failure("SESSION_CAPACITY", "Session request capacity reached");
     // Save intent before the only inbox publication. Duplicates only query.
     const record = { owner, sessionId, requestId, requestHash, method, state: "prepared", createdAt: Date.now() };
     durableWrite(file, record);
-    durableWrite(path.join(dir, "inbox", requestId + ".json"), { sessionId, requestId, method,
-      ...(method === "send" ? { params: { requestId, sequence, spec: normalized } } : {}) });
+    if (method === "close") durableWrite(closeFile, { sessionId, owner, requestId, createdAt: Date.now() });
+    else durableWrite(path.join(dir, "inbox", requestId + ".json"), { sessionId, requestId, method,
+      params: { requestId, sequence, spec: normalized } });
     record.state = "submitted"; durableWrite(file, record);
     return { sessionId, deviceId: this.deviceId, requestId, state: "submitted", completed: false };
   }
@@ -94,7 +100,7 @@ class SessionManager {
     if (receipt && record.method === "close" && receipt.ok === true && receipt.state === "lost")
       return { sessionId, deviceId: this.deviceId, requestId, state: "lost", completed: true, stopRequested: true };
     if (receipt) return { sessionId, deviceId: this.deviceId, requestId, state: "unknown", completed: false, errorCode: receipt.ok ? null : "SESSION_REQUEST_REJECTED" };
-    const inboxPresent = fs.existsSync(path.join(dir, "inbox", requestId + ".json"));
+    const inboxPresent = fs.existsSync(record.method === "close" ? path.join(dir, "close.json") : path.join(dir, "inbox", requestId + ".json"));
     return { sessionId, deviceId: this.deviceId, requestId, state: record.state === "prepared" || !inboxPresent ||
       !this.status(owner, sessionId).shellAlive ? "unknown" : "pending", completed: false };
   }
