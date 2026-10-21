@@ -148,7 +148,9 @@
       "src/pro/session-executions.cjs",
       "src/pro/manual-logs.cjs",
       "src/pro/operation-workflows.cjs",
-      "src/mcp/workflows.js"
+      "src/mcp/workflows.js",
+      "src/pro/file-transfer.cjs",
+      "src/pro/remote-files.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",
