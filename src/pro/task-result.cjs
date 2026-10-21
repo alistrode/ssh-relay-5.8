@@ -4,6 +4,8 @@ function invalid() {
     { code: "CONTROL_RESULT_INVALID", retryable: false });
 }
 function validateTaskPage(value, { operationId, deviceId, stdoutOffset = 0, stderrOffset = 0, limitBytes = 65536 }) {
+  if (![stdoutOffset, stderrOffset].every(offset => Number.isSafeInteger(offset) && offset >= 0) ||
+      !Number.isInteger(limitBytes) || limitBytes < 1 || limitBytes > 65536) throw invalid();
   if (!value || value.operationId !== operationId || value.deviceId !== deviceId ||
       !["accepted", "starting", "running", "completed", "failed", "cancelled", "unknown"].includes(value.state) ||
       value.outputEncoding !== "base64") throw invalid();

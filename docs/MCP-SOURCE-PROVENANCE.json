@@ -139,7 +139,10 @@
       "src/pro/session-engine.cjs",
       "src/pro/session-runner.cjs",
       "src/pro/session-reader.cjs",
-      "src/pro/session-manager.cjs"
+      "src/pro/session-manager.cjs",
+      "src/pro/far-control.cjs",
+      "src/pro/session-spec.cjs",
+      "src/pro/near-sessions.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

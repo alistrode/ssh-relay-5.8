@@ -27,6 +27,7 @@ const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
 const { SessionManager } = require("./session-manager.cjs");
+const { dispatchFarControl } = require("./far-control.cjs");
 const { Operations } = require("./operations.cjs");
 const { publicFailure } = require("./task-result.cjs");
 const { jobCatalog } = require("./task-jobs.cjs");
@@ -308,23 +309,7 @@ class Agent {
     child.on("message", message => {
       if (key === "far" && this.children.get(key) === item && message?.type === "task-rpc") {
         Promise.resolve().then(() => {
-          id(message.controllerId);
-          const authorized = read(this.file("far/authorized-clients.json"), {});
-          if (!authorized[message.controllerId])
-            throw fault("AUTH_REVOKED", "Controller authorization is no longer valid");
-          if (message.method === "hello" && message.params?.protocol === 1)
-            return { protocol: 1, deviceId: this.identity.deviceId,
-              capabilities: { persistentExec: this.taskManager?.identityAvailable === true, taskProtocol: 1,
-                taskJobs: jobCatalog(),
-                sessionProtocol: 1, sessionResume: this.sessionManager?.identityAvailable === true,
-                recovery: "verified-live-runner", maxFrameBytes: 1048576, maxConcurrent: 4,
-                maxOutputBytesPerStream: 67108864, maxPageBytesPerStream: 65536 } };
-          if (typeof message.method === "string" && message.method.startsWith("session.")) {
-            if (!this.sessionManager) throw fault("CONTROL_UNAVAILABLE", "Session manager is not ready", true);
-            return this.sessionManager.handle(message.controllerId, message.method, message.params);
-          }
-          if (!this.taskManager) throw fault("CONTROL_UNAVAILABLE", "Task manager is not ready", true);
-          return this.taskManager.handle(message.controllerId, message.method, message.params);
+          return dispatchFarControl(this, message.controllerId, message.method, message.params);
         }).then(result => {
           if (child.connected) child.send({ type: "task-rpc-result", rpcId: message.rpcId, ok: true, result }, () => {});
         }, error => {

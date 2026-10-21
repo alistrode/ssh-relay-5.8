@@ -386,3 +386,13 @@
 - 节点间十二项会话 Manager/执行器/宿主组合通过，新增 Agent 重启后授权丢失的撤销补写和自报 owner 不改变真实 owner 检查；另九项 Manager/Reader/TaskManager 组合通过。Agent/remote 修改通过语法检查，尚未启动真实 Agent/SSH 集成。
 - 下一步接近端 session 目录与请求 ID 记录、原 MCP session 工具恢复查询，并补认证控制路由的隔离检查。会话长期清理、多阶段业务和文件恢复仍未完成。
 - 本上传节点只保存源码和交接，不运行验证。上一成功远端提交：ebc4740786b0d29767af31ba7ef543c240812a45。
+
+## 2026-10-21 15:18（北京时间）认证路由检查与近端会话记录
+
+- 抽出 far-control.cjs，生产 Agent 委托同一薄路由；逐请求核对授权，controller 来自签名绑定上下文，JSON owner 不覆盖。局部检查覆盖任务/会话分流、协议版本拒绝和授权删除后拒绝。
+- 新增 session-spec.cjs，Far/后续 MCP 共用规范化请求摘要；绑定 session/sequence/命令/shell/timeout，排除等待字段和不同 requestId，拒绝 null 字节、非法 cwd 及超界序号。
+- 新增 near-sessions.cjs，只记录稳定 ssh_UUID、固定 deviceId/远端 session UUID、展示名和请求摘要/序号；不保存原命令，不派发业务。重开后可以枚举原请求并仅调用 session.status/get，校验响应目标、请求 ID、字节分页与完成依据。
+- task-result 补充分页输入自身的非负安全整数及 64 KiB 上限校验。近端会话 HTTP/SDK/MCP 适配尚未接，不把记录模块当作原工具恢复已完成。
+- 节点间八项 NearSessions/任务轮询/父操作组合通过；另七项规范化/Manager/Far 路由组合通过。均为模拟控制和临时文件，未验证真实 SSH/Agent 会话；当前云端 sessionResume 因进程身份条件为 false。
+- 下一步接近端认证 API、SDK 和原 MCP session 工具，不新增替代原工具的一整套业务接口；保留旧目标兼容路径的明确恢复限制。
+- 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：f5ebf27f6f5679531c44152860a5fd6641f7822b。

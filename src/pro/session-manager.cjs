@@ -5,6 +5,7 @@ const { operationId, normalizeSpec } = require("./task-spec.cjs");
 const { processIdentity, ownedSessionRunner } = require("./task-process.cjs");
 const { privateJSON, durableWrite } = require("./task-store.cjs");
 const { SessionReader } = require("./session-reader.cjs");
+const { normalizeSessionRequest } = require("./session-spec.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 function hash(value) { return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 // Internal service; no public capability or Far RPC is enabled here.
@@ -63,12 +64,8 @@ class SessionManager {
   }
   request(owner, { sessionId, requestId, sequence, spec, method = "send" }) {
     const { dir } = this.lookup(owner, sessionId); operationId(requestId);
-    if (!["send", "close"].includes(method)) throw failure("SESSION_INVALID", "Unsupported session request method");
-    const normalized = method === "send" ? normalizeSpec(spec, this.platform) : null;
-    if (normalized?.command.includes("\0")) throw failure("SESSION_INVALID", "Session command contains a null byte");
-    if (normalized && (normalized.cwd !== null || !Number.isInteger(sequence) || sequence < 1))
-      throw failure("SESSION_INVALID", "Session requires a command sequence and explicit shell directory changes");
-    const requestHash = hash({ sessionId, method, sequence: method === "send" ? sequence : null, spec: normalized });
+    const normalizedRequest = normalizeSessionRequest({ sessionId, requestId, sequence, spec, method }, this.platform);
+    const normalized = normalizedRequest.spec, requestHash = normalizedRequest.requestHash;
     const file = path.join(dir, "requests", requestId + ".json"), existing = privateJSON(file, null);
     if (existing) {
       if (existing.requestHash !== requestHash || existing.owner !== owner) throw failure("REQUEST_CONFLICT", "Session request ID was used for different input");
@@ -83,7 +80,7 @@ class SessionManager {
     durableWrite(path.join(dir, "inbox", requestId + ".json"), { sessionId, requestId, method,
       ...(method === "send" ? { params: { requestId, sequence, spec: normalized } } : {}) });
     record.state = "submitted"; durableWrite(file, record);
-    return { sessionId, requestId, state: "submitted", completed: false };
+    return { sessionId, deviceId: this.deviceId, requestId, state: "submitted", completed: false };
   }
   queryRequest(owner, { sessionId, requestId, ...paging }) {
     const { dir } = this.lookup(owner, sessionId); operationId(requestId);
@@ -95,10 +92,10 @@ class SessionManager {
     if (record.method === "send" && fs.existsSync(path.join(dir, "commands", requestId, "manifest.json")))
       return this.reader.get(owner, { sessionId, requestId, ...paging });
     if (receipt && record.method === "close" && receipt.ok === true && receipt.state === "lost")
-      return { sessionId, requestId, state: "lost", completed: true, stopRequested: true };
-    if (receipt) return { sessionId, requestId, state: "unknown", completed: false, errorCode: receipt.ok ? null : "SESSION_REQUEST_REJECTED" };
+      return { sessionId, deviceId: this.deviceId, requestId, state: "lost", completed: true, stopRequested: true };
+    if (receipt) return { sessionId, deviceId: this.deviceId, requestId, state: "unknown", completed: false, errorCode: receipt.ok ? null : "SESSION_REQUEST_REJECTED" };
     const inboxPresent = fs.existsSync(path.join(dir, "inbox", requestId + ".json"));
-    return { sessionId, requestId, state: record.state === "prepared" || !inboxPresent ||
+    return { sessionId, deviceId: this.deviceId, requestId, state: record.state === "prepared" || !inboxPresent ||
       !this.status(owner, sessionId).shellAlive ? "unknown" : "pending", completed: false };
   }
   revoke(owner) {
