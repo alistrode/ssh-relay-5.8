@@ -131,12 +131,17 @@ async function execute(a, sudo = false) {
 async function health(a) {
   if (a.interval !== undefined) bounded(a.interval, 2, 1, 60);
   if (a.duration !== undefined) bounded(a.duration, 1, 1, 240);
-  return job(
-    a.server,
-    "health",
-    { duration: a.duration, interval: a.interval },
-    a.duration ? Math.min(300000, (a.duration + 30) * 1000) : 30000,
-  );
+  const result = await job(a.server, "health", { duration: a.duration, interval: a.interval },
+    a.duration ? Math.min(300000, (a.duration + 30) * 1000) : 30000);
+  const target = serverConfig(a.server);
+  if (target.agentDeviceId && result.success && result.samples?.length) {
+    const observations = readState("health-cursors.json", {}), previous = observations[target.agentDeviceId];
+    const observedAt = result.samples.at(-1).timestamp;
+    observations[target.agentDeviceId] = { observedAt }; writeState("health-cursors.json", observations);
+    return { ...result, subscription: { previousObservedAt: previous?.observedAt || null,
+      observedAt, recovery: "fresh-sample", continuous: false } };
+  }
+  return result;
 }
 async function backupCreate(a) {
   return workflow(serverConfig(a.server), "backup", a, ["create"], stage => stage("create", () =>
@@ -437,7 +442,19 @@ export const handlers = {
     }
     return r;
   },
-  ssh_tail: (a) => job(a.server, "tail", a, 20000),
+  ssh_tail: async (a) => {
+    const target = serverConfig(a.server);
+    if (!target.agentDeviceId) return job(a.server, "tail", a, 20000);
+    const key = crypto.createHash("sha256").update(JSON.stringify({ deviceId: target.agentDeviceId, file: a.file, grep: a.grep || "" })).digest("hex");
+    const cursors = readState("tail-cursors.json", {}), saved = cursors[key];
+    const result = await job(a.server, "tail", { ...a, ...(saved?.cursor ? { cursor: saved.cursor } : {}) }, 20000);
+    if (result.success && result.cursor && Number.isSafeInteger(result.cursor.offset) && result.cursor.offset >= 0) {
+      const fresh = readState("tail-cursors.json", {});
+      fresh[key] = { deviceId: target.agentDeviceId, cursor: result.cursor, observedAt: Date.now() };
+      writeState("tail-cursors.json", fresh);
+    }
+    return result;
+  },
   ssh_alert_setup: async (a) => {
     const r = await job(a.server, "alerts", a);
     if (a.action !== "check" || !r.success) return r;

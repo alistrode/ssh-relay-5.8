@@ -8,7 +8,7 @@ import { invoke, handlers } from "./handlers.js";
 import { registerPrompts, instructions } from "./prompts.js";
 import { closeAll } from "./transport.js";
 import { closeSessions } from "./sessions.js";
-import { tunnels, closeTunnel } from "./tunnels.js";
+import { tunnels, closeTunnel, restoreTunnels } from "./tunnels.js";
 import { arg, servers, serverConfig, refreshAgentServers, withServerSnapshot, connectAgent, connectionTask, localAgentClient, agentMode } from "./config.js";
 import { TOOL_GROUPS } from "./tool-registry.js";
 const server = new McpServer(
@@ -211,7 +211,7 @@ async function shutdown() {
   if (closing) return;
   closing = true;
   closeSessions();
-  for (const t of [...tunnels.keys()]) await closeTunnel(t).catch(() => {});
+  for (const t of [...tunnels.keys()]) await closeTunnel(t, { remember: true }).catch(() => {});
   closeAll();
   await server.close();
 }
@@ -230,4 +230,5 @@ console.error(
 // Managed profiles remain discoverable while the background repairs their connection.
 const { recoverManaged } = await import("./transport.js");
 for (const config of Object.values(servers())) recoverManaged(config);
+restoreTunnels();
 

@@ -1,4 +1,36 @@
 import net from "node:net";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import { statePath } from "./state.js";
+import { servers } from "./config.js";
+const require = createRequire(import.meta.url);
+const { durableWrite, privateJSON } = require("../pro/task-store.cjs");
+const { folder } = require("../pro/store.cjs");
+function savedFile(id) {
+  if (!/^tunnel_[a-f0-9-]{36}$/.test(id)) throw Error("Invalid tunnel ID");
+  return statePath("tunnel-records") + "/" + id + ".json";
+}
+function save(t, desired = true) {
+  if (!t.deviceId) return;
+  folder(statePath("tunnel-records"));
+  durableWrite(savedFile(t.id), { id: t.id, deviceId: t.deviceId, desired, spec: t.spec });
+}
+function recover(t) {
+  if (t.closed || t.recoveryTimer || tunnels.get(t.id) !== t) return;
+  t.recoveryTimer = setTimeout(async () => {
+    t.recoveryTimer = null;
+    if (t.closed || tunnels.get(t.id) !== t) return;
+    try { await createTunnel(t.spec, { id: t.id, deviceId: t.deviceId, original: t }); }
+    catch { if (!t.closed) { t.state = "waiting"; recover(t); } }
+  }, 5000);
+  t.recoveryTimer.unref();
+}
+async function release(t) {
+  for (const socket of t.sockets) socket.destroy();
+  if (t.listener?.listening) await new Promise(resolve => t.listener.close(resolve));
+  t.client?.removeListener("close", t.onClose);
+  if (t.handler) t.client?.removeListener("tcp connection", t.handler);
+}
 import { randomUUID } from "node:crypto";
 import { connect } from "./transport.js";
 const loopback = (h) => ["127.0.0.1", "localhost", "::1"].includes(h);
@@ -12,7 +44,7 @@ const bind = (s, port, host) =>
       resolve();
     });
   });
-export async function createTunnel(a) {
+export async function createTunnel(a, recovery = null) {
   const localHost = a.localHost || "127.0.0.1";
   if (!loopback(localHost))
     throw new Error("LAN bindings excluded: use loopback localHost");
@@ -29,13 +61,18 @@ export async function createTunnel(a) {
       "Only loopback remote services are supported; specify remoteHost and remotePort",
     );
   const conn = await connect(a.server);
+  if (recovery && (conn.config.agentDeviceId !== recovery.deviceId || recovery.original.closed || tunnels.get(recovery.id) !== recovery.original))
+    throw Error("Saved tunnel target changed or was closed");
   if (conn.config.capabilities.forwarding !== "loopback-only")
     throw new Error(
       "Remote version lacks forwarding; restart the updated remote source before creating tunnels",
     );
-  const id = "tunnel_" + randomUUID(),
+  const id = recovery?.id || "tunnel_" + randomUUID(),
     t = {
       id,
+      deviceId: conn.config.agentDeviceId,
+      spec: { server: conn.config.name, type: a.type, localHost, localPort: a.localPort,
+        remoteHost: a.remoteHost, remotePort: a.remotePort },
       server: conn.config.name,
       type: a.type,
       localHost,
@@ -153,12 +190,22 @@ export async function createTunnel(a) {
     });
     await bind(t.listener, a.localPort, localHost);
   }
+  if (recovery && (recovery.original.closed || tunnels.get(id) !== recovery.original)) {
+    await release(t); throw Error("Tunnel was closed during recovery");
+  }
   t.state = "active";
   t.onClose = () => {
-    closeTunnel(id).catch(() => {});
+    if (t.closed) return;
+    t.state = "waiting";
+    release(t).then(() => {
+      if (t.deviceId) recover(t);
+      else closeTunnel(id).catch(() => {});
+    }).catch(() => { t.state = "unknown"; });
   };
   conn.client.once("close", t.onClose);
   tunnels.set(id, t);
+  try { save(t); }
+  catch (error) { await closeTunnel(id).catch(() => {}); throw error; }
   return tunnelInfo(t);
 }
 export const tunnelInfo = (t) => ({
@@ -172,21 +219,42 @@ export const tunnelInfo = (t) => ({
   remotePort: t.remotePort,
   connections: t.sockets.size,
   scope: "loopback-only",
+  persistent: !!t.deviceId,
+  recovery: t.deviceId ? "recreate-listener-only" : "legacy-ssh-channel",
 });
-export async function closeTunnel(id) {
+export async function closeTunnel(id, { remember = false } = {}) {
   const t = tunnels.get(id);
   if (!t) throw new Error("Unknown tunnel");
+  t.closed = true; clearTimeout(t.recoveryTimer);
+  save(t, remember);
   tunnels.delete(id);
   t.state = "closed";
   for (const s of t.sockets) s.destroy();
   if (t.listener) t.listener.close();
   if (t.handler) {
-    t.client.removeListener("tcp connection", t.handler);
-    if (t.client._sock && !t.client._sock.destroyed)
+    t.client?.removeListener("tcp connection", t.handler);
+    if (t.client?._sock && !t.client._sock.destroyed)
       await new Promise((resolve) =>
         t.client.unforwardIn(t.remoteHost, t.remotePort, () => resolve()),
       );
   }
-  t.client.removeListener("close", t.onClose);
+  t.client?.removeListener("close", t.onClose);
   return { id, closed: true };
+}
+
+
+export function restoreTunnels() {
+  const dir = folder(statePath("tunnel-records")), configs = Object.values(servers());
+  for (const name of fs.readdirSync(dir)) {
+    if (!/^tunnel_[a-f0-9-]{36}\.json$/.test(name)) continue;
+    try {
+      const r = privateJSON(dir + "/" + name);
+      if (!r.desired || r.id + ".json" !== name || tunnels.has(r.id)) continue;
+      const target = configs.find(c => c.agentDeviceId === r.deviceId);
+      if (!target) continue;
+      const t = { ...r.spec, id: r.id, deviceId: r.deviceId, server: target.name,
+        spec: { ...r.spec, server: target.name }, state: "waiting", sockets: new Set() };
+      tunnels.set(t.id, t); recover(t);
+    } catch {}
+  }
 }
