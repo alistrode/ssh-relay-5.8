@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
 """Verify release archives contain the measured application and full pinned runtime."""
 from pathlib import Path,PurePosixPath
-import hashlib,io,json,subprocess,tarfile,zipfile
+import hashlib,io,json,subprocess,tarfile,zipfile,sys
 
 repo=Path(__file__).resolve().parents[1];out=repo/'deliverables/pro'
 expected={str(p.relative_to(repo)):hashlib.sha256(p.read_bytes()).hexdigest()for folder in ['src','desktop','launchers'] for p in sorted((repo/folder).rglob('*'))if p.suffix in ['.js','.cjs','.ps1']}
 version=json.loads((repo/'package.json').read_text())['version'];results=[]
+cache=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else repo/'.runtime-cache'
+runtime_inputs=json.loads((repo/'assets/pro-runtime-inputs.json').read_text())
+runtime_executables={}
+for item in runtime_inputs['electron']['files']:
+ file=cache/item['file'];whole=hashlib.sha256()
+ with file.open('rb') as f:
+  for block in iter(lambda:f.read(1024*1024),b''):whole.update(block)
+ assert whole.hexdigest()==item['sha256'],'Pinned runtime input differs: '+item['file']
+ executable='electron.exe' if item['platform']=='win32' else 'electron'
+ with zipfile.ZipFile(file) as z:
+  digest=hashlib.sha256()
+  with z.open(executable) as f:
+   for block in iter(lambda:f.read(1024*1024),b''):digest.update(block)
+  runtime_executables[item['platform']]={'bytes':z.getinfo(executable).file_size,'sha256':digest.hexdigest()}
+
 def inspect(archive,prefix,platform):
  members={x.name:x for x in archive.getmembers()}
  assert all(not PurePosixPath(x).is_absolute() and '..'not in PurePosixPath(x).parts for x in members)
@@ -23,8 +38,14 @@ def inspect(archive,prefix,platform):
  payload('LICENSE');payload('LICENSES.chromium.html')
  # Current connection instructions are embedded in MCP prompts; removed skills are not package requirements.
  payload('resources/app/src/mcp/prompts.js')
- exe=payload('SSHRelayPro.exe'if platform=='win32'else'ssh-relay-pro')
- assert exe[:2]==(b'MZ'if platform=='win32'else b'\x7fE')
+ executable='SSHRelayPro.exe'if platform=='win32'else'ssh-relay-pro'
+ member=members[prefix+executable];assert member.isfile()
+ expected_runtime=runtime_executables[platform];assert member.size==expected_runtime['bytes']
+ digest=hashlib.sha256()
+ with archive.extractfile(member) as f:
+  for block in iter(lambda:f.read(1024*1024),b''):digest.update(block)
+ assert digest.hexdigest()==expected_runtime['sha256'],'Runtime executable differs from pinned input'
+
  if platform=='win32':
   inputs=json.loads((repo/'assets/pro-runtime-inputs.json').read_text());assert hashlib.sha256(payload('resources/app/vendor/WinSW-x64.exe')).hexdigest()==inputs['winsw']['sha256'];payload('relay-cli.cmd');payload('MCP.cmd');payload('Start.cmd');payload('Diagnostics.cmd');payload('resources/app/launchers/Start-Pro.ps1')
   for name in ['icudtl.dat','resources.pak','snapshot_blob.bin','v8_context_snapshot.bin','ffmpeg.dll','d3dcompiler_47.dll','dxcompiler.dll','dxil.dll','vk_swiftshader.dll','vulkan-1.dll']:payload(name)
@@ -32,7 +53,7 @@ def inspect(archive,prefix,platform):
   assert members[prefix+'ssh-relay-pro'].mode&0o111;payload('relay-cli');payload('mcp');payload('libffmpeg.so');payload('libvk_swiftshader.so');payload('libvulkan.so.1')
  forbidden={'connection.json','connection-private.json','client_key','host_key','agent-runtime.json','guardian-runtime.json'}
  assert not any(PurePosixPath(n).name in forbidden for n in members)
- return {'platform':platform,'archiveMembers':len(members),'measuredApplicationFiles':len(expected),'currentDesignAndHandoffIncluded':True,'productionDependenciesIncluded':True}
+ return {'platform':platform,'archiveMembers':len(members),'measuredApplicationFiles':len(expected),'currentDesignAndHandoffIncluded':True,'productionDependenciesIncluded':True,'runtimeExecutableMatchesPinnedInput':True}
 with tarfile.open(out/'ssh-relay-pro-linux-x64.tar.xz','r:xz')as t:
  results.append({'file':'ssh-relay-pro-linux-x64.tar.xz',**inspect(t,'SSHRelayPro/','linux')})
 with zipfile.ZipFile(out/'ssh-relay-pro-windows-x64.zip')as z:
