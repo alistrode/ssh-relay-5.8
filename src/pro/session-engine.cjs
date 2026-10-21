@@ -9,8 +9,9 @@ const { SessionOutput } = require("./session-output.cjs");
 const { sessionCommand } = require("./session-shell.cjs");
 const { processIdentity } = require("./task-process.cjs");
 const { folder } = require("./store.cjs");
+const { durableWrite } = require("./task-store.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
-// Internal single-writer engine. Independent process hosting/RPC is not enabled.
+// Single-writer shell engine used by the independent session runner.
 class SessionEngine {
   constructor(options, { spawn = cp.spawn, identity = processIdentity, signal } = {}) {
     if (!identity(process.pid)) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session process identity cannot be verified");
@@ -43,6 +44,9 @@ class SessionEngine {
     });
     this.childIdentity = this.identity(this.child.pid);
     if (!this.childIdentity) { this.fail("PROCESS_IDENTITY_UNAVAILABLE"); throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session shell identity cannot be verified"); }
+    try { durableWrite(path.join(this.dir, "shell.json"), { ...this.childIdentity,
+      owner: this.owner, sessionId: options.sessionId, sessionDir: this.dir }); }
+    catch { this.fail("SESSION_STORAGE_FAILED"); throw failure("SESSION_STORAGE_FAILED", "Session shell identity could not be saved"); }
     if (windows) this.child.stdin.write("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n");
   }
   matchesChild() {

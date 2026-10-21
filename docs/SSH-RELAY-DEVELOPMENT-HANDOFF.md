@@ -432,3 +432,12 @@
 - 节点间十三项 facade/Manager/独立宿主组合通过；三项近端元数据检查通过。新增满命令/满 inbox 仍可关闭、重复显式 close 只提交一次、启动前 close 实际不创建 engine，以及近端满额关闭槽位。测试使用容量桩，不创建一万条真实命令；独立启动检查只验证拒绝执行。
 - 下一步会话结果保留/清理及完整契约组合检查，之后继续第二阶段多阶段父操作。真实 SSH/MCP、Windows 与可证明进程身份的原生 Linux 功能检查仍未完成。
 - 本上传节点只保存源码和交接，不运行验证。上一成功远端提交：5d76fd8a95a1d388ac6a30483afadd7452065e94。
+
+## 2026-10-21 15:43（北京时间）会话保留期与进程退出证明源码
+
+- shell 启动后、接收业务前持久保存 shell.json 身份；宿主先写自身 runner 身份，再创建 engine，避免只保存 shell 却没有宿主身份的窗口。lost 记录保存 closedAt。
+- 新增 processState，区分 alive/exited/unconfirmed；同 boot 必须先证明本机 PID 命名空间，Linux 明确 ENOENT/zombie 或不同 startToken 才判原进程退出；Windows 使用有错误界限的 CIM 不存在查询，失败仍 unconfirmed。
+- 新增 session-retention.cjs，七天后仅清理 owner/device/session/boot/所属目录一致、宿主和 shell 均明确退出的终结记录；无 shell 的已失败启动另作保守处理。活跃、身份未知或损坏记录保留。Manager 周期及容量不足时有限检查候选。
+- 节点间十二项清理/engine/Manager 组合通过，清理使用进程状态桩，确认 alive/unconfirmed 保留、exited 且过期才删除。Windows 清理性能与原生进程退出查询未实测。
+- 下一步补清理扫描轮转，避免前两个长期未知记录挡住后续候选，并完成整体会话契约检查；不能把有限局部检查当作真实平台或 SSH/MCP 已通过。
+- 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：ddf4b2e96878f2ba44309098c57feaf4ba50790b。

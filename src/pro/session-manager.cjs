@@ -6,6 +6,7 @@ const { processIdentity, ownedSessionRunner } = require("./task-process.cjs");
 const { privateJSON, durableWrite } = require("./task-store.cjs");
 const { SessionReader } = require("./session-reader.cjs");
 const { normalizeSessionRequest } = require("./session-spec.cjs");
+const { cleanupSessions } = require("./session-retention.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 function hash(value) { return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 // Internal service; no public capability or Far RPC is enabled here.
@@ -41,6 +42,7 @@ class SessionManager {
       return this.status(owner, sessionId);
     }
     if (!this.identityAvailable || !this.osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session process identity cannot be verified");
+    if (fs.readdirSync(this.dir).length >= 64) cleanupSessions(this.dir, this.deviceId);
     if (fs.readdirSync(this.dir).length >= 64) throw failure("SESSION_CAPACITY", "Session record capacity reached");
     try { fs.mkdirSync(dir, { mode: 0o700 }); } catch { throw failure("SESSION_CORRUPT", "Existing session directory cannot be replaced"); }
     durableWrite(file, { schemaVersion: 1, sessionId, owner, deviceId: this.deviceId, platform: this.platform,
@@ -143,6 +145,9 @@ class SessionManager {
   tick() {
     if (Date.now() - (this.lastAuthorizationCheck || 0) < 2000) return;
     this.lastAuthorizationCheck = Date.now(); this.reconcileAuthorization();
+    if (Date.now() - (this.lastCleanup || 0) >= 300000) {
+      this.lastCleanup = Date.now(); cleanupSessions(this.dir, this.deviceId);
+    }
   }
   handle(owner, method, params) {
     if (!params || typeof params !== "object" || Array.isArray(params)) throw failure("SESSION_INVALID", "Session parameters must be an object");

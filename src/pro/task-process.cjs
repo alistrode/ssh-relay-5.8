@@ -37,6 +37,30 @@ function sameProcess(expected) {
   const current = processIdentity(expected?.pid);
   return current && current.osBoot === expected.osBoot && current.startToken === expected.startToken ? current : null;
 }
+function processState(expected) {
+  if (!Number.isInteger(expected?.pid) || expected.pid < 1 || typeof expected.osBoot !== "string" ||
+      !expected.osBoot || typeof expected.startToken !== "string" || !expected.startToken) return "unconfirmed";
+  const boot = systemBootId();
+  if (!boot) return "unconfirmed";
+  if (boot !== expected.osBoot) return "exited";
+  if (!processIdentity(process.pid)) return "unconfirmed";
+  const current = processIdentity(expected.pid);
+  if (current) return current.startToken === expected.startToken ? "alive" : "exited";
+  try {
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync("/proc/" + expected.pid + "/stat", "utf8");
+      return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0] === "Z" ? "exited" : "unconfirmed";
+    }
+    if (process.platform === "win32") {
+      const script = "try{$p=Get-CimInstance Win32_Process -Filter 'ProcessId=" + expected.pid +
+        "' -ErrorAction Stop;if(-not $p){'ABSENT'}}catch{exit 1}";
+      const result = cp.spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
+        { encoding: "utf8", windowsHide: true, timeout: 10000 });
+      if (result.status === 0 && result.stdout.trim() === "ABSENT") return "exited";
+    }
+  } catch (error) { if (process.platform === "linux" && error.code === "ENOENT") return "exited"; }
+  return "unconfirmed";
+}
 function runnerArgumentsMatch(current, directory, script, windows = process.platform === "win32") {
   const normalize = value => windows ? value.replace(/\\/g, "/").toLowerCase() : value;
   const expected = normalize(path.resolve(directory));
@@ -53,4 +77,4 @@ function ownedProcessRunner(record, directory, script, directoryField) {
 }
 function ownedRunner(record, directory) { return ownedProcessRunner(record, directory, "task-runner.cjs", "operationDir"); }
 function ownedSessionRunner(record, directory) { return ownedProcessRunner(record, directory, "session-runner.cjs", "sessionDir"); }
-module.exports = { processIdentity, sameProcess, ownedRunner, ownedSessionRunner, runnerArgumentsMatch };
+module.exports = { processIdentity, sameProcess, processState, ownedRunner, ownedSessionRunner, runnerArgumentsMatch };

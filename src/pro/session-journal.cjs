@@ -185,7 +185,8 @@ class SessionJournal {
         durableWrite(this.file(command.requestId, "manifest.json"), command);
       }
     }
-    this.record.state = "lost"; this.record.errorCode = errorCode; this.record.activeRequestId = null; this.save();
+    this.record.state = "lost"; this.record.errorCode = errorCode; this.record.closedAt = Date.now();
+    this.record.activeRequestId = null; this.save();
   }
 }
 module.exports = { SessionJournal };

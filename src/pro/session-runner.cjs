@@ -41,11 +41,11 @@ async function run(directory) {
   if (!identity || !osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session runner process identity cannot be verified");
   if (config.osBoot !== osBoot) throw failure("SESSION_LOST", "Session belongs to a previous system boot");
   const inbox = folder(path.join(directory, "inbox")), responses = folder(path.join(directory, "responses"));
-  const engine = new SessionEngine({ ...config, dir: directory });
   const runner = { ...identity, sessionId: config.sessionId, owner: config.owner,
     sessionDir: directory, heartbeatAt: Date.now() };
   const heartbeatFile = path.join(directory, "runner.json");
   durableWrite(heartbeatFile, runner);
+  const engine = new SessionEngine({ ...config, dir: directory });
   const pending = new Map(); let finishing = false, polling = false;
   function receipt(requestId, value) {
     durableWrite(path.join(responses, requestId + ".json"), { requestId, sessionId: config.sessionId, ...value });
