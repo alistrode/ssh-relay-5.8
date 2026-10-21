@@ -71,7 +71,10 @@ if windows:
 else:subprocess.run(['sudo','systemctl','stop','mysql','postgresql'],capture_output=True,timeout=60)
 account=getpass.getuser();pgdata=root/'postgres';pgport=5432
 run([pgbin/('initdb.exe'if windows else'initdb'),'-D',pgdata,'-U',account,'--auth=trust','--encoding=UTF8','--no-locale'])
-launch([pgbin/('postgres.exe'if windows else'postgres'),'-D',pgdata,'-h','127.0.0.1','-p',pgport]+([]if windows else['-k',pgdata]),'postgres',pgport)
+if windows:
+    # pg_ctl creates the restricted Windows token PostgreSQL requires.
+    run([pgbin/'pg_ctl.exe','-D',pgdata,'-l',root/'postgres.log','-o','-h 127.0.0.1 -p '+str(pgport),'-w','start'])
+else:launch([pgbin/'postgres','-D',pgdata,'-h','127.0.0.1','-p',pgport,'-k',pgdata],'postgres',pgport)
 run([pgbin/('createdb.exe'if windows else'createdb'),'-h','127.0.0.1','-p',pgport,'-U',account,'relay_ai'])
 run([psql,'-h','127.0.0.1','-p',pgport,'-U',account,'-d','relay_ai','-c',"CREATE TABLE ai_probe(value text); INSERT INTO ai_probe VALUES ('ai-database-marker');"])
 mydata=root/'mysql';myport=3306
@@ -79,7 +82,7 @@ run([mysqld,'--no-defaults','--initialize-insecure','--datadir='+str(mydata)])
 launch([mysqld,'--no-defaults','--datadir='+str(mydata),'--port='+str(myport),'--bind-address=127.0.0.1','--mysqlx=0','--pid-file='+str(root/'mysql.pid')]+([]if windows else['--socket='+str(root/'mysql.sock')]),'mysql',myport)
 run([mysql,'--no-defaults','-h','127.0.0.1','-P',myport,'-u','root','-e',"CREATE DATABASE relay_ai; CREATE TABLE relay_ai.ai_probe(value varchar(100)); INSERT INTO relay_ai.ai_probe VALUES ('ai-database-marker');"])
 safe_account=account.replace("'","''")
-run([mysql,'--no-defaults','-h','127.0.0.1','-P',myport,'-u','root','-e',"CREATE USER IF NOT EXISTS '"+safe_account+"'@'localhost'; GRANT ALL ON relay_ai.* TO '"+safe_account+"'@'localhost';"])
+run([mysql,'--no-defaults','-h','127.0.0.1','-P',myport,'-u','root','-e',"CREATE USER IF NOT EXISTS '"+safe_account+"'@'localhost'; GRANT ALL ON relay_ai.* TO '"+safe_account+"'@'localhost'; GRANT PROCESS ON *.* TO '"+safe_account+"'@'localhost';"])
 mongodata=root/'mongo';mongodata.mkdir();mongoport=27017
 launch([shutil.which('mongod'),'--dbpath',mongodata,'--bind_ip','127.0.0.1','--port',mongoport],'mongodb',mongoport)
 mongosh=shutil.which('mongosh')or shutil.which('mongosh.exe')
@@ -88,7 +91,9 @@ run([mongosh,'--quiet','mongodb://127.0.0.1:'+str(mongoport)+'/relay_ai','--eval
 manifest={'postgresql':{'dbPort':pgport,'dbUser':account},'mysql':{'dbPort':myport,'dbUser':account},'mongodb':{'dbPort':mongoport}}
 file=root/'fixture.json';file.write_text(json.dumps(manifest));os.chmod(file,0o600)
 with open(os.environ['GITHUB_PATH'],'a')as f:f.write('\n'.join(paths)+'\n')
-with open(os.environ['GITHUB_ENV'],'a')as f:f.write('RELAY_AI_DATABASES='+str(file)+'\n')
+with open(os.environ['GITHUB_ENV'],'a')as f:
+    f.write('RELAY_AI_DATABASES='+str(file)+'\n')
+    if not windows:f.write('MYSQL_UNIX_PORT='+str(root/'mysql.sock')+'\n')
 evidence=pathlib.Path('ai-results');evidence.mkdir(exist_ok=True)
 (evidence/'database-dependencies.json').write_text(json.dumps({'downloads':downloads,'postgresql':run([psql,'--version']).strip(),'mysql':run([mysql,'--version']).strip(),'mongoVersion':'8.0.16','loopbackOnly':True},indent=2))
 print('Three isolated loopback databases initialized; dependency hashes recorded')
