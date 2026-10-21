@@ -49,6 +49,11 @@ test("restart preserves the original runner startup window without respawning", 
   assert.equal(recovered.get(owner, request).state, "unknown");
   assert.equal(recovered.active.size, 1);
   assert.equal(starts(), 1);
+  fs.writeFileSync(recovered.file(request.operationId, "result.json"), JSON.stringify({ operationId: request.operationId,
+    owner, state: "completed", exitCode: 0, signal: null, errorCode: null, finishedAt: Date.now() }));
+  recovered.tick();
+  assert.equal(recovered.get(owner, request).state, "completed");
+  assert.equal(recovered.get(owner, request).errorCode, null);
 });
 test("cancel queued work before execution; output pagination is byte bounded", t => {
   const { manager, starts } = fixture(t);

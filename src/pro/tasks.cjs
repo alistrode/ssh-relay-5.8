@@ -252,7 +252,7 @@ class TaskManager {
     if (!result && FINAL.has(record.state) && record.state !== "unknown")
       throw failure("OPERATION_CORRUPT", "Final operation result is missing");
     return { operationId: key, deviceId: this.deviceId, state: result?.state || record.state,
-      kind: record.kind, createdAt: record.createdAt, errorCode: result?.errorCode || record.errorCode || null,
+      kind: record.kind, createdAt: record.createdAt, errorCode: result ? result.errorCode || null : record.errorCode || null,
       result: result ? { exitCode: result.exitCode, signal: result.signal, finishedAt: result.finishedAt,
         cancelRequested: result.cancelRequested, cancellationError: result.cancellationError,
         stdout: result.stdout, stderr: result.stderr } : null,

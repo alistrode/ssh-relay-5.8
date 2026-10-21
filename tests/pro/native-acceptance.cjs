@@ -45,7 +45,8 @@ test("native detached task survives submitter exit and duplicate submit does not
   const submitterExitedAt = Date.now(), recovered = new TaskManager({ ...f.options, bootId: crypto.randomUUID() });
   recovered.submit(f.owner, input);
   const result = await until(() => { recovered.tick(); return recovered.get(f.owner, input); }, value => value.state === "completed");
-  assert.equal(result.result.exitCode, 0); assert.ok(result.result.finishedAt >= submitterExitedAt);
+  assert.equal(result.result.exitCode, 0); assert.equal(result.errorCode, null);
+  assert.ok(result.result.finishedAt >= submitterExitedAt);
   assert.equal(Buffer.from(result.stdout.data, "base64").toString(), "native汉字\n");
   assert.equal(Buffer.from(result.stderr.data, "base64").toString(), "native-stderr\n");
   assert.equal(fs.readFileSync(counter, "utf8"), "once\n"); recovered.close();
@@ -90,6 +91,6 @@ test("native session keeps the original shell across Manager recreation", native
   sessions.request(f.owner, second);
   const continued = await until(() => { sessions.tick(); return sessions.queryRequest(f.owner, second); }, value => value.completed);
   assert.equal(Buffer.from(continued.stdout.data, "base64").toString(), "retained");
-  assert.equal(path.resolve(continued.result.cwd), path.resolve(f.root));
+  assert.equal(fs.realpathSync.native(continued.result.cwd), fs.realpathSync.native(f.root));
   assert.equal(sessions.request(f.owner, second).completed, true);
 });
