@@ -7,7 +7,7 @@ function sessionCommand(platform, marker, command) {
   if (command.includes("\0")) throw Object.assign(Error("Session command contains a null byte"), { code: "SESSION_INVALID" });
   if (platform === "linux") return "eval " + quote(command) + "\n" +
     "__relay_status=$?\n" +
-    "__relay_cwd=$(NODE_OPTIONS= NODE_PATH= " + quote(process.execPath) + " -e " +
+    "__relay_cwd=$(ELECTRON_RUN_AS_NODE=1 NODE_OPTIONS= NODE_PATH= " + quote(process.execPath) + " -e " +
       quote('process.stdout.write(Buffer.from(process.cwd(),"utf8").toString("base64"))') + ")\n" +
     "command printf '\\n%s:%s:%s\\n' " + quote(marker) + " \"$__relay_status\" \"$__relay_cwd\"\n" +
     "command printf '\\n%s:END\\n' " + quote(marker) + " >&2\n";

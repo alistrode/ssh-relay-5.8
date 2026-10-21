@@ -322,3 +322,12 @@
 - 十一项日志/解析/shell 组合检查通过，新增特殊 cwd 断言后两项 shell 检查通过。Windows PowerShell 脚本尚未原生执行；本机 sh 检查不等于独立 runner 存活、取消或 SSH 恢复通过。
 - 本模块仍未接独立 session runner、生命周期锁和控制协议；sessionResume=false 与原 MCP session 行为继续保留。下一步继续 runner 生命周期及日志输出落盘，不能把边界脚本当作会话持久化已完成。
 - 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：a25397a695df0ffd9781db91e1a9aa056b12c9cb。
+
+## 2026-10-21 14:45（北京时间）会话私有输出存储源码
+
+- 新增 session-log.cjs：每命令 stdout/stderr 独立 0600 文件，独占创建、不覆盖旧输出，每流最多保存 64 MiB；超限仍接受 drain 并累计总字节，结束时 fsync 后关闭。写入或 fsync 失败不返回成功收尾。
+- 字节分页每次最多 64 KiB，以 base64 和精确 nextOffset 返回；拒绝越界 cursor、非法流名、符号链接和超限文件。读取/写入错误使用固定消息，不泄漏私有目录。
+- shell cwd 辅助 Node 增加 ELECTRON_RUN_AS_NODE=1，以适配既有 Electron 运行包；并非已用 Electron 原生运行验证。
+- 节点间十四项会话组合检查通过，包括输出保存后重读、跨 UTF-8 分页、截断、关闭后写入拒绝、存储错误注入、双流边界和临时 sh 连续命令。没有远端连接或 Windows 原生执行。
+- 后续 runner 接线须使用解析器完整 totalBytes/truncated 元数据与 sink 实际保存字节合并结果，并在日志 fsync 成功之后写最终命令结果。独立 runner/单写者锁/进程证明/RPC 尚未实现，sessionResume 继续 false。
+- 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：c15386c4f901e3b3aee140e4bff0be662a526ba3。
