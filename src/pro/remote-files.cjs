@@ -116,7 +116,21 @@ class RemoteFiles {
     r.state = "completed"; r.finishedAt = Date.now(); durableWrite(this.file(p.transferId), r);
     return this.status(owner, p.transferId);
   }
+  cancel(owner, id) {
+    const r = this.record(owner, id);
+    if (!["completed", "committing"].includes(r.state)) { r.state = "cancelled"; durableWrite(this.file(id), r); }
+    return this.status(owner, id);
+  }
   handle(owner, method, p) {
+    try { return this.dispatch(owner, method, p); }
+    catch (error) {
+      if (/^(TRANSFER_|SOURCE_CHANGED$|DESTINATION_CHANGED$|REQUEST_CONFLICT$|AUTH_REVOKED$|CONTROL_)/.test(error.code || "")) throw error;
+      throw Object.assign(Error("Transfer storage operation failed; query the saved transfer ID"), { code: "TRANSFER_STORAGE_FAILED" });
+    }
+  }
+  dispatch(owner, method, p) {
+    if (method === "file.cancel") return this.cancel(owner, p.transferId);
+    if (method === "file.download.cancel") return this.downloads.cancel(owner, p.transferId);
     if (method === "file.download.prepare") return this.downloads.prepare(owner, p);
     if (method === "file.download.status") return this.downloads.status(owner, p.transferId);
     if (method === "file.prepare") return this.prepare(owner, p);

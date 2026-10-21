@@ -80,6 +80,7 @@ export async function resumeDownload(server, transferId, { statusOnly = false } 
       if (statusOnly || e.code !== "TRANSFER_NOT_FOUND") throw e;
       remote = await control.request("file.download.prepare", { transferId, source: intent.source });
     }
+    if (remote.state === "cancelled") return { success: false, transferId, direction: "download", state: "cancelled", completed: false };
     if (remote.transferId !== transferId || remote.deviceId !== intent.deviceId || remote.direction !== "download")
       throw Error("Remote download identity differs");
     if (statusOnly) {
@@ -116,4 +117,17 @@ export async function resumeDownload(server, transferId, { statusOnly = false } 
 }
 export function resumeTransfer(server, transferId, options) {
   return downloads().intent(transferId) ? resumeDownload(server, transferId, options) : resumeUpload(server, transferId, options);
+}
+
+export async function cancelTransfer(server, transferId) {
+  const store = downloads(), intent = store.intent(transferId), upload = intent ? null : snapshots().record(transferId);
+  const deviceId = intent?.deviceId || upload.deviceId, conn = await connect(server);
+  if (conn.config.agentDeviceId !== deviceId) throw Object.assign(Error("Transfer target differs"), { transferId });
+  const control = await openControl(conn.client, deviceId);
+  try {
+    const result = await control.request(intent ? "file.download.cancel" : "file.cancel", { transferId });
+    if (intent) { try { store.cancel(transferId); } catch (e) { if (e.code !== "TRANSFER_NOT_FOUND") throw e; } }
+    return { ...result, temporaryFilesRetained: true };
+  } catch (error) { throw Object.assign(error, { transferId }); }
+  finally { control.close(); }
 }

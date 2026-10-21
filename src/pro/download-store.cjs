@@ -75,6 +75,11 @@ class DownloadStore {
       fs.fsyncSync(fd); r.confirmed[index] = r.blocks[index]; durableWrite(this.file(id), r);
     } finally { fs.closeSync(fd); }
   }
+  cancel(id) {
+    const r = this.record(id);
+    if (!["completed", "committing"].includes(r.state)) { r.state = "cancelled"; durableWrite(this.file(id), r); }
+    return r;
+  }
   commit(id) {
     const r = this.record(id);
     if (r.state === "completed") return r;

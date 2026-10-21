@@ -1,4 +1,4 @@
-import { resumeTransfer } from "./file-transfers.js";
+import { resumeTransfer, cancelTransfer } from "./file-transfers.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -121,7 +121,7 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_conne
   });
 if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_operation_status")))
   server.registerTool("ssh_operation_status", {
-    description: "Query an operation by operationId, or a session command by sessionId and requestId. Session query without requestId lists saved requests. Output uses bounded base64 byte pages. action=cancel applies to operations; use ssh_session_close for sessions.",
+    description: "Query an operation by operationId, or a session command by sessionId and requestId. Session query without requestId lists saved requests. Output uses bounded base64 byte pages. Transfers use transferId/server; resumeTransfer=true continues saved blocks. action=cancel stops further transfer commits and retains temporary files. Use ssh_session_close for sessions.",
     inputSchema: {
       operationId: z.string().uuid().optional(),
       transferId: z.string().uuid().optional(),
@@ -139,7 +139,8 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_opera
     try {
       const result = await withServerSnapshot(async () => {
         if (args.transferId) {
-          if (!args.server || args.operationId || args.sessionId || args.action === "cancel") throw Error("Specify server and transferId for transfer status or resume");
+          if (!args.server || args.operationId || args.sessionId) throw Error("Specify server and transferId for transfer status or resume");
+          if (args.action === "cancel") return cancelTransfer(args.server, args.transferId);
           return resumeTransfer(args.server, args.transferId, { statusOnly: !args.resumeTransfer });
         }
         const client = await localAgentClient();

@@ -19,10 +19,18 @@ class RemoteDownloads {
     durableWrite(file, { owner, source, transferId: p.transferId });
     return this.status(owner, p.transferId);
   }
+  cancel(owner, id) {
+    this.files.check(owner); operationId(id);
+    const file = path.join(this.snapshots.directory(id), "owner.json"), r = privateJSON(file, null);
+    if (!r || r.owner !== owner || r.transferId !== id) throw Object.assign(Error("Unknown download"), { code: "TRANSFER_NOT_FOUND" });
+    r.cancelled = true; durableWrite(file, r);
+    return { transferId: id, deviceId: this.files.deviceId, direction: "download", state: "cancelled" };
+  }
   status(owner, id) {
     this.files.check(owner); operationId(id);
     const dir = this.snapshots.directory(id), bind = privateJSON(path.join(dir, "owner.json"), null);
     if (!bind || bind.owner !== owner || bind.transferId !== id) throw Object.assign(Error("Unknown download"), { code: "TRANSFER_NOT_FOUND" });
+    if (bind.cancelled) return { transferId: id, deviceId: this.files.deviceId, direction: "download", state: "cancelled" };
     const r = this.snapshots.record(id);
     if (JSON.stringify(identity(fs.lstatSync(bind.source))) !== JSON.stringify(r.sourceIdentity))
       throw Object.assign(Error("Remote source changed after snapshot"), { code: "SOURCE_CHANGED" });
