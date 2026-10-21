@@ -313,3 +313,12 @@
 - 节点间九项会话日志/解析检查通过，包括所有切分位置的 UTF-8 原始字节、双流完成次序、输出截断、迟到输出、缺边界和损坏字节、输入摘要变化及缺结果。这些检查未启动 shell，不证明真实 PowerShell/sh 边界脚本或 runner 生命周期已实现。
 - 会话独立 runner、单写者锁、进程核验、控制 RPC 和 MCP 适配仍待接线；sessionResume 仍为 false。下一步不能直接向外宣告可恢复会话。
 - 本上传节点只保存源码、来源记录和交接，不运行验证。上一成功远端提交：c3f7a3a9bcfed67c8265171d06f0c4a670ca7b9d。
+
+## 2026-10-21 14:42（北京时间）无 PTY shell 边界脚本源码
+
+- 新增 session-shell.cjs，为 sh/PowerShell 生成双流完成边界脚本，保留同一 shell 的 cwd/环境，命令通过 stdin 而非进程命令行传递；Windows 脚本编码原命令并在当前会话作用域执行。随机 marker 和输入按界限校验。
+- 在本机临时目录启动 /bin/sh -s 检查，确认连续命令保留 cwd/环境、stdout/stderr 分开、失败 exitCode、中文输出、含换行的目录名，以及伪造 PWD/NODE_OPTIONS 不改变 cwd 元数据读取。只创建临时目录和子 shell，未连接用户设备。
+- 首次检查发现 pwd 的尾换行被编码进 cwd，已改为用当前应用 Node 的绝对路径读取实际 cwd 并编码；该辅助 Node 临时清空 NODE_OPTIONS/NODE_PATH，不改变原 shell 环境。
+- 十一项日志/解析/shell 组合检查通过，新增特殊 cwd 断言后两项 shell 检查通过。Windows PowerShell 脚本尚未原生执行；本机 sh 检查不等于独立 runner 存活、取消或 SSH 恢复通过。
+- 本模块仍未接独立 session runner、生命周期锁和控制协议；sessionResume=false 与原 MCP session 行为继续保留。下一步继续 runner 生命周期及日志输出落盘，不能把边界脚本当作会话持久化已完成。
+- 本上传节点仅保存源码、来源记录和交接，不运行验证。上一成功远端提交：a25397a695df0ffd9781db91e1a9aa056b12c9cb。
