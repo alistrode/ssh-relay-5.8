@@ -137,6 +137,13 @@ function healthy() {
         { env: { ...process.env, RELAY_HOUR_NEW_FIXTURE: root }, encoding: 'utf8', timeout: 30000 });
       if (setup.status !== 0) console.error('FIXTURE SETUP', setup.error?.message || setup.stderr.slice(0, 3000));
       assert.equal(setup.status, 0, 'Could not create an account-private Windows test fixture');
+      const { assertPrivateState } = require('../../src/pro/private-state.cjs');
+      assertPrivateState(root);
+      const shared = path.join(root, 'rejected-shared-fixture'); fs.mkdirSync(shared);
+      const acl = cp.spawnSync('icacls.exe', [shared, '/grant', '*S-1-1-0:(OI)(CI)RX'], { encoding: 'utf8', timeout: 15000 });
+      assert.equal(acl.status, 0, 'Could not prepare shared ACL negative test');
+      assert.throws(() => assertPrivateState(shared), { code: 'LOCAL_STATE_PERMISSIONS' });
+      result.windowsPrivateAclPositiveAndNegative = true;
     }
     far = new Agent({ role: 'far', dir: path.join(root, 'far'), allowCloudSelfTest: true, brokerUrl: broker });
     near = new Agent({ role: 'near', dir: path.join(root, 'near'), allowCloudSelfTest: true, brokerUrl: broker });
