@@ -46,7 +46,7 @@ class SessionJournal {
   }
   public(record) {
     return { sessionId: this.sessionId, requestId: record.requestId, sequence: record.sequence,
-      state: record.state, completed: ["completed", "failed"].includes(record.state) };
+      state: record.state, completed: ["completed", "failed"].includes(record.state), errorCode: record.errorCode || null };
   }
   hash(sequence, spec) {
     return crypto.createHash("sha256").update(JSON.stringify({ deviceId: this.deviceId,
@@ -119,13 +119,25 @@ class SessionJournal {
     if (result.requestId !== record.requestId || result.sessionId !== this.sessionId || result.owner !== this.owner ||
         !["completed", "failed"].includes(result.state) || !Number.isInteger(result.exitCode) ||
         !Number.isFinite(result.finishedAt)) throw failure("SESSION_CORRUPT", "Session command result is invalid");
+    if (result.cwd !== undefined && (typeof result.cwd !== "string" || !result.cwd || result.cwd.includes("\0") ||
+        Buffer.byteLength(result.cwd) > 256 * 1024)) throw failure("SESSION_CORRUPT", "Session cwd metadata is invalid");
+    if (result.output !== undefined) for (const name of ["stdout", "stderr"]) {
+      const stream = result.output?.[name];
+      if (!stream || !Number.isSafeInteger(stream.bytes) || stream.bytes < 0 || stream.bytes > 64 * 1024 * 1024 ||
+          !Number.isSafeInteger(stream.totalBytes) || stream.totalBytes < stream.bytes ||
+          stream.truncated !== (stream.totalBytes > stream.bytes))
+        throw failure("SESSION_CORRUPT", "Session output metadata is invalid");
+    }
   }
-  complete(owner, requestId, { exitCode }) {
+  complete(owner, requestId, { exitCode, cwd, output }) {
     this.checkOwner(owner); const record = this.read(requestId);
     if (record.state !== "running" || this.record.activeRequestId !== requestId || !Number.isInteger(exitCode))
       throw failure("SESSION_COMMAND_UNKNOWN", "Session command cannot be completed in its current state");
     const result = { requestId, sessionId: this.sessionId, owner: this.owner,
       state: exitCode === 0 ? "completed" : "failed", exitCode, finishedAt: Date.now() };
+    if (cwd !== undefined) result.cwd = cwd;
+    if (output !== undefined) result.output = output;
+    this.validateResult(record, result);
     durableWrite(this.file(requestId, "result.json"), result);
     record.state = result.state; durableWrite(this.file(requestId, "manifest.json"), record);
     this.record.activeRequestId = null; this.record.state = "open"; this.save();
@@ -137,7 +149,20 @@ class SessionJournal {
     const result = privateJSON(this.file(requestId, "result.json"), null);
     if (result) this.validateResult(record, result);
     const state = result ? result.state : ["completed", "failed"].includes(record.state) ? "unknown" : record.state;
-    return { ...this.public({ ...record, state }), ...(result ? { result: { state: result.state, exitCode: result.exitCode, finishedAt: result.finishedAt } } : {}) };
+    return { ...this.public({ ...record, state }), ...(result ? { result: { state: result.state, exitCode: result.exitCode,
+      finishedAt: result.finishedAt, cwd: result.cwd, output: result.output } } : {}) };
+  }
+  lose(owner, errorCode = "SESSION_LOST") {
+    this.checkOwner(owner);
+    if (!/^[A-Z_]{1,64}$/.test(errorCode)) throw failure("SESSION_INVALID", "Invalid session loss reason");
+    if (this.record.activeRequestId) {
+      const command = this.read(this.record.activeRequestId);
+      if (!["completed", "failed"].includes(command.state)) {
+        command.state = "unknown"; command.errorCode = errorCode;
+        durableWrite(this.file(command.requestId, "manifest.json"), command);
+      }
+    }
+    this.record.state = "lost"; this.record.errorCode = errorCode; this.record.activeRequestId = null; this.save();
   }
 }
 module.exports = { SessionJournal };
