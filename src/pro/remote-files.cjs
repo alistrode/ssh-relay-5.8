@@ -8,7 +8,7 @@ function fail(code, message) { throw Object.assign(Error(message), { code }); }
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function present(file) { try { return identity(fs.lstatSync(file)); } catch (e) { if (e.code === "ENOENT") return null; throw e; } }
 class RemoteFiles {
-  constructor({ dir, deviceId, authorized }) { this.dir = folder(path.resolve(dir)); this.deviceId = operationId(deviceId); this.authorized = authorized; }
+  constructor({ dir, deviceId, authorized }) { this.dir = folder(path.resolve(dir)); this.deviceId = operationId(deviceId); this.authorized = authorized; this.downloads = new (require("./remote-downloads.cjs").RemoteDownloads)(this); }
   check(owner) { operationId(owner); if (!this.authorized(owner)) fail("AUTH_REVOKED", "Transfer controller authorization is unavailable"); }
   file(id) { return path.join(this.dir, operationId(id) + ".json"); }
   record(owner, id) {
@@ -117,6 +117,8 @@ class RemoteFiles {
     return this.status(owner, p.transferId);
   }
   handle(owner, method, p) {
+    if (method === "file.download.prepare") return this.downloads.prepare(owner, p);
+    if (method === "file.download.status") return this.downloads.status(owner, p.transferId);
     if (method === "file.prepare") return this.prepare(owner, p);
     if (method === "file.status") return this.status(owner, p.transferId);
     if (method === "file.block") return this.block(owner, p);

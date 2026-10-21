@@ -1,4 +1,4 @@
-import { resumeUpload } from "./file-transfers.js";
+import { resumeTransfer } from "./file-transfers.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -140,7 +140,7 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_opera
       const result = await withServerSnapshot(async () => {
         if (args.transferId) {
           if (!args.server || args.operationId || args.sessionId || args.action === "cancel") throw Error("Specify server and transferId for transfer status or resume");
-          return resumeUpload(args.server, args.transferId, { statusOnly: !args.resumeTransfer });
+          return resumeTransfer(args.server, args.transferId, { statusOnly: !args.resumeTransfer });
         }
         const client = await localAgentClient();
         if (args.sessionId) {

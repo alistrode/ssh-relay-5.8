@@ -151,7 +151,9 @@
       "src/mcp/workflows.js",
       "src/pro/file-transfer.cjs",
       "src/pro/remote-files.cjs",
-      "src/mcp/file-transfers.js"
+      "src/mcp/file-transfers.js",
+      "src/pro/remote-downloads.cjs",
+      "src/pro/download-store.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

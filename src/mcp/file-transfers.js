@@ -58,3 +58,62 @@ export async function resumeUpload(server, transferId, { statusOnly = false } = 
     throw Object.assign(error, { transferId, deviceId: r.deviceId });
   } finally { control.close(); }
 }
+
+const { DownloadStore } = require("../pro/download-store.cjs");
+function downloads() { return new DownloadStore(statePath("downloads")); }
+export async function downloadSnapshot(server, remotePath, localPath) {
+  const conn = await connect(server), transferId = crypto.randomUUID();
+  downloads().intent(transferId, { deviceId: conn.config.agentDeviceId, source: remotePath, localPath });
+  return resumeDownload(server, transferId);
+}
+export async function resumeDownload(server, transferId, { statusOnly = false } = {}) {
+  const store = downloads(), intent = store.intent(transferId);
+  if (!intent) throw Object.assign(Error("Unknown download intent"), { transferId });
+  const conn = await connect(server);
+  if (conn.config.agentDeviceId !== intent.deviceId || conn.config.capabilities.fileProtocol !== 1)
+    throw Object.assign(Error("Download target differs or lacks recovery"), { transferId });
+  const control = await openControl(conn.client, intent.deviceId);
+  try {
+    let remote;
+    try { remote = await control.request("file.download.status", { transferId }); }
+    catch (e) {
+      if (statusOnly || e.code !== "TRANSFER_NOT_FOUND") throw e;
+      remote = await control.request("file.download.prepare", { transferId, source: intent.source });
+    }
+    if (remote.transferId !== transferId || remote.deviceId !== intent.deviceId || remote.direction !== "download")
+      throw Error("Remote download identity differs");
+    if (statusOnly) {
+      let local; try { local = store.record(transferId); } catch (e) { if (e.code !== "TRANSFER_NOT_FOUND") throw e; }
+      return { transferId, deviceId: intent.deviceId, direction: "download", state: local?.state || "registered",
+        bytes: remote.size, completed: local?.state === "completed", persistent: true };
+    }
+    let local = store.prepare(remote, intent.localPath);
+    if (local.state !== "completed") {
+      if (local.state !== "prepared") throw Error("Download commit outcome needs inspection");
+      const s = await sftp(server), handle = await sftpCall(s, "open", remote.snapshot, "r");
+      try {
+        for (let i = 0; i < remote.blocks.length; i++) {
+          if (store.hasBlock(transferId, i)) continue;
+          const bytes = Buffer.alloc(Math.min(remote.blockBytes, remote.size - i * remote.blockBytes));
+          let offset = 0;
+          while (offset < bytes.length) {
+            const n = await sftpCall(s, "read", handle, bytes, offset, bytes.length - offset, i * remote.blockBytes + offset);
+            if (!Number.isInteger(n) || n < 1 || n > bytes.length - offset) throw Error("Remote download block is incomplete");
+            offset += n;
+          }
+          store.block(transferId, i, bytes);
+        }
+      } finally { await sftpCall(s, "close", handle).catch(() => {}); }
+      const final = await control.request("file.download.status", { transferId });
+      if (final.sha256 !== remote.sha256 || final.size !== remote.size || final.deviceId !== intent.deviceId)
+        throw Error("Remote download source changed");
+      local = store.commit(transferId);
+    }
+    return { success: true, transferId, persistent: true, completed: local.state === "completed",
+      localPath: local.target, remotePath: intent.source, bytes: local.size, sha256: local.sha256 };
+  } catch (error) { throw Object.assign(error, { transferId, deviceId: intent.deviceId }); }
+  finally { control.close(); }
+}
+export function resumeTransfer(server, transferId, options) {
+  return downloads().intent(transferId) ? resumeDownload(server, transferId, options) : resumeUpload(server, transferId, options);
+}

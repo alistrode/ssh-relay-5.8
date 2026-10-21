@@ -308,13 +308,13 @@ session 工具改为远端会话 runner 管理，sessionId 绑定 controllerId�
 
 新增 file-transfer.cjs，在现有 SFTP 和控制 subsystem 上配合：
 
-1. 近端生成 transferId，登记源设备/目标、规范化路径、大小、mtime 与 SHA-256。源文件复制为受限暂存快照再上传；空间不足则拒绝或让用户明确选择不续传模式，不能边变边传。
+1. 近端生成 transferId，登记源设备/目标、规范化路径、大小、mtime 与 SHA-256。源文件复制为受限暂存快照再上传；按用户最新要求不检查磁盘空间，实际写入失败如实返回，不能边变边传。
 2. 远端控制 RPC prepareFile 校验权限和覆盖策略，在目标同一目录创建随机 .relay-part-<id>，返回已有块清单。
 3. 分块 1 MiB，通过 SFTP 按 offset 写临时文件；每块远端计算 SHA-256，与声明值一致后提交块清单，丢失确认则重查，不依赖“发送成功”。
 4. 中断后读取清单，复验暂存文件身份和已收块，补传缺块。块清单更新与数据落盘顺序保证不能确认尚未稳定保存的数据。
 5. commitFile 校验完整 SHA-256，再按 reject/overwrite/rename 策略完成替换；可原子 rename 的平台使用原子提交，不支持时返回实际降级结果。
 6. 下载使用近端 .part 和同等清单，远端源变化返回 SOURCE_CHANGED，不拼接两个版本。
-7. transfer 状态与 RPC 都绑定 controllerId；清理取消/过期临时文件，默认 24 小时，活动传输不清理。
+7. transfer 状态与 RPC 都绑定 controllerId；按用户最新要求不自动清理取消/过期临时文件；仅有手动日志清理按钮，传输状态与暂存资源保留，不由后台到期删除。
 
 远端路径保护在 SFTP/文件服务执行端实施，校验符号链接、Windows 重解析点及真实父目录。具有任意 Shell 权限的客户端不宣称被文件目录规则完全隔离。
 
