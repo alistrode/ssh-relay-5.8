@@ -66,12 +66,15 @@ async function exec(c, command) {
     stream.on('error', reject); stream.on('close', code => code === 0 ? resolve(stdout) : reject(Error('SSH command failed')));
   })));
 }
+function nativeCommand(script) {
+  return windows ? 'powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ' + Buffer.from(script, 'utf16le').toString('base64') : script;
+}
 async function longConnection(report, active) {
   const c = await connect(report), state = { active, ticks: 0, ready: false, closed: false };
   const command = windows
     ? (active ? "Write-Output 'hour-ready'; while ($true) { Write-Output 'hour-tick'; Start-Sleep -Seconds 15 }" : "Write-Output 'hour-ready'; Start-Sleep -Seconds 3900")
     : (active ? "printf 'hour-ready\\n'; while :; do printf 'hour-tick\\n'; sleep 15; done" : "printf 'hour-ready\\n'; sleep 3900");
-  await bounded(new Promise((resolve, reject) => c.exec(command, (error, stream) => {
+  await bounded(new Promise((resolve, reject) => c.exec(nativeCommand(command), (error, stream) => {
     if (error) return reject(error);
     let buffer = '';
     stream.on('data', data => {
@@ -92,7 +95,7 @@ async function sample(report) {
   const c = await connect(report);
   try {
     const nonce = crypto.randomBytes(12).toString('hex');
-    assert.equal((await exec(c, windows ? "[Console]::Write('" + nonce + "')" : 'printf ' + nonce)).trim(), nonce);
+    assert.equal((await exec(c, nativeCommand(windows ? "[Console]::Write('" + nonce + "')" : 'printf ' + nonce))).trim(), nonce);
     const sftp = await bounded(new Promise((resolve, reject) => c.sftp((e, s) => e ? reject(e) : resolve(s))));
     const file = path.join(root, 'transfer.bin'), data = crypto.randomBytes(65536);
     await bounded(new Promise((resolve, reject) => {
