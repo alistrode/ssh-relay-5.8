@@ -153,7 +153,9 @@
       "src/pro/remote-files.cjs",
       "src/mcp/file-transfers.js",
       "src/pro/remote-downloads.cjs",
-      "src/pro/download-store.cjs"
+      "src/pro/download-store.cjs",
+      "src/pro/file-service.cjs",
+      "src/pro/file-worker.cjs"
     ],
     "adaptations": [
       "src/pro/agent.cjs",

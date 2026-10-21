@@ -10,7 +10,8 @@ function snapshots() { return new TransferSnapshots(statePath("transfers")); }
 export async function uploadSnapshot(server, localPath, remotePath) {
   const conn = await connect(server), transferId = crypto.randomUUID();
   const r = snapshots().create({ transferId, deviceId: conn.config.agentDeviceId, localPath, remotePath, policy: "overwrite" });
-  return resumeUpload(server, r.transferId);
+  try { return await resumeUpload(server, r.transferId); }
+  catch (error) { throw Object.assign(error, { transferId: r.transferId, deviceId: r.deviceId }); }
 }
 export async function resumeUpload(server, transferId, { statusOnly = false } = {}) {
   const store = snapshots(), r = store.validate(transferId), conn = await connect(server);
@@ -64,7 +65,8 @@ function downloads() { return new DownloadStore(statePath("downloads")); }
 export async function downloadSnapshot(server, remotePath, localPath) {
   const conn = await connect(server), transferId = crypto.randomUUID();
   downloads().intent(transferId, { deviceId: conn.config.agentDeviceId, source: remotePath, localPath });
-  return resumeDownload(server, transferId);
+  try { return await resumeDownload(server, transferId); }
+  catch (error) { throw Object.assign(error, { transferId, deviceId: conn.config.agentDeviceId }); }
 }
 export async function resumeDownload(server, transferId, { statusOnly = false } = {}) {
   const store = downloads(), intent = store.intent(transferId);

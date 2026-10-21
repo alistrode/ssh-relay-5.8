@@ -106,6 +106,7 @@ class RemoteFiles {
       fs.fsyncSync(fd);
       r.commitIdentity = identity(fs.fstatSync(fd));
       if (!same(present(r.target), r.original)) fail("DESTINATION_CHANGED", "Transfer destination changed since preparation");
+      this.check(owner);
       r.state = "committing"; durableWrite(this.file(p.transferId), r);
     } finally { fs.closeSync(fd); }
     this.target(r.target);

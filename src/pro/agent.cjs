@@ -27,7 +27,7 @@ const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
 const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
 const { SessionManager } = require("./session-manager.cjs");
-const { RemoteFiles } = require("./remote-files.cjs");
+const { FileService } = require("./file-service.cjs");
 const { ExecutionScheduler } = require("./execution-scheduler.cjs");
 const { dispatchFarControl } = require("./far-control.cjs");
 const { Operations } = require("./operations.cjs");
@@ -127,8 +127,9 @@ class Agent {
       dir: this.file("sessions"), scheduler: this.executionScheduler, deviceId: this.identity.deviceId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
-    if (this.role === "far") this.remoteFiles = new RemoteFiles({
+    if (this.role === "far") this.remoteFiles = new FileService({
       dir: this.file("transfers"), deviceId: this.identity.deviceId,
+      authorizedFile: this.file("far/authorized-clients.json"),
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
     this.server = http.createServer((req, res) => this.api(req, res));

@@ -69,7 +69,7 @@ def main():
    else:
     for name,script in {'relay-cli':'src/pro/cli.cjs','mcp':'src/mcp.cjs'}.items():
      p=folder/name;p.write_text('#!/bin/sh\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1\nELECTRON_RUN_AS_NODE=1 exec "$ROOT/ssh-relay-pro" "$ROOT/resources/app/'+script+'" "$@"\n');p.chmod(0o755)
-   (app/'BUILD-PRO.json').write_text(json.dumps({'applicationVersion':json.loads((ROOT/'package.json').read_text())['version'],'platform':platform,'runtime':item,'sourceSha256':{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()for folder in ['src','desktop','launchers'] for p in sorted((ROOT/folder).rglob('*'))if p.suffix in ['.js','.cjs','.ps1']}},indent=2)+'\n')
+   (app/'BUILD-PRO.json').write_text(json.dumps({'applicationVersion':json.loads((ROOT/'package.json').read_text())['version'],'platform':platform,'runtime':item,'sourceSha256':{str(p.relative_to(app)):hashlib.sha256(p.read_bytes()).hexdigest()for source_folder in ['src','desktop','launchers'] for p in sorted((app/source_folder).rglob('*'))if p.suffix in ['.js','.cjs','.ps1']}},indent=2)+'\n')
    (folder/'README.txt').write_text('SSH Relay Pro 2.0\n首次打开后，远端点击生成配对码，近端输入后会记住设备并自动连接。\n已内置图形界面和运行环境，无需安装 Node/npm。关闭窗口保留后台，托盘可重新打开。\n自启动开关分为登录启动与开机后台服务；后者需首次管理员授权。Windows SYSTEM 服务的权限和目录不同于桌面账户，界面会明确提示。\n设备授权与日志保存在用户目录 .ssh-relay-pro，不在程序目录。请勿公开私钥、配对码或原始日志。\n本升级版使用现有公共 MQTT 中继，无需购买或部署服务器；不替换旧版通道。\nLinux 推荐安装 DEB，或在支持用户命名空间沙箱的桌面中解压 TAR 后双击 ssh-relay-pro（原生程序）；不更改系统沙箱设置，不把 .desktop 当作初次双击入口。\nWindows 解压下载 ZIP 后双击 Setup.cmd，使用系统自带 tar.exe 解包，然后启动原生界面；需要 Windows 10 1803+ / Windows 11 x64。\n')
    for p in sorted(folder.rglob('*')):
     if p.is_dir():p.chmod(0o755)
