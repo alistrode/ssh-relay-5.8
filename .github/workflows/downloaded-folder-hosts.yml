@@ -1,9 +1,11 @@
 name: Run repository-downloaded complete folders for direct MCP operation
 on:
-  push:
-    branches: [fix/ssh-pro-startup-20261019]
-    paths: ['.github/workflows/downloaded-folder-hosts.yml']
   workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        default: all
+        options: [all, linux, windows]
 permissions:
   contents: read
 jobs:
@@ -11,13 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-24.04
-            platform: linux
-            extension: tar.gz
-          - os: windows-2022
-            platform: windows
-            extension: zip
+        include: ${{ fromJSON(inputs.platform == 'windows' && '[{"os":"windows-2022","platform":"windows","extension":"zip"}]' || inputs.platform == 'linux' && '[{"os":"ubuntu-24.04","platform":"linux","extension":"tar.gz"}]' || '[{"os":"ubuntu-24.04","platform":"linux","extension":"tar.gz"},{"os":"windows-2022","platform":"windows","extension":"zip"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 130
     defaults:
