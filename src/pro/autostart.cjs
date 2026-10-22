@@ -28,7 +28,7 @@ function linuxUnit({
 }) {
   return `[Unit]\nDescription=SSH Relay Pro ${role}\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=simple\nUser=${user}\nWorkingDirectory=${String(appRoot).replace(/%/g, "%%")}\nEnvironment=ELECTRON_RUN_AS_NODE=1\nExecStart=${quote(executable)} ${quote(path.join(appRoot, "src/pro/guardian.cjs"))} --role ${role} --state-dir ${quote(path.join(profile, role))}\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=20\n[Install]\nWantedBy=multi-user.target\n`;
 }
-function windowsXml({ executable, appRoot, profile, role }) {
+function windowsXml({ executable, appRoot, profile, role, ownerSid }) {
   const x = (s) =>
     String(s).replace(
       /[&<>"']/g,
@@ -41,7 +41,8 @@ function windowsXml({ executable, appRoot, profile, role }) {
           "'": "&apos;",
         })[c],
     );
-  return `<service><id>SSHRelayPro-${role}</id><name>SSH Relay Pro ${role}</name><description>Unattended relay; runs as LocalSystem when explicitly installed.</description><executable>${x(executable)}</executable><arguments>${x('"' + path.join(appRoot, "src/pro/guardian.cjs") + '" --role ' + role + ' --state-dir "' + path.join(profile, role) + '"')}</arguments><workingdirectory>${x(appRoot)}</workingdirectory><env name="ELECTRON_RUN_AS_NODE" value="1"/><startmode>Automatic</startmode><onfailure action="restart" delay="5 sec"/><stoptimeout>20 sec</stoptimeout><log mode="roll-by-size"><sizeThreshold>1024</sizeThreshold><keepFiles>3</keepFiles></log></service>`;
+  if (!/^S-1-5-21-(\d+-){2}\d+-\d+$/.test(ownerSid || "")) throw Error("Cannot verify service profile owner SID");
+  return `<service><id>SSHRelayPro-${role}</id><name>SSH Relay Pro ${role}</name><description>Authorized LocalSystem relay background service.</description><executable>${x(executable)}</executable><arguments>${x('"' + path.join(appRoot, "src/pro/guardian.cjs") + '" --role ' + role + ' --state-dir "' + path.join(profile, role) + '"')}</arguments><workingdirectory>${x(appRoot)}</workingdirectory><env name="ELECTRON_RUN_AS_NODE" value="1"/><env name="SSH_RELAY_STATE_OWNER_SID" value="${x(ownerSid)}"/><startmode>Automatic</startmode><onfailure action="restart" delay="5 sec"/><stoptimeout>20 sec</stoptimeout><log mode="roll-by-size"><sizeThreshold>1024</sizeThreshold><keepFiles>3</keepFiles></log></service>`;
 }
 function linuxLogin({ executable, appRoot, profile, development }) {
   return `[Desktop Entry]\nType=Application\nName=SSH Relay Pro\nExec=${quote(executable)} ${development ? quote(appRoot) + " " : ""}--profile-dir ${quote(profile)} --tray\nIcon=${path.join(appRoot, "assets/relay.svg")}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n`;
@@ -84,7 +85,7 @@ function status(options) {
         "-NonInteractive",
         "-EncodedCommand",
         Buffer.from(
-          "$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro.lnk';$a=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-near'\" -ErrorAction SilentlyContinue;$b=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-far'\" -ErrorAction SilentlyContinue;@{loginInstalled=(Test-Path $p);bootInstalled=($a.StartMode -eq 'Auto' -and $b.StartMode -eq 'Auto')}|ConvertTo-Json",
+          "$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro.lnk';$a=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-near'\" -ErrorAction SilentlyContinue;$b=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-far'\" -ErrorAction SilentlyContinue;@{loginInstalled=(Test-Path $p);bootInstalled=($a.StartMode -eq 'Auto' -and $b.StartMode -eq 'Auto');servicesRunning=($a.State -eq 'Running' -and $b.State -eq 'Running')}|ConvertTo-Json",
           "utf16le",
         ).toString("base64"),
       ],
@@ -185,10 +186,24 @@ async function apply(options, { enabled, mode }) {
       if (!fs.existsSync(winsw))
         throw Error("Bundled Windows service host missing");
       script = "$ErrorActionPreference='Stop';";
+      const identity = cp.spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding:"utf8", windowsHide:true, timeout:10000 });
+      const ownerSid = /S-1-5-21-(?:\d+-){2}\d+-\d+/.exec(identity.stdout || "")?.[0];
+      if (!ownerSid) throw Error("Cannot verify the current Windows account");
+      // Both the desktop owner and SYSTEM must be able to use this one profile.
+      // Do not change permissions outside this application's private directories.
+      script += "$sid=" + ps(ownerSid) + ";";
+      for (const role of ["near", "far"]) {
+        const state = folder(path.join(profile, role));
+        script += "$state=" + ps(state) + ";& icacls.exe $state /inheritance:r /grant:r ($sid+':(OI)(CI)F') '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /Q;if($LASTEXITCODE){throw 'Private profile permissions failed'};";
+      }
       for (const role of ["near", "far"]) {
         const exe = path.join(stage, "SSHRelayPro-" + role + ".exe");
-        fs.copyFileSync(winsw, exe);
-        text(exe.replace(/\.exe$/, ".xml"), windowsXml({ ...options, role }));
+        if (!fs.existsSync(exe)) fs.copyFileSync(winsw, exe);
+        const config = exe.replace(/\.exe$/, ".xml");
+        const xml = windowsXml({ ...options, role, ownerSid });
+        if (fs.existsSync(config) && fs.readFileSync(config,"utf8") !== xml)
+          throw Error("Service paths changed; use the original installed folder or uninstall the previous services first");
+        text(config, xml);
         if (enabled && mode === "boot")
           script +=
             "if(-not(Get-Service -Name 'SSHRelayPro-" +
@@ -197,7 +212,7 @@ async function apply(options, { enabled, mode }) {
             ps(exe) +
             " install;if($LASTEXITCODE){throw 'Service installation failed'}};Set-Service -Name 'SSHRelayPro-" +
             role +
-            "' -StartupType Automatic;";
+            "' -StartupType Automatic;Start-Service -Name 'SSHRelayPro-" + role + "';";
         else
           script +=
             "$s=Get-Service -Name 'SSHRelayPro-" +

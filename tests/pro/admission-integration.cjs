@@ -1,65 +1,51 @@
-"use strict";
-// Own near/far identities only. Never accepts an existing connection report.
-const fs = require("node:fs"), path = require("node:path"), os = require("node:os"), crypto = require("node:crypto"), assert = require("node:assert/strict");
-const appRoot = process.env.RELAY_TEST_APP_ROOT || path.resolve(__dirname,"../..");
-const { Client } = require(path.join(appRoot,"node_modules/ssh2")), { Agent } = require(path.join(appRoot,"src/pro/agent.cjs")), { request } = require(path.join(appRoot,"src/pro/cli.cjs"));
-const root = process.argv[2] || path.join(os.tmpdir(), "relay-admission-" + crypto.randomUUID());
-if (fs.existsSync(root)) throw Error("An isolated integration test requires a new directory");
-fs.mkdirSync(root, { recursive:true, mode:0o700 });
-const net = require("node:net");
-const echoServer = net.createServer(socket => socket.pipe(socket));
-const agents = {}, clients = [], results = [], sleep = ms => new Promise(r => setTimeout(r, ms));
-function record(name) { results.push({ name, passed:true }); fs.writeFileSync(path.join(root,"results.json"), JSON.stringify(results,null,2)); console.log(JSON.stringify(results.at(-1))); }
-async function until(label, fn, timeout = 120000) { const end=Date.now()+timeout; while(Date.now()<end) { const result=await fn(); if(result)return result; await sleep(250); } throw Error("Timed out: " + label); }
-const api = (role,route,body) => request(path.join(root,role),route,body);
-const command = text => process.platform === "win32" ? "powershell.exe -NoProfile -NonInteractive -EncodedCommand " + Buffer.from(text,"utf16le").toString("base64") : text;
-async function connect(report) {
-  const client = new Client(); clients.push(client);
-  const key = report.ssh_argv[report.ssh_argv.indexOf("-i")+1];
-  await new Promise((resolve,reject) => { client.on("error",reject); client.once("ready",resolve); client.connect({host:"127.0.0.1",port:report.local_port,username:"relay",privateKey:fs.readFileSync(key),readyTimeout:60000,hostVerifier:value=>"SHA256:"+crypto.createHash("sha256").update(value).digest("base64").replace(/=+$/,"")===report.host_fingerprint}); });
-  return client;
-}
-async function execute(client, text) {
-  const stream = await new Promise((resolve,reject)=>client.exec(command(text),(e,s)=>e?reject(e):resolve(s)));
-  const state = { stdout:"", stderr:"" };
-  stream.on("data",b=>state.stdout+=b); stream.stderr.on("data",b=>state.stderr+=b);
-  state.result = new Promise((resolve,reject)=>{stream.on("error",reject);stream.on("close",code=>resolve({code,stdout:state.stdout,stderr:state.stderr}));});
-  state.result.catch(()=>{});return state;
-}
-const call = (sftp, method, ...args) => new Promise((resolve,reject)=>sftp[method](...args,(error,value)=>error?reject(error):resolve(value)));
-(async()=>{
- try {
-  for(const role of ["far","a","b"]) { agents[role]=new Agent({role:role==="far"?"far":"near",dir:path.join(root,role),allowCloudSelfTest:true,brokerUrl:process.env.RELAY_LAB_BROKER||"wss://broker.emqx.io:8084/mqtt"}); await agents[role].start(); }
-  const pair = async role => { const offer=await api("far","/pair/create",{});await api(role,"/pair/connect",{code:offer.code}); };
-  await pair("a"); const a=await until("first verified controller",()=>{const d=agents.a.status().devices[0];return d?.state==="online"&&d;});
-  const report=JSON.parse(fs.readFileSync(a.connectionReport));assert.equal(report.cloud_self_test,true);record("isolated_native_pair_and_pinned_identity");
-  await new Promise(resolve => echoServer.listen(0,"127.0.0.1",resolve));
-  const original=await connect(report), sftp=await new Promise((resolve,reject)=>original.sftp((e,s)=>e?reject(e):resolve(s)));
-  const forward=await new Promise((resolve,reject)=>original.forwardOut("127.0.0.1",0,"127.0.0.1",echoServer.address().port,(e,c)=>e?reject(e):resolve(c)));
-  const echo=async text=>{const result=new Promise((resolve,reject)=>{forward.once("data",b=>resolve(b.toString()));forward.once("error",reject);});forward.write(text);assert.equal(await result,text);};
-  await echo("before-switch");
-  const file=path.join(root,"draining-transfer.bin"), handle=await call(sftp,"open",file,"w");
-  const long=await execute(original,process.platform==="win32"?'Write-Output start; Start-Sleep -Seconds 45; Write-Output complete':'printf start; sleep 45; printf complete');
-  await until("original task started",()=>long.stdout.includes("start"));
-  await pair("b");await until("busy preflight",()=>agents.b.status().devices[0]?.state==="remote_busy");
-  let pending=await until("remote consent request",()=>agents.far.status().admission?.pending?.[0]);assert.equal(agents.a.status().devices[0].state,"online");assert(!long.stdout.includes("complete"));record("busy_probe_refused_without_interrupting_original");
-  await api("far","/connection/decision",{requestId:pending.requestId,approve:false});await sleep(1000);assert.equal(agents.b.status().devices[0].state,"remote_busy");record("decline_preserves_original");
-  await api("b","/retry",{});pending=await until("explicit retry request",()=>agents.far.status().admission?.pending?.[0]);await api("far","/connection/decision",{requestId:pending.requestId,approve:true});
-  const b=await until("replacement identity verified",()=>{const d=agents.b.status().devices[0];return d?.state==="online"&&d;});const next=JSON.parse(fs.readFileSync(b.connectionReport));assert.equal(agents.far.status().admission.ownerId,agents.b.identity.deviceId);record("approved_candidate_verified_before_switch");
-  await echo("after-switch");
-  await assert.rejects(()=>new Promise((resolve,reject)=>original.forwardOut("127.0.0.1",0,"127.0.0.1",echoServer.address().port,(e,c)=>e?reject(e):resolve(c))));
-  forward.end();record("existing_forward_continues_but_new_forward_is_refused");
-  const data=Buffer.from("continued-transfer");await call(sftp,"write",handle,data,0,data.length,0);await call(sftp,"close",handle);assert.equal(fs.readFileSync(file,"utf8"),data.toString());
-  await assert.rejects(()=>call(sftp,"open",path.join(root,"must-not-create"),"w"));assert(!fs.existsSync(path.join(root,"must-not-create")));record("existing_sftp_handle_finishes_but_new_file_open_is_refused");
-  await assert.rejects(()=>execute(original,process.platform==="win32"?'Write-Output must-not-run':'printf must-not-run'));record("old_transport_cannot_start_another_command");sftp.end();
-  const replacement=await connect(next), newTask=await execute(replacement,process.platform==="win32"?'Write-Output new-controller-ok':'printf new-controller-ok');const nextResult=await newTask.result;assert.equal(nextResult.code,0);assert(nextResult.stdout.includes("new-controller-ok"));
-  const final=await long.result;assert.equal(final.code,0,final.stderr);assert.equal(final.stdout.replace(/[\r\n]/g,""),"startcomplete");record("original_inflight_command_finished_after_switch");
-  await assert.rejects(()=>connect(report));record("old_controller_cannot_open_a_fresh_transport");
-  const worker=agents.far.status().workerPid;
-  await api("far","/unpair",{id:agents.a.identity.deviceId});await sleep(500);
-  assert.equal(agents.far.status().workerPid,worker);
-  const retained=await execute(replacement,process.platform==="win32"?'Write-Output retained-owner':'printf retained-owner');
-  assert.equal((await retained.result).code,0);record("revoking_another_controller_keeps_current_owner_and_far_worker");
- } catch(error) { console.error(error.stack);fs.writeFileSync(path.join(root,"failure.txt"),error.stack);process.exitCode=1; }
- finally { for(const client of clients)client.destroy();for(const agent of Object.values(agents))await agent.close();if(echoServer.listening)await new Promise(r=>echoServer.close(r));console.log("ISOLATED_ROOT "+root); }
-})();
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+const root=path.resolve(process.env.RELAY_APP_ROOT||path.join(__dirname,'../..'));
+const {Agent}=require(path.join(root,'src/pro/agent.cjs'));
+const {Client}=require(path.join(root,'node_modules/ssh2'));
+const state=path.resolve(process.argv[2] || path.join(require('node:os').tmpdir(),'relay-concurrent-'+crypto.randomUUID()));
+if(fs.existsSync(state))throw Error('Use a fresh private state directory');
+fs.mkdirSync(state,{recursive:true,mode:0o700});
+const agents=[],clients=[],results=[];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function record(name){results.push({name,passed:true});console.log(name);fs.writeFileSync(path.join(state,'results.json'),JSON.stringify(results,null,2));}
+async function until(label,fn,ms=100000){const end=Date.now()+ms;while(Date.now()<end){const v=await fn();if(v)return v;await sleep(250)}throw Error('Timed out: '+label)}
+async function agent(role,name){const a=new Agent({role,dir:path.join(state,name),allowCloudSelfTest:true});agents.push(a);await a.start();return a}
+async function pair(n,f){const code=await f.createPair();await n.joinPair(code.code);return until('verified pair',()=>{const d=n.status().devices.find(d=>d.id===f.identity.deviceId);if(d?.state==='identity_error')throw Error(d.lastErrorCode||'identity error');return d?.state==='online'&&d})}
+async function connect(n,id){const d=await until('ready device',()=>{const d=n.status().devices.find(x=>x.id===id);return d?.state==='online'&&d});const r=JSON.parse(fs.readFileSync(d.connectionReport));const c=new Client();clients.push(c);await new Promise((resolve,reject)=>{c.once('ready',resolve);c.on('error',reject);c.connect({host:'127.0.0.1',port:r.local_port,username:'relay',privateKey:fs.readFileSync(r.ssh_argv[r.ssh_argv.indexOf('-i')+1]),readyTimeout:60000,hostVerifier:key=>'SHA256:'+crypto.createHash('sha256').update(key).digest('base64').replace(/=+$/,'')===r.host_fingerprint})});return c}
+function exec(c,text){return new Promise((resolve,reject)=>c.exec(text,(e,s)=>{if(e)return reject(e);let out='',err='';s.on('data',b=>out+=b);s.stderr.on('data',b=>err+=b);s.on('error',reject);s.on('close',code=>code===0?resolve(out):reject(Error('command '+code+': '+err))) }))}
+async function api(a,route,body){return require(path.join(root,'src/pro/agent-client.cjs')).request(a.dir,route,body)}
+(async()=>{try{
+const f=await agent('far','far'), ns=[];
+for(let i=0;i<5;i++){const n=await agent('near','near'+i);ns.push(n);await pair(n,f);console.log('paired controller '+(i+1));}
+await until('five controllers',()=>f.status().admission?.connectedControllerIds?.length===5);
+const cs=[];for(const n of ns)cs.push(await connect(n,f.identity.deviceId));
+const outputs=await Promise.all(cs.map((c,i)=>exec(c,process.platform==='win32'?`echo concurrent-${i}`:`sleep 1; printf concurrent-${i}`)));
+outputs.forEach((o,i)=>assert(o.includes('concurrent-'+i)));record('five_near_ends_execute_simultaneously_without_takeover');
+const sixth=await agent('near','near6');await pairCodeOnly(sixth,f);
+await until('sixth refused',()=>sixth.status().devices[0]?.state==='remote_full');
+assert.equal(f.status().admission.connectedControllerIds.length,5);record('sixth_controller_refused_without_disturbing_five');
+await api(f,'/controller',{id:ns[1].identity.deviceId,enabled:false});
+await until('scoped far disconnect',()=>!f.status().admission.connectedControllerIds.includes(ns[1].identity.deviceId));
+for(const i of [0,2,3,4])assert((await exec(cs[i],'echo survivor')).includes('survivor'));record('far_side_disconnect_keeps_other_four_connections_working');
+await api(sixth,'/device',{id:f.identity.deviceId,enabled:false});
+await api(f,'/controller',{id:ns[1].identity.deviceId,enabled:true});
+await until('reconnect saved controller',()=>ns[1].status().devices[0]?.state==='online');record('resume_retains_pairing');
+for(let i=1;i<5;i++){cs[i].destroy();await ns[i].close();}
+await sixth.close();
+const fars=[f];
+for(let i=1;i<5;i++){const other=await agent('far','far'+i);fars.push(other);await pair(ns[0],other);console.log('paired target '+(i+1));}
+assert.equal(ns[0].status().devices.filter(d=>d.state==='online').length,5);
+const targets=[];for(const far of fars)targets.push(await connect(ns[0],far.identity.deviceId));
+const replies=await Promise.all(targets.map((c,i)=>exec(c,'echo target-'+i)));replies.forEach((s,i)=>assert(s.includes('target-'+i)));record('one_near_end_executes_on_five_targets_simultaneously');
+const sixthFar=await agent('far','far6');await assert.rejects(()=>pairCodeOnly(ns[0],sixthFar),e=>e.code==='DEVICE_LIMIT_REACHED');record('sixth_target_refused');
+await api(ns[0],'/device',{id:fars[1].identity.deviceId,enabled:false});
+await until('near side disconnected',()=>ns[0].status().devices.find(d=>d.id===fars[1].identity.deviceId)?.state==='disconnected');
+for(const i of [0,2,3,4])assert((await exec(targets[i],'echo retained')).includes('retained'));record('near_side_disconnect_keeps_other_four_targets_working');
+// A real SFTP write/read through the unchanged transport.
+const sftp=await new Promise((r,j)=>targets[0].sftp((e,s)=>e?j(e):r(s)));
+const file=path.join(state,'payload.bin'),payload=crypto.randomBytes(8192);
+await new Promise((r,j)=>{const w=sftp.createWriteStream(file);w.on('error',j);w.on('close',r);w.end(payload)});
+const chunks=[];await new Promise((r,j)=>{const s=sftp.createReadStream(file);s.on('data',b=>chunks.push(b));s.on('end',r);s.on('error',j)});assert.deepEqual(Buffer.concat(chunks),payload);sftp.end();record('unchanged_sftp_roundtrip_hash_matches');
+}catch(e){console.error(e.stack);fs.writeFileSync(path.join(state,'failure.txt'),e.stack);process.exitCode=1}finally{for(const c of clients)c.destroy();await Promise.allSettled(agents.map(a=>a.close()));console.log('isolated agents closed; results in '+state)}})();
+async function pairCodeOnly(n,f){const offer=await f.createPair();await n.joinPair(offer.code)}

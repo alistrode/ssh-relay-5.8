@@ -18,7 +18,7 @@ function verifyProbe(envelope, authorized, now = Date.now(), acceptChallenge = n
     if (!validId(value.controllerId) || !validId(value.requestId) || !Number.isSafeInteger(value.time) ) return null;
     if (acceptChallenge ? !acceptChallenge(value.challenge) : Math.abs(now - value.time) > 120000) return null;
     const entry = authorized[value.controllerId];
-    if (!entry) return null;
+    if (!entry || entry.enabled === false) return null;
     const key = utils.parseKey(entry.publicKey);
     if (key instanceof Error || key.verify(Buffer.from(envelope.payload), Buffer.from(envelope.signature, "base64")) !== true) return null;
     return { ...value, label: String(entry.label || "Authorized near end").slice(0, 80) };
@@ -27,8 +27,8 @@ function verifyProbe(envelope, authorized, now = Date.now(), acceptChallenge = n
 class Admission {
   constructor({ now = Date.now, onChange = () => {}, ttl = 60000 } = {}) {
     this.now = now; this.onChange = onChange; this.ttl = ttl;
-    this.owner = null; this.pending = new Map(); this.denied = new Map();
-    this.sessions = new Map(); this.reservations = new Map(); this.approved = null;
+    this.limit = 5;
+    this.sessions = new Map(); this.reservations = new Map();
     this.challenges = new Map(); this.challenge = null; this.challengeAt = -Infinity;
   }
   currentChallenge() {
@@ -44,39 +44,28 @@ class Admission {
   emit() { this.onChange(this.snapshot()); }
   expire() {
     const now = this.now(); let changed = false;
-    for (const [id, r] of this.pending) if (r.expiresAt <= now) { this.pending.delete(id); changed = true; }
-    for (const [id, until] of this.denied) if (until <= now) this.denied.delete(id);
     for (const [token, r] of this.reservations) if (r.expiresAt <= now) { this.reservations.delete(token); changed = true; }
-    if (this.approved && this.approved.expiresAt <= now) { this.approved = null; changed = true; }
-    if (this.owner && ![...this.sessions.values(), ...this.reservations.values()].some(r => r.controllerId === this.owner)) { this.owner = null; this.approved = null; changed = true; }
     return changed;
   }
   request(value) {
     this.expire();
     if (!validId(value?.controllerId) || !validId(value.requestId)) return false;
-    if (!this.owner || value.controllerId === this.owner) return true;
-    if (this.pending.has(value.requestId) || this.denied.has(value.requestId) || this.approved?.requestId === value.requestId) return false;
-    if (this.pending.size >= 8) return false;
-    // One outstanding notification per authorized controller, even if it retries.
-    if ([...this.pending.values()].some(r => r.controllerId === value.controllerId)) return false;
-    this.pending.set(value.requestId, { controllerId:value.controllerId, requestId:value.requestId, label:String(value.label || "Authorized near end").slice(0,80), owner:this.owner, expiresAt:this.now()+this.ttl });
-    this.emit(); return false;
+    const controllers = this.controllers();
+    return controllers.has(value.controllerId) || controllers.size < this.limit;
   }
   decide(requestId, approve) {
-    this.expire();
-    const request = this.pending.get(requestId);
-    if (!request || request.owner !== this.owner || typeof approve !== "boolean" || (approve && this.approved)) throw Error("Switch request expired or changed");
-    this.pending.delete(requestId);
-    this.denied.set(requestId, this.now() + 600000);
-    while (this.denied.size > 128) this.denied.delete(this.denied.keys().next().value);
-    if (approve) this.approved = { ...request, expiresAt: this.now()+15000 };
-    this.emit(); return true;
+    throw Error("Concurrent connections do not use control switching");
+  }
+  controllers() {
+    return new Set([...this.sessions.values(), ...this.reservations.values()].map(r => r.controllerId));
   }
   reserve(controllerId, label = "Authorized near end") {
     this.expire();
     if (!validId(controllerId)) return null;
-    if (this.owner && this.owner !== controllerId && this.approved?.controllerId !== controllerId) return null;
-    if (!this.owner) this.owner = controllerId;
+    const controllers = this.controllers();
+    if (!controllers.has(controllerId) && controllers.size >= this.limit) return null;
+    // Multiple SSH transports for one authenticated controller share one slot.
+    if (this.sessions.size + this.reservations.size >= 64) return null;
     const token = crypto.randomUUID();
     this.reservations.set(token, { controllerId, label, expiresAt:this.now()+15000 });
     this.emit(); return token;
@@ -85,25 +74,21 @@ class Admission {
     this.expire();
     const reservation = this.reservations.get(token);
     if (!reservation) return false;
-    if (!this.owner) this.owner = reservation.controllerId;
-    if (this.owner !== reservation.controllerId) {
-      if (this.approved?.controllerId !== reservation.controllerId || this.approved.owner !== this.owner) return false;
-      this.owner = reservation.controllerId; this.approved = null; this.pending.clear();
-    }
     this.reservations.delete(token); this.sessions.set(token, reservation);
     this.emit(); return true;
   }
-  canStart(token) { this.expire(); return this.sessions.get(token)?.controllerId === this.owner; }
+  canStart(token) { this.expire(); return this.sessions.has(token); }
   closed(token) { this.reservations.delete(token); this.sessions.delete(token); this.expire(); this.emit(); }
   controllerFor(token) { return this.sessions.get(token)?.controllerId || this.reservations.get(token)?.controllerId; }
   revoke(controllerId) {
-    for (const [id,r] of this.pending) if (r.controllerId === controllerId) this.pending.delete(id);
     for (const map of [this.sessions,this.reservations]) for (const [token,r] of map) if (r.controllerId === controllerId) map.delete(token);
-    if (this.approved?.controllerId === controllerId) this.approved = null;
     this.expire(); this.emit();
   }
   snapshot() {
-    return { challenge:this.currentChallenge(), ownerId:this.owner, activeConnections:this.sessions.size, drainingConnections:[...this.sessions.values()].filter(s=>s.controllerId!==this.owner).length, approvedId:this.approved?.controllerId || null, pending:[...this.pending.values()] };
+    const connected = [...new Set([...this.sessions.values()].map(s => s.controllerId))];
+    return { challenge:this.currentChallenge(), mode:"concurrent", limit:this.limit,
+      controllerIds:[...this.controllers()], connectedControllerIds:connected,
+      ownerId:null, activeConnections:this.sessions.size, drainingConnections:0, approvedId:null, pending:[] };
   }
 }
 module.exports = { Admission, probe, verifyProbe };

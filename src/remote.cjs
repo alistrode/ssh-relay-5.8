@@ -26,7 +26,7 @@ if (allowed instanceof Error) throw allowed;
 function authorizedController(ctx) {
   try {
     const keys = config.clientKeysFile
-      ? Object.entries(JSON.parse(fs.readFileSync(config.clientKeysFile, "utf8"))).map(([id,v]) => ({ id, label:v.label, key:utils.parseKey(v.publicKey) }))
+      ? Object.entries(JSON.parse(fs.readFileSync(config.clientKeysFile, "utf8"))).filter(([,v]) => v.enabled !== false).map(([id,v]) => ({ id, label:v.label, key:utils.parseKey(v.publicKey) }))
       : [{ id:null, key:allowed }];
     return keys.find(
       ({ key }) =>
@@ -56,7 +56,10 @@ var recordTrace = createTraceWriter(root, "far");
 var nextSshId = 0;
 var relay, status;
 function publishStatus() {
-  if (relay && status) relay.status({ ...status, ...(admission ? { admission:{ ...admission.snapshot(), pending:undefined } } : {}) }).catch(() => {});
+  const controllerSettings = config.clientKeysFile ? Object.fromEntries(
+    Object.entries(JSON.parse(fs.readFileSync(config.clientKeysFile,"utf8"))).map(([id,v]) =>
+      [id,{enabled:v.enabled !== false,changedAt:v.enabledChangedAt || 0}])) : {};
+  if (relay && status) relay.status({ ...status, ...(admission ? { admission:{ ...admission.snapshot(), controllerSettings, pending:undefined } } : {}) }).catch(() => {});
 }
 var admission = config.connectionAdmission ? new Admission({ onChange:value => {
   if (process.connected) process.send({ type:"admission-status", value });
@@ -64,6 +67,7 @@ var admission = config.connectionAdmission ? new Admission({ onChange:value => {
   publishStatus();
 } }) : null;
 if (admission) process.on("message", message => {
+  if (message?.type === "controller-resumed") { publishStatus(); return; }
   if (message?.type === "revoke-controller") {
     for (const [client,state] of clientStates) if (admission.controllerFor(state.token()) === message.controllerId) client.end();
     admission.revoke(message.controllerId); return;

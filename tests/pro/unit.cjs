@@ -45,6 +45,7 @@ test("autostart service descriptors use isolated profiles, explicit account, and
     appRoot: "/opt/SSH Relay/resources/app",
     profile: "/home/user/private profile",
     user: "user",
+    ownerSid: "S-1-5-21-111-222-333-1001",
     role: "near",
   };
   const unit = linuxUnit(o);
@@ -69,6 +70,7 @@ test("service descriptors supervise the background agent", () => {
     profile: "/state",
     role: "far",
     user: "owner",
+    ownerSid: "S-1-5-21-111-222-333-1001",
   });
   assert(value.includes(path.join("src", "pro", "guardian.cjs")));
 });

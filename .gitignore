@@ -14,3 +14,4 @@ data/
 .runtime-cache/
 __pycache__/
 *.pyc
+work/

@@ -10,9 +10,13 @@ const $ = (id) => document.getElementById(id),
     starting: "后台启动中",
     running: "后台运行中",
     remote_busy: "远端正在被连接，等待远端确认切换",
+    remote_full: "远端已连接五台电脑，等待空位",
+    remote_paused: "远端已暂停此连接，等待远端允许",
+    slot_paused: "五台名额已满，连接已暂停",
     unsupported_remote: "远端不支持占用探测，已阻止自动连接",
   };
-let farEnabled = true,
+let farEnabled = false,
+  nearEnabled = false,
   busy = false,
   pairRevision = 0;
 function message(text) {
@@ -46,10 +50,17 @@ async function refresh() {
     $("refreshState").textContent =
       "后台在线 · " + new Date().toLocaleTimeString();
     farEnabled = far.settings.enabled;
+    nearEnabled = near.settings.enabled;
     if (!far.pairing?.active && observedPairRevision === pairRevision)
       $("pairCode").textContent = "";
-    $("farState").textContent = states[far.state] || far.state;
-    $("farToggle").textContent = farEnabled ? "暂停远端" : "启用远端";
+    $("farState").textContent = farEnabled ? "已允许连接 · " + (states[far.state] || far.state) : "已关闭 · 本机不接受连接";
+    $("farToggle").textContent = farEnabled ? "关闭本机被连接" : "允许连接本机";
+    $("nearToggle").textContent = nearEnabled ? "关闭连接功能" : "启用连接功能";
+    $("nearState").textContent = nearEnabled ? "已开启 · 最多同时连接五台电脑，断开互不影响" : "已关闭 · 配对记录保留";
+    $("nearControls").hidden = !nearEnabled;
+    $("farControls").hidden = !farEnabled;
+    $("nearCount").textContent = near.devices.filter(d => d.state === "online").length + " / 5 台已连接";
+    $("farCount").textContent = (far.admission?.connectedControllerIds?.length || 0) + " / 5 台已连接";
     $("devices").replaceChildren();
     for (const d of near.devices) {
       const row = document.createElement("div");
@@ -73,7 +84,7 @@ async function refresh() {
         name,
         state,
         info,
-        button(d.enabled ? "断开并暂停自动连接" : "连接并记住", () =>
+        button(d.enabled ? "断开此电脑" : "连接此电脑", () =>
           window.relay.call("near", "/device", {
             id: d.id,
             enabled: !d.enabled,
@@ -101,8 +112,11 @@ async function refresh() {
     $("authorized").replaceChildren();
     for (const d of far.devices) {
       const p = document.createElement("p");
-      p.textContent = "已授权：" + d.label + " · " + d.id;
+      p.className = "device";
+      p.textContent = d.label + " · " + (d.connected ? "已连接" : d.enabled ? "等待连接" : "已暂停") + " · " + d.id.slice(-8);
       p.append(
+        button(d.enabled ? "断开此连接" : "允许重新连接", () =>
+          window.relay.call("far", "/controller", {id:d.id,enabled:!d.enabled})),
         button("撤销授权", async () => {
           if (confirm("撤销此近端授权并断开现有远端会话？"))
             await window.relay.call("far", "/unpair", { id: d.id });
@@ -165,6 +179,16 @@ $("offer").onclick = () =>
   });
 $("farToggle").onclick = () =>
   action(() => window.relay.call("far", "/settings", { enabled: !farEnabled }));
+$("nearToggle").onclick = () =>
+  action(() => window.relay.call("near", "/settings", { enabled: !nearEnabled }));
+$("installService").onclick = () => action(async () => {
+  $("installService").disabled = true;
+  $("serviceStatus").textContent = "正在安装，请完成系统授权…";
+  try {
+    showStartup(await window.relay.setStartup({enabled:true,mode:"boot"}));
+    message("管理员后台已安装并启动。以后正常打开即可，无需每次确认 UAC。");
+  } finally { showStartup(await window.relay.startup()); }
+});
 $("retry").onclick = () =>
   action(() => window.relay.call("near", "/retry", {}));
 $("export").onclick = () => action(() => window.relay.exportLogs());
@@ -184,6 +208,11 @@ $("saveStartup").onclick = () =>
     message("已保存并核对自启动设置。");
   });
 function showStartup(s) {
+  $("installService").disabled = s.bootInstalled;
+  $("installService").textContent = s.bootInstalled ? "管理员后台已安装" : "首次授权并安装管理员后台";
+  $("serviceStatus").textContent = s.bootInstalled
+    ? (s.servicesRunning === false ? "服务已安装，当前未运行" : "服务已安装 · 无需重复 UAC")
+    : "尚未安装 · Windows 首次安装确认一次 UAC";
   $("autoStart").checked = s.enabled;
   $("startMode").value = s.mode;
   $("startupStatus").textContent =

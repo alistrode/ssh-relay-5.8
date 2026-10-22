@@ -35,7 +35,7 @@ const fs = require("node:fs"),
   os = require("node:os"),
   http = require("node:http"),
   cp = require("node:child_process"),
-  { folder, read } = require("../src/pro/store.cjs"),
+  { folder, read, write } = require("../src/pro/store.cjs"),
   startup = require("../src/pro/autostart.cjs");
 const root = path.resolve(__dirname, ".."),
   args = process.argv.slice(1),
@@ -138,10 +138,12 @@ function create() {
         },
       },
       {
-        label: "停止本版本后台并退出",
+        label: "关闭所有连接并退出",
         click: async () => {
+          const managed = startup.status(options()).bootInstalled;
           await Promise.allSettled(
-            ["near", "far"].map((r) => request(r, "/shutdown", {})),
+            ["near", "far"].map((r) => managed
+              ? request(r, "/settings", {enabled:false}) : request(r, "/shutdown", {})),
           );
           quitting = true;
           app.quit();
@@ -160,6 +162,7 @@ const routes = new Set([
   "/pair/connect",
   "/settings",
   "/device",
+  "/controller",
   "/unpair",
   "/retry",
   "/connection/decision",
@@ -191,21 +194,26 @@ ipcMain.handle("pair-copy", async (event, code) => {
 ipcMain.handle("startup-status", () => startup.status(options()));
 ipcMain.handle("startup-set", async (event, value) => {
   if (event.sender !== window?.webContents) throw Error("Invalid sender");
-  if (value.mode === "boot" && value.enabled) {
-    const r = await dialog.showMessageBox(window, {
-      type: "warning",
-      buttons: ["取消", "安装开机后台服务"],
-      defaultId: 0,
-      cancelId: 0,
-      message: "开机无人登录也连接",
-      detail:
-        process.platform === "win32"
-          ? "需要管理员授权。Windows 后台服务使用 SYSTEM 账户，与桌面账户的权限和目录不同；登录后才显示托盘。"
-          : "需要管理员授权。后台服务使用当前账户；登录后才显示托盘。此操作只安装本升级版本的服务。",
-    });
-    if (r.response !== 1) throw Error("用户取消，原设置保留");
+  const previous = startup.status(options());
+  if (value.enabled && value.mode === "boot" && previous.bootInstalled && previous.servicesRunning) return previous;
+  const handover = process.platform === "win32" && value.enabled && value.mode === "boot";
+  if (handover) {
+    await Promise.allSettled(["near", "far"].map(role => request(role,"/shutdown",{})));
+    const until = Date.now() + 15000;
+    while (["near","far"].some(role => fs.existsSync(path.join(roleDirectory(role),"guardian.lock")))) {
+      if (Date.now() >= until) throw Error("旧后台尚未退出，请稍后再试，未安装重叠服务。");
+      await new Promise(resolve => setTimeout(resolve,200));
+    }
   }
-  return startup.apply(options(), value);
+  try {
+    const result = await startup.apply(options(), value);
+    if (handover) await Promise.all(["near","far"].map(ensure));
+    return result;
+  } catch (error) {
+    if (handover && !startup.status(options()).bootInstalled)
+      await Promise.allSettled(["near","far"].map(ensure));
+    throw error;
+  }
 });
 ipcMain.handle("logs-export", async () => {
   const d = await dialog.showSaveDialog(window, {
@@ -241,6 +249,12 @@ app.whenReady().then(async () => {
     quitting = true; app.quit(); return;
   }
   folder(profile);
+  // Fresh installations remain idle; existing settings and pairings are preserved.
+  for (const role of ["near","far"]) {
+    const file = path.join(roleDirectory(role),"settings.json");
+    if (!fs.existsSync(file) && !args.includes("--observe-only"))
+      write(file,{enabled:false,autoConnect:true,label:os.hostname(),defaultDevice:null});
+  }
   create();
   if (!args.includes("--observe-only")) {
     let prompting = false;

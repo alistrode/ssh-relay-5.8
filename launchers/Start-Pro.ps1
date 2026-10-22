@@ -26,23 +26,6 @@ if (!(Test-Path -LiteralPath $executable)) { Record-Stage 'runtime_missing'; thr
 if (!$ExportOnly) {
   $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
   $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-  if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Record-Stage 'elevation_requested'
-    $quote = { param([string]$value) "'" + $value.Replace("'", "''") + "'" }
-    $scriptFile = Join-Path $appRoot 'launchers\Start-Pro.ps1'
-    $command = '& ([scriptblock]::Create([IO.File]::ReadAllText(' + (& $quote $scriptFile) + '))) -RuntimeRoot ' + (& $quote $RuntimeRoot) + ' -ProfileDir ' + (& $quote $ProfileDir)
-    if ($DiagnosticCheck) { $command += ' -DiagnosticCheck' }
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-    try {
-      $elevated = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Verb RunAs -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -Wait -PassThru
-      Record-Stage 'elevated_launcher_exit' $elevated.ExitCode
-      exit $elevated.ExitCode
-    } catch {
-      Record-Stage 'elevation_not_completed'
-      [Console]::Error.WriteLine('Administrator startup was not completed. The application was not started. Run Start.cmd again and accept the Windows UAC prompt.')
-      exit 2
-    }
-  }
   $groups = (& "$env:SystemRoot\System32\whoami.exe" /groups /fo csv /nh | Out-String)
   $integrity = [regex]::Match($groups, 'S-1-16-(\d+)')
   if (!$integrity.Success) { Record-Stage 'permission_check_failed'; throw 'Cannot verify the Windows startup token. Start from a normal desktop terminal.' }

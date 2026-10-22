@@ -3,31 +3,26 @@ const test = require("node:test"), assert = require("node:assert/strict"), crypt
 const { Admission, probe, verifyProbe } = require("../../src/pro/admission.cjs");
 const { keyPair } = require("../../src/pro/keys.cjs");
 const id = () => crypto.randomUUID();
-test("a competing controller is refused while the original connection stays owned", () => {
-  const a=id(), b=id(), gate=new Admission(), token=gate.reserve(a);
-  assert(gate.connected(token)); assert.equal(gate.reserve(b),null);
-  assert.equal(gate.request({ controllerId:b,requestId:id() }),false);
-  assert(gate.canStart(token)); assert.equal(gate.snapshot().activeConnections,1);
+test("five independent controllers can all start work; the sixth cannot reserve a slot", () => {
+  const gate=new Admission(),tokens=Array.from({length:5},()=>gate.reserve(id()));
+  for(const token of tokens){assert(token);assert(gate.connected(token));assert(gate.canStart(token));}
+  assert.equal(gate.reserve(id()),null);
+  for(const token of tokens)assert(gate.canStart(token));
+  assert.equal(gate.snapshot().connectedControllerIds.length,5);
 });
-test("consent prepares a replacement; ownership changes only after it is ready", () => {
-  const a=id(), b=id(), gate=new Admission(), old=gate.reserve(a), requestId=id();
-  gate.connected(old); gate.request({controllerId:b,requestId}); gate.decide(requestId,true);
-  assert(gate.canStart(old)); const next=gate.reserve(b); assert(gate.canStart(old));
-  assert(gate.connected(next)); assert.equal(gate.canStart(old),false); assert(gate.canStart(next));
-  assert.equal(gate.snapshot().activeConnections,2); assert.equal(gate.snapshot().drainingConnections,1);
-  gate.closed(old); assert(gate.canStart(next));
+test("reservations count towards capacity; one controller's transports share a slot", () => {
+  let now=100;const gate=new Admission({now:()=>now}),ids=Array.from({length:5},id);
+  const tokens=ids.map(x=>gate.reserve(x));
+  assert.equal(gate.reserve(id()),null);
+  const same=gate.reserve(ids[0]);assert(same);assert(gate.connected(same));
+  now+=16000;gate.expire();assert.equal(gate.connected(tokens[1]),false);
+  assert(gate.reserve(id()));assert(gate.canStart(same));
 });
-test("decline, timeout and a replacement that never becomes ready preserve the owner", () => {
-  let now=100;const gate=new Admission({now:()=>now}),a=id(),b=id(),old=gate.reserve(a);gate.connected(old);
-  const one=id();gate.request({controllerId:b,requestId:one});gate.decide(one,false);assert.equal(gate.reserve(b),null);assert(gate.canStart(old));
-  const two=id();gate.request({controllerId:b,requestId:two});gate.decide(two,true);const failed=gate.reserve(b);
-  now+=16000;gate.expire();assert.equal(gate.connected(failed),false);assert(gate.canStart(old));
-  const three=id();gate.request({controllerId:b,requestId:three});now+=61000;assert.throws(()=>gate.decide(three,true));assert(gate.canStart(old));
-});
-test("racing requests cannot silently replace an approved or live controller", () => {
-  const gate=new Admission(),a=id(),b=id(),c=id(),old=gate.reserve(a);gate.connected(old);
-  const first=id(),second=id();gate.request({controllerId:b,requestId:first});gate.request({controllerId:c,requestId:second});
-  gate.decide(first,true);assert.throws(()=>gate.decide(second,true));assert.equal(gate.reserve(c),null);assert(gate.canStart(old));
+test("closing or revoking one controller preserves all others and frees one slot", () => {
+  const gate=new Admission(),ids=Array.from({length:5},id),tokens=ids.map(x=>gate.reserve(x));
+  tokens.forEach(t=>gate.connected(t));gate.revoke(ids[1]);
+  assert(!gate.canStart(tokens[1]));for(const i of [0,2,3,4])assert(gate.canStart(tokens[i]));
+  assert(gate.reserve(id()));gate.closed(tokens[2]);assert(gate.canStart(tokens[0]));
 });
 test("authorized signatures bind probes to the controller and prevent forged notifications", () => {
   const a=id(),keys=keyPair(),other=keyPair(),registry={[a]:{publicKey:keys.publicKey,label:'near'}};
@@ -36,15 +31,10 @@ test("authorized signatures bind probes to the controller and prevent forged not
   assert.equal(verifyProbe(envelope,registry,Date.now()+121000),null);
   assert.equal(verifyProbe({...envelope,payload:envelope.payload.replace(a,id())},registry),null);
 });
-test("repeated probes do not create repeated popups and unknown decisions fail closed", () => {
-  const gate=new Admission(),a=id(),b=id(),old=gate.reserve(a);gate.connected(old);
-  for(let i=0;i<100;i++)gate.request({controllerId:b,requestId:id()});
-  assert.equal(gate.snapshot().pending.length,1);assert.throws(()=>gate.decide(id(),true));assert(gate.canStart(old));
-});
-test("revoking another controller preserves the current owner and sessions", () => {
+test("concurrent admission never creates takeover prompts", () => {
   const gate=new Admission(),a=id(),b=id(),token=gate.reserve(a);gate.connected(token);
-  gate.request({controllerId:b,requestId:id()});gate.revoke(b);assert(gate.canStart(token));assert.equal(gate.snapshot().pending.length,0);
-  gate.revoke(a);assert.equal(gate.canStart(token),false);assert.equal(gate.snapshot().ownerId,null);
+  for(let i=0;i<100;i++)assert(gate.request({controllerId:b,requestId:id()}));
+  assert.deepEqual(gate.snapshot().pending,[]);assert.throws(()=>gate.decide(id(),true));assert(gate.canStart(token));
 });
 
 test("server challenges admit skewed clocks and reject expired or foreign challenge replays", () => {

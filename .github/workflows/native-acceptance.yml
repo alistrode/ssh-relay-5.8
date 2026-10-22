@@ -1,18 +1,11 @@
-name: SSH Relay native acceptance
+name: SSH Relay 5.1 native service and desktop acceptance
 on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: relay-native-${{ github.ref }}
-  cancel-in-progress: false
 jobs:
-  native:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
+  windows-service:
+    runs-on: windows-2022
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -21,9 +14,27 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24.22.0'
-      - name: Install pinned production dependencies without lifecycle scripts
-        run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
-      - name: Require native process proof and exercise independent task/session runners
-        env:
-          SSH_RELAY_NATIVE_ACCEPTANCE: '1'
-        run: node --test tests/pro/native-acceptance.cjs tests/pro/file-service.cjs tests/pro/file-transfers.cjs tests/pro/shared-manager-budget.cjs
+      - run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+      - name: Fetch pinned Windows runtime and service host
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force work/runtime | Out-Null
+          curl.exe -fL --speed-limit 819200 --speed-time 15 --retry 2 -o work/runtime/electron-v44.8.0-win32-x64.zip https://github.com/electron/electron/releases/download/v44.8.0/electron-v44.8.0-win32-x64.zip
+          if ($LASTEXITCODE) { throw 'Runtime download failed' }
+          curl.exe -fL --retry 2 -o work/runtime/WinSW.NET4.exe https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW.NET4.exe
+          if ($LASTEXITCODE) { throw 'Service host download failed' }
+          curl.exe -fL --retry 2 -o work/runtime/WinSW-LICENSE https://raw.githubusercontent.com/winsw/winsw/v2.12.0/LICENSE.txt
+      - name: Build the unified Windows package
+        run: python scripts/package-unified.py --platform win32 --cache work/runtime --out work/packaged
+      - name: Start actual SYSTEM services and the packaged desktop
+        run: node scripts/verify-windows-service.cjs work/packaged/SSHRelayPro-5.1-win32-x64 work/native-results
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: unified-windows-5.1
+          path: |
+            work/native-results
+            work/packaged/*.zip
+            work/packaged/*.sha256
+          compression-level: 0
+          retention-days: 7

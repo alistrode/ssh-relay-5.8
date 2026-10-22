@@ -119,6 +119,16 @@ async function startAgent(options, dir) {
     }
   };
   if (await check()) return;
+  const startup = read(path.join(path.dirname(dir), "startup.json"), {});
+  if (process.platform === "win32" && startup.enabled && startup.mode === "boot") {
+    // Never silently replace the elevated service with an ordinary user Agent.
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      if (await check()) return;
+    }
+    throw Error("管理员后台服务未就绪。请在 Windows 服务中检查 SSHRelayPro-" + role + "；未降级启动普通权限后台。");
+  }
   folder(dir);
   const fd = fs.openSync(path.join(dir, "bootstrap.log"), "a", 0o600);
   try {

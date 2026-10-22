@@ -14,14 +14,17 @@
     <header>
       <span class="mark">›_</span>
       <div>
-        <h1>SSH Relay Pro</h1>
-        <p>配对一次，自动连接你的电脑</p>
+        <h1>SSH Relay Pro <small>5.1</small></h1>
+        <p>一个程序 · 双向连接 · 各自独立</p>
       </div>
       <span id="refreshState">正在读取后台状态</span>
     </header>
     <main>
       <section>
-        <h2>连接我的电脑 <span>近端</span></h2>
+        <div class="section-heading"><h2>连接其他电脑 <span id="nearCount">0 / 5 台</span></h2>
+          <button id="nearToggle" class="secondary">启用连接</button></div>
+        <p id="nearState" class="muted">正在读取状态</p>
+        <div id="nearControls">
         <form id="pair">
           <label for="code">输入远端显示的配对码</label>
           <div class="row">
@@ -36,29 +39,35 @@
         </form>
         <div id="devices" class="devices"></div>
         <button id="retry" class="secondary">立即重试所有已启用电脑</button>
+        </div>
       </section>
       <section>
-        <h2>让这台电脑被连接 <span>远端</span></h2>
+        <h2>允许其他电脑连接本机 <span id="farCount">0 / 5 台</span></h2>
         <div class="row">
           <span id="farState">正在启动</span
-          ><button id="farToggle" class="secondary">暂停远端</button>
+          ><button id="farToggle" class="secondary">允许连接本机</button>
         </div>
         <p class="muted">
-          仅首次配对需要分享短码。断线后自动使用已保存的设备授权重连。
+          最多允许五台已授权电脑同时操作，无需切换控制权。断开某台仅影响该连接。
         </p>
+        <div id="farControls">
         <button id="offer">生成一次性配对码</button>
         <div id="pairCode" class="pair-code"></div>
         <button id="copyCode" class="secondary">复制配对码</button>
         <button id="cancelCode" class="secondary">取消本次配对码</button>
         <div id="authorized"></div>
+        </div>
       </section>
       <section>
         <h2>启动与后台</h2>
+        <div class="row"><button id="installService">首次授权并安装管理员后台</button>
+          <span id="serviceStatus" class="muted">正在检查后台服务</span></div>
+        <p class="muted">Windows 首次安装需确认一次 UAC，之后界面与后台自动复用服务，无需每次确认。服务使用 SYSTEM 账户执行操作；两项功能开关分别保存，关闭功能不会删除配对。</p>
         <div class="row">
           <label><input type="checkbox" id="autoStart" /> 自动启动</label
           ><select id="startMode">
             <option value="login">登录后启动界面与后台</option>
-            <option value="boot">开机启动后台，登录后显示托盘</option></select
+            <option value="boot">管理员后台服务，登录后显示界面</option></select
           ><button id="saveStartup" class="secondary">应用设置</button>
         </div>
         <p id="startupStatus" class="muted">正在核对系统实际设置</p>

@@ -14,6 +14,10 @@
 body {
   margin: 0;
 }
+[hidden] { display: none !important; }
+.section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.section-heading h2 { margin-bottom:0; }
+header small { font-size:13px; color:#8de7c0; margin-left:8px; }
 button, input, select {
   font-family: inherit;
 }

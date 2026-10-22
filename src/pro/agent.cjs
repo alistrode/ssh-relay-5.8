@@ -486,6 +486,21 @@ class Agent {
     for (const device of Object.values(registry)) {
       if (!admitted.has(device.id) || !this.settings.enabled) continue;
       const t = this.targetFor(device);
+      const peer = read(path.join(t.dir,"peer.json"),null);
+      const permission = peer && Date.now()-peer.receivedAt < 45000 &&
+        peer.admission?.mode === "concurrent" && peer.admission.controllerSettings?.[this.identity.deviceId];
+      if (permission) {
+        const changed = permission.changedAt > (t.permissionRevision || 0);
+        t.permissionRevision = permission.changedAt;
+        if (!permission.enabled && (t.state !== "identity_error" || t.authenticationFailed)) {
+          if (t.client || t.connecting) this.invalidateTarget(t);
+          t.state = "remote_paused";
+          continue;
+        }
+        if (permission.enabled && (t.state === "remote_paused" || (changed && t.authenticationFailed))) {
+          t.state = "waiting"; t.nextAt = 0; t.authenticationFailed = false;
+        }
+      }
       if (t.state === "identity_error") continue;
       if (!this.children.has(device.id)) {
         if (Date.now() < t.nextAt) continue;
@@ -536,6 +551,7 @@ class Agent {
     if (this.stopping) return;
     this.invalidateTarget(t);
     t.lastErrorCode = error.code || null;
+    t.authenticationFailed = !error.identity && /authentication methods failed/i.test(error.message);
     t.failures++;
     this.stats.disconnects++;
     const fatal =
@@ -572,7 +588,12 @@ class Agent {
       if (!peer.admission) {
         t.state = "unsupported_remote"; t.connecting = false; t.nextAt = Date.now() + 2000; return;
       }
-      if (peer.admission.ownerId && peer.admission.ownerId !== this.identity.deviceId && peer.admission.approvedId !== this.identity.deviceId) {
+      if (peer.admission.mode === "concurrent" &&
+          !peer.admission.controllerIds?.includes(this.identity.deviceId) &&
+          peer.admission.controllerIds?.length >= peer.admission.limit) {
+        t.state = "remote_full"; t.connecting = false; t.nextAt = Date.now() + 2000; return;
+      }
+      if (peer.admission.mode !== "concurrent" && peer.admission.ownerId && peer.admission.ownerId !== this.identity.deviceId && peer.admission.approvedId !== this.identity.deviceId) {
         t.state = "remote_busy"; t.connecting = false; t.nextAt = Date.now() + 1000; return;
       }
     } catch (e) {
@@ -786,7 +807,7 @@ class Agent {
           })
         : Object.entries(
             read(this.file("far/authorized-clients.json"), {}),
-          ).map(([id, d]) => ({ id, label: d.label, pairedAt: d.pairedAt }));
+          ).map(([id, d]) => ({ id, label: d.label, pairedAt: d.pairedAt, enabled:d.enabled !== false, connected:!!this.admission?.connectedControllerIds?.includes(id) }));
     return {
       role: this.role,
       deviceId: this.identity.deviceId,
@@ -950,6 +971,17 @@ class Agent {
         this.offer?.cancel();
       } else if (req.method === "POST" && req.url === "/pair/connect")
         value = await this.joinPair(data.code);
+      else if (req.method === "POST" && req.url === "/controller") {
+        if (this.role !== "far" || typeof data.enabled !== "boolean") throw Error("Invalid controller setting");
+        const key = id(data.id), file = this.file("far/authorized-clients.json"), clients = read(file, {});
+        if (!clients[key]) throw Error("Unknown authorized controller");
+        clients[key].enabled = data.enabled;
+        clients[key].enabledChangedAt = Date.now();
+        write(file, clients);
+        if (!data.enabled) this.children.get("far")?.child.send({ type:"revoke-controller", controllerId:key });
+        else this.children.get("far")?.child.send({ type:"controller-resumed", controllerId:key });
+        value = { ok:true, enabled:data.enabled };
+      }
       else if (req.method === "POST" && req.url === "/connection/decision") {
         if (this.role !== "far" || typeof data.approve !== "boolean" || !this.admission?.pending?.some(p => p.requestId === data.requestId && p.expiresAt > Date.now())) throw Error("Unknown or expired switch request");
         const worker = this.children.get("far");
