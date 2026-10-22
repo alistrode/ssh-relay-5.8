@@ -25,6 +25,17 @@ outputs.forEach((o,i)=>assert(o.includes('concurrent-'+i)));record('five_near_en
 const sixth=await agent('near','near6');await pairCodeOnly(sixth,f);
 await until('sixth refused',()=>sixth.status().devices[0]?.state==='remote_full');
 assert.equal(f.status().admission.connectedControllerIds.length,5);record('sixth_controller_refused_without_disturbing_five');
+const pending=await until('capacity request',()=>f.status().admission.pending.find(p=>p.controllerId===sixth.identity.deviceId));
+await api(f,'/connection/decision',{requestId:pending.requestId,approve:true,replaceControllerId:ns[4].identity.deviceId});
+await until('chosen sixth admitted',()=>sixth.status().devices[0]?.state==='online');
+for(const i of [0,1,2,3])assert((await exec(cs[i],'echo unaffected')).includes('unaffected'));
+assert.equal(f.status().devices.find(d=>d.id===ns[4].identity.deviceId).enabled,false);
+record('explicit_sixth_replacement_disconnects_only_selected_controller');
+await api(sixth,'/device',{id:f.identity.deviceId,enabled:false});
+await api(f,'/controller',{id:ns[4].identity.deviceId,enabled:true});
+await until('original fifth resumed',()=>ns[4].status().devices[0]?.state==='online');
+cs[4]=await connect(ns[4],f.identity.deviceId);
+
 await api(f,'/controller',{id:ns[1].identity.deviceId,enabled:false});
 await until('scoped far disconnect',()=>!f.status().admission.connectedControllerIds.includes(ns[1].identity.deviceId));
 for(const i of [0,2,3,4])assert((await exec(cs[i],'echo survivor')).includes('survivor'));record('far_side_disconnect_keeps_other_four_connections_working');

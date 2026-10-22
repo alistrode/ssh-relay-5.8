@@ -403,6 +403,7 @@ class Agent {
     }
   }
   notifyConsent() {
+    if (this.admission?.mode === "concurrent") return; // The logged-in UI polls capacity prompts; a SYSTEM service cannot show a desktop.
     if (!process.versions.electron || this.stopping || this.role !== "far") return;
     this.notifiedRequests ||= new Set();
     const pending = this.admission?.pending?.find(p => p.expiresAt > Date.now() && !this.notifiedRequests.has(p.requestId));
@@ -986,7 +987,14 @@ class Agent {
         if (this.role !== "far" || typeof data.approve !== "boolean" || !this.admission?.pending?.some(p => p.requestId === data.requestId && p.expiresAt > Date.now())) throw Error("Unknown or expired switch request");
         const worker = this.children.get("far");
         if (!worker?.child.connected) throw Error("Far worker is not available");
-        worker.child.send({ type:"control-decision", requestId:data.requestId, approve:data.approve });
+        if (data.approve) {
+          const key=id(data.replaceControllerId);
+          if (!this.admission.connectedControllerIds?.includes(key)) throw Error("Selected controller is no longer connected");
+          const file=this.file("far/authorized-clients.json"),clients=read(file,{});
+          if (!clients[key]) throw Error("Unknown authorized controller");
+          clients[key].enabled=false;clients[key].enabledChangedAt=Date.now();write(file,clients);
+        }
+        worker.child.send({ type:"control-decision", requestId:data.requestId, approve:data.approve,replaceControllerId:data.replaceControllerId });
         value = { queued:true };
       }
       else if (req.method === "POST" && req.url === "/settings") {

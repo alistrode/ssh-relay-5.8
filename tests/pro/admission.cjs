@@ -48,3 +48,19 @@ test("server challenges admit skewed clocks and reject expired or foreign challe
   assert(verifyProbe(signed,authorized,Date.now()-7*3600000,v=>state.acceptsChallenge(v)));
   now+=60000;assert.equal(verifyProbe(signed,authorized,Date.now(),v=>state.acceptsChallenge(v)),null);
 });
+
+test("a sixth controller needs an explicit selected replacement; the other four stay admitted",()=>{
+ const gate=new Admission(),ids=Array.from({length:6},id),tokens=ids.slice(0,5).map(x=>gate.reserve(x));tokens.forEach(t=>gate.connected(t));
+ const requestId=id();assert.equal(gate.request({controllerId:ids[5],requestId}),false);
+ assert.equal(gate.snapshot().pending.length,1);assert.throws(()=>gate.decide(requestId,true));
+ gate.decide(requestId,true,ids[2]);assert(!gate.canStart(tokens[2]));
+ for(const i of [0,1,3,4])assert(gate.canStart(tokens[i]));
+ assert.equal(gate.reserve(ids[2]),null);const next=gate.reserve(ids[5]);assert(next);assert(gate.connected(next));
+ assert.equal(gate.snapshot().connectedControllerIds.length,5);
+});
+test("declining capacity replacement keeps all five and does not repeatedly prompt for the same request",()=>{
+ const gate=new Admission(),tokens=Array.from({length:5},()=>gate.reserve(id()));tokens.forEach(t=>gate.connected(t));
+ const controllerId=id(),requestId=id();gate.request({controllerId,requestId});gate.decide(requestId,false);
+ gate.request({controllerId,requestId});assert.equal(gate.snapshot().pending.length,0);
+ for(const token of tokens)assert(gate.canStart(token));
+});

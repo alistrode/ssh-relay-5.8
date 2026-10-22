@@ -73,7 +73,11 @@ if (admission) process.on("message", message => {
     admission.revoke(message.controllerId); return;
   }
   if (message?.type !== "control-decision") return;
-  try { admission.decide(message.requestId, message.approve); }
+  try {
+    const selected=[...clientStates].filter(([,s])=>admission.controllerFor(s.token())===message.replaceControllerId).map(([client])=>client);
+    admission.decide(message.requestId, message.approve, message.replaceControllerId);
+    if (message.approve) for (const client of selected) client.end();
+  }
   catch { traceSsh("switch_decision_rejected"); }
 });
 var traceSsh = (event, details = {}) => {

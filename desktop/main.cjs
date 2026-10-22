@@ -229,13 +229,19 @@ async function switchPrompt(pending) {
   const timer = setTimeout(() => cancel.abort(), Math.max(1, pending.expiresAt - Date.now()));
   try {
     diagnostic.record("switch_prompt_shown");
+    const status=await request("far","/status");
+    const connected=(status.admission?.connectedControllerIds || []).slice(0,5);
+    const devices=connected.map(id=>status.devices.find(d=>d.id===id) || {id,label:id.slice(-8)});
     const response = await dialog.showMessageBox({
-      title:"SSH Relay Pro — 连接切换", type:"question", buttons:["保留当前连接", "允许切换"], defaultId:0, cancelId:0, signal:cancel.signal,
-      message:"远端正在被连接，已拒绝新的连接请求。",
-      detail:"请求近端：" + label + "（" + pending.controllerId.slice(-8) + "）。允许后，旧连接正在执行的任务继续完成；后续新操作交给新连接。没有响应或关闭提示将保留当前连接。",
+      title:"SSH Relay Pro — 五台连接已满", type:"question",
+      buttons:["保留现有连接",...devices.map((d,i)=>"替换 " +(i+1)+"："+String(d.label||d.id.slice(-8)).slice(0,30))],
+      defaultId:0,cancelId:0,signal:cancel.signal,
+      message:"第六台电脑请求连接，请选择要替换的连接。",
+      detail:"新请求："+label+"（"+pending.controllerId.slice(-8)+"）。选择后仅暂停指定电脑并接入新电脑，其他四台继续连接。关闭弹窗保留现有连接。",
     });
-    await request("far", "/connection/decision", { requestId:pending.requestId, approve:response.response === 1 });
-    diagnostic.record(response.response === 1 ? "switch_prompt_approved" : "switch_prompt_declined");
+    const chosen=devices[response.response-1];
+    await request("far", "/connection/decision", {requestId:pending.requestId,approve:!!chosen,replaceControllerId:chosen?.id});
+    diagnostic.record(chosen ? "switch_prompt_approved" : "switch_prompt_declined");
   } finally { clearTimeout(timer); }
 }
 app.whenReady().then(async () => {
@@ -263,6 +269,7 @@ app.whenReady().then(async () => {
       if (prompting || quitting) return;
       try {
         const status = await request("far", "/status");
+        if (status.admission?.mode === "concurrent" && status.admission.connectedControllerIds?.length < 5) return;
         const pending = status.admission?.pending?.find(p => p.expiresAt > Date.now() && !seen.has(p.requestId));
         if (!pending) return;
         prompting = true; seen.add(pending.requestId);

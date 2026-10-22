@@ -14,7 +14,7 @@ const ps = (s) => "'" + String(s).replace(/'/g, "''") + "'";
 function windowsElevationCommand(body) {
   const encoded = Buffer.from(body, "utf16le").toString("base64");
   return (
-    "$ErrorActionPreference='Stop';$env:PSModulePath=Join-Path $PSHOME 'Modules';" +
+    "$ErrorActionPreference='Stop';$env:PSModulePath=$PSHOME+'\\Modules';" +
     "$p=Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList @('-NoProfile','-EncodedCommand'," +
     ps(encoded) +
     ");exit $p.ExitCode"
@@ -86,7 +86,7 @@ function status(options) {
         "-NonInteractive",
         "-EncodedCommand",
         Buffer.from(
-          "$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro.lnk';$a=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-near'\" -ErrorAction SilentlyContinue;$b=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-far'\" -ErrorAction SilentlyContinue;@{loginInstalled=(Test-Path $p);bootInstalled=($a.StartMode -eq 'Auto' -and $b.StartMode -eq 'Auto');servicesRunning=($a.State -eq 'Running' -and $b.State -eq 'Running')}|ConvertTo-Json",
+          "$env:PSModulePath=$PSHOME+'\\Modules';$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro.lnk';$a=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-near'\" -ErrorAction SilentlyContinue;$b=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-far'\" -ErrorAction SilentlyContinue;@{loginInstalled=(Test-Path $p);bootInstalled=($a.StartMode -eq 'Auto' -and $b.StartMode -eq 'Auto');servicesRunning=($a.State -eq 'Running' -and $b.State -eq 'Running')}|ConvertTo-Json",
           "utf16le",
         ).toString("base64"),
       ],
@@ -164,7 +164,7 @@ async function apply(options, { enabled, mode }) {
   } else if (process.platform === "win32") {
     let script;
     const loginScript =
-      "$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro.lnk';" +
+      "$env:PSModulePath=$PSHOME+'\\Modules';$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro.lnk';" +
       (enabled
         ? "$w=New-Object -ComObject WScript.Shell;$s=$w.CreateShortcut($p);$s.TargetPath=" +
           ps(executable) +
@@ -195,7 +195,7 @@ async function apply(options, { enabled, mode }) {
       script += "$sid=" + ps(ownerSid) + ";";
       for (const role of ["near", "far"]) {
         const state = folder(path.join(profile, role));
-        script += "$state=" + ps(state) + ";& icacls.exe $state /inheritance:r /grant:r ($sid+':(OI)(CI)F') '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /Q;if($LASTEXITCODE){throw 'Private profile permissions failed'};";
+        script += "$state=" + ps(state) + ";$items=@(Get-Item -LiteralPath $state)+@(Get-ChildItem -LiteralPath $state -Force -Recurse);foreach($item in $items){if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Private profile contains a reparse point'};if($item.PSIsContainer){$acl=New-Object Security.AccessControl.DirectorySecurity;$flags=[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'}else{$acl=New-Object Security.AccessControl.FileSecurity;$flags=[Security.AccessControl.InheritanceFlags]::None};$acl.SetAccessRuleProtection($true,$false);$acl.SetOwner([Security.Principal.SecurityIdentifier]::new($sid));foreach($grant in @($sid,'S-1-5-18','S-1-5-32-544')){$rule=[Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($grant),[Security.AccessControl.FileSystemRights]::FullControl,$flags,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow);$acl.AddAccessRule($rule)};Set-Acl -LiteralPath $item.FullName -AclObject $acl};";
       }
       for (const role of ["near", "far"]) {
         const exe = path.join(stage, "SSHRelayPro-" + role + ".exe");
@@ -224,7 +224,7 @@ async function apply(options, { enabled, mode }) {
         result = path.join(stage, "result.txt");
       const failure = path.join(stage, "install-error.txt");
       const installBody =
-        "$ErrorActionPreference='Stop';$env:PSModulePath=Join-Path $PSHOME 'Modules';try{" + script +
+        "$ErrorActionPreference='Stop';$env:PSModulePath=$PSHOME+'\\Modules';try{" + script +
         "\n'DONE' | Set-Content -LiteralPath " + ps(result) +
         "}catch{($_.Exception.Message | Out-String) | Set-Content -LiteralPath " + ps(failure) + ";exit 1}";
       // Keep a readable audit file; execute typed commands without changing OS script policy.
