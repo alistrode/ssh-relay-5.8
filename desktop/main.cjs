@@ -234,10 +234,10 @@ async function switchPrompt(pending) {
     const devices=connected.map(id=>status.devices.find(d=>d.id===id) || {id,label:id.slice(-8)});
     const response = await dialog.showMessageBox({
       title:"SSH Relay Pro — 五台连接已满", type:"question",
-      buttons:["保留现有连接",...devices.map((d,i)=>"替换 " +(i+1)+"："+String(d.label||d.id.slice(-8)).slice(0,30))],
+      buttons:["保留现有连接",...devices.map((d,i)=>"替换 " +(i+1))],
       defaultId:0,cancelId:0,signal:cancel.signal,
       message:"第六台电脑请求连接，请选择要替换的连接。",
-      detail:"新请求："+label+"（"+pending.controllerId.slice(-8)+"）。选择后仅暂停指定电脑并接入新电脑，其他四台继续连接。关闭弹窗保留现有连接。",
+      detail:"新请求："+label+"（"+pending.controllerId.slice(-8)+"）\n\n"+devices.map((d,i)=>(i+1)+". "+String(d.label||"已授权电脑").slice(0,60)+"（"+d.id.slice(-8)+"）").join("\n")+"\n\n选择后仅暂停指定电脑并接入新电脑，其他四台继续连接。关闭弹窗保留现有连接。",
     });
     const chosen=devices[response.response-1];
     await request("far", "/connection/decision", {requestId:pending.requestId,approve:!!chosen,replaceControllerId:chosen?.id});

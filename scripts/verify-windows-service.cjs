@@ -12,7 +12,7 @@ const profile=folder(path.join(os.homedir(),'.ssh-relay-5.1-native-'+Date.now())
 const results=[];let ui;
 function record(name,details={}){results.push({name,passed:true,...details});fs.writeFileSync(path.join(out,'windows-service-results.json'),JSON.stringify(results,null,2));console.log(name)}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function until(fn){const end=Date.now()+60000;while(Date.now()<end){try{const x=await fn();if(x)return x}catch{}await sleep(300)}throw Error('Native readiness timeout')}
+async function until(fn){const end=Date.now()+60000;let last;while(Date.now()<end){try{const x=await fn();if(x)return x}catch(e){last=e}await sleep(300)}throw Error('Native readiness timeout: '+(last?.message||'condition not met'))}
 async function cdp(){const pages=await(await fetch('http://127.0.0.1:9333/json/list')).json();const target=pages.find(p=>p.type==='page');if(!target)return null;const ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});let seq=0;const pending=new Map();ws.onmessage=e=>{const p=JSON.parse(e.data);if(p.id){const w=pending.get(p.id);pending.delete(p.id);p.error?w.reject(Error(JSON.stringify(p.error))):w.resolve(p.result)}};return{ws,call:(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))})}}
 (async()=>{try{
 for(const role of ['near','far'])write(path.join(profile,role,'settings.json'),{enabled:false,autoConnect:true,label:'native-'+role});
@@ -51,7 +51,20 @@ for(const role of ['near','far'])await request(path.join(profile,role),'/setting
 const restart=cp.spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Restart-Service SSHRelayPro-near,SSHRelayPro-far -ErrorAction Stop"],{encoding:'utf8',timeout:60000});assert.equal(restart.status,0,restart.stderr);
 for(const role of ['near','far']){await until(()=>request(path.join(profile,role),'/status'));const s=await request(path.join(profile,role),'/status');assert.equal(s.settings.enabled,false);}
 record('SCM_restart_keeps_saved_role_choices');
-}catch(e){fs.writeFileSync(path.join(out,'failure.txt'),e.stack);console.error(e.stack);process.exitCode=1}finally{
+ }catch(e){
+const details=[];
+for(const role of ['near','far']) {
+ for(const file of ['guardian-events.jsonl','agent-events.jsonl','bootstrap.log']) {
+  const p=path.join(profile,role,file);
+  if(fs.existsSync(p))details.push(role+'/'+file+'\n'+fs.readFileSync(p,'utf8').slice(-6000));
+ }
+ const logs=path.join(profile,'services');
+ if(fs.existsSync(logs))for(const file of fs.readdirSync(logs).filter(n=>n.startsWith('SSHRelayPro-'+role)&&n.endsWith('.log')))
+  details.push(file+'\n'+fs.readFileSync(path.join(logs,file),'utf8').slice(-6000));
+}
+fs.writeFileSync(path.join(out,'service-startup-diagnostics.txt'),details.join('\n\n'));
+console.error(details.join('\n\n'));
+fs.writeFileSync(path.join(out,'failure.txt'),e.stack);console.error(e.stack);process.exitCode=1}finally{
 if(ui)cp.spawnSync('taskkill.exe',['/PID',String(ui.pid),'/T','/F'],{stdio:'ignore'});
 cp.spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Stop-Service SSHRelayPro-near,SSHRelayPro-far -ErrorAction SilentlyContinue;sc.exe delete SSHRelayPro-near;sc.exe delete SSHRelayPro-far"],{stdio:'ignore',timeout:60000});
 }})();
