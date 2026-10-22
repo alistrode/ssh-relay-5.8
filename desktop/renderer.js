@@ -208,10 +208,11 @@ $("saveStartup").onclick = () =>
     message("已保存并核对自启动设置。");
   });
 function showStartup(s) {
-  $("installService").disabled = s.bootInstalled;
-  $("installService").textContent = s.bootInstalled ? "管理员后台已安装" : "首次授权并安装管理员后台";
+  const currentService = s.bootInstalled && s.servicesMatch !== false;
+  $("installService").disabled = currentService;
+  $("installService").textContent = currentService ? "管理员后台已安装" : s.bootInstalled ? "更新本版本管理员后台" : "首次授权并安装管理员后台";
   $("serviceStatus").textContent = s.bootInstalled
-    ? (s.servicesRunning === false ? "服务已安装，当前未运行" : "服务已安装 · 无需重复 UAC")
+    ? (s.servicesMatch === false ? "检测到旧版本后台，请更新一次" : s.servicesRunning === false ? "服务已安装，当前未运行" : "服务已安装 · 无需重复 UAC")
     : "尚未安装 · Windows 首次安装确认一次 UAC";
   $("autoStart").checked = s.enabled;
   $("startMode").value = s.mode;

@@ -11,6 +11,19 @@ const quote = (s) =>
   '"';
 const shell = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 const ps = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+function serviceRevision(options) {
+  const hash=crypto.createHash("sha256");
+  const visit=dir=>{
+    for(const item of fs.readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))) {
+      const file=path.join(dir,item.name);
+      if(item.isDirectory()) visit(file);
+      else if(/\.(cjs|js)$/.test(item.name)) hash.update(path.relative(options.appRoot,file)).update(fs.readFileSync(file));
+    }
+  };
+  visit(path.join(options.appRoot,"src"));
+  hash.update(fs.readFileSync(path.join(options.appRoot,"package-lock.json")));
+  return {executable:options.executable,appRoot:options.appRoot,profile:options.profile,sourceHash:hash.digest("hex")};
+}
 function windowsElevationCommand(body) {
   const encoded = Buffer.from(body, "utf16le").toString("base64");
   return (
@@ -93,7 +106,10 @@ function status(options) {
       { encoding: "utf8", windowsHide: true, timeout: 20000 },
     );
     try {
-      return { ...settings, ...JSON.parse(r.stdout), supported: true };
+      const installed=read(path.join(profile,"services/installation.json"),null);
+      const current=serviceRevision(options);
+      return { ...settings, ...JSON.parse(r.stdout), supported: true,
+        servicesMatch:!!installed && Object.keys(current).every(key=>installed[key]===current[key]) };
     } catch {
       return { ...settings, supported: true, effectiveUnknown: true };
     }
@@ -186,7 +202,7 @@ async function apply(options, { enabled, mode }) {
       const winsw = path.join(appRoot, "vendor/WinSW-x64.exe");
       if (!fs.existsSync(winsw))
         throw Error("Bundled Windows service host missing");
-      script = "$ErrorActionPreference='Stop';";
+      script = "$ErrorActionPreference='Stop';$hadService=$false;foreach($name in @('SSHRelayPro-near','SSHRelayPro-far')){$existing=Get-Service -Name $name -ErrorAction SilentlyContinue;if($existing){$hadService=$true;Stop-Service -Name $name -ErrorAction Stop;$existing.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(30))}};if($hadService){Start-Sleep -Seconds 5};";
       const identity = cp.spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding:"utf8", windowsHide:true, timeout:10000 });
       const ownerSid = /S-1-5-21-(?:\d+-){2}\d+-\d+/.exec(identity.stdout || "")?.[0];
       if (!ownerSid) throw Error("Cannot verify the current Windows account");
@@ -202,8 +218,6 @@ async function apply(options, { enabled, mode }) {
         if (!fs.existsSync(exe)) fs.copyFileSync(winsw, exe);
         const config = exe.replace(/\.exe$/, ".xml");
         const xml = windowsXml({ ...options, role, ownerSid });
-        if (fs.existsSync(config) && fs.readFileSync(config,"utf8") !== xml)
-          throw Error("Service paths changed; use the original installed folder or uninstall the previous services first");
         text(config, xml);
         if (enabled && mode === "boot")
           script +=
@@ -248,6 +262,7 @@ async function apply(options, { enabled, mode }) {
         const detail = fs.existsSync(failure) ? fs.readFileSync(failure,"utf8").trim().slice(0,1000) : "";
         throw Error("Windows service setup was not authorized or failed" + (detail ? ": " + detail : ""));
       }
+      if (enabled && mode === "boot") write(path.join(stage,"installation.json"),serviceRevision(options));
       script = null;
     }
     script = loginScript;
