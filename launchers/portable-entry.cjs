@@ -34,10 +34,6 @@ if (args[0] === "--mcp") {
   }
   console.log("关闭此窗口保留后台；Stop 入口可停止本角色。Open-UI 是现有的双角色管理界面。");
   if (!args.includes("--headless")) {
-    const executable = path.join(root, process.platform === "win32" ? "SSHRelayPro.exe" : "ssh-relay-pro");
-    const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-    const child = cp.spawn(executable, ["--no-shortcuts"], { detached: true, stdio: "ignore", env });
-    child.on("error", error => console.error("图形界面启动失败：" + error.message));
-    child.unref();
+    require("./portable-ui.cjs").launch(root);
   }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

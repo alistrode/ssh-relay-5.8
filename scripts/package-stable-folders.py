@@ -69,7 +69,7 @@ for role in ['near', 'far']:
         for filename, arguments in {'Start.sh': '', 'Stop.sh': '--cli stop', 'Status.sh': '--cli status', 'CLI.sh': '--cli "$@"', 'MCP.sh': '--mcp "$@"'}.items():
             (folder / filename).write_text('#!/bin/sh\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1\nexec "$ROOT/runtime/node" "$ROOT/resources/app/launchers/portable-entry.cjs" ' + arguments + '\n')
             (folder / filename).chmod(0o755)
-        (folder / 'Open-UI.sh').write_text('#!/bin/sh\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1\nunset ELECTRON_RUN_AS_NODE\nexec "$ROOT/ssh-relay-pro" --no-shortcuts "$@"\n')
+        (folder / 'Open-UI.sh').write_text('#!/bin/sh\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1\nexec "$ROOT/runtime/node" "$ROOT/resources/app/launchers/portable-ui.cjs" "$@"\n')
         (folder / 'Open-UI.sh').chmod(0o755)
     manifest = {'role': role, 'platform': PLATFORM, 'architecture': 'x64', 'node': NODE, 'electron': ELECTRON,
         'sourceCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
@@ -88,7 +88,8 @@ Status 查看后台，Stop 停止本角色。退出界面/关闭控制台默认�
 状态、私钥和授权由本机首次运行生成于用户目录 .ssh-relay-pro，不预置他人授权。
 搬动程序目录前先停止后台；搬动后重新运行 Start，并更新 AI 中的 MCP-CONFIG.json 路径。
 支持目标：Windows 10 1903+ x64；Ubuntu 24.04 x64（glibc 桌面）。Linux 图形界面需要系统桌面库和可用的 Chromium 沙箱；不会关闭系统保护。
-CLI/MCP 不依赖桌面。数据库服务器及你的数据库属于目标电脑，不作为测试数据预装。
+CLI/MCP 不依赖桌面。Linux 系统禁止普通用户命名空间时，首次打开界面会要求一次 sudo 授权，仅准备本文件夹内官方沙箱 helper 的权限；不关闭沙箱、不改系统全局设置。
+数据库服务器及你的数据库属于目标电脑，不作为测试数据预装。
 系统服务管理、sudo、定时调度继承本机已有权限；首次配对、自启动授权需本人操作。
 不含 AI 模型、AI 客户端账号、数据库密码或私钥；MCP 包提供工具，调用它的 AI 客户端由你选择。
 具体实测范围见仓库交付报告；Windows Server 验证不等同 Windows 10 本机验证。
