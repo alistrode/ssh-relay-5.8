@@ -1,11 +1,24 @@
+@font-face {
+  font-family: "SSH Relay CJK";
+  src: url("../assets/fonts/NotoSansCJKsc-Regular.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
 :root {
-  font-family: system-ui, "Microsoft YaHei", sans-serif;
+  font-family: system-ui, "Microsoft YaHei", "SSH Relay CJK", sans-serif;
   color: #1c3048;
   background: #f1f5fa;
   font-size: 15px;
 }
 body {
   margin: 0;
+}
+button, input, select {
+  font-family: inherit;
+}
+pre {
+  font-family: ui-monospace, monospace, "SSH Relay CJK";
 }
 header {
   display: flex;
