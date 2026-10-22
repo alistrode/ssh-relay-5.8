@@ -19,7 +19,7 @@ node_file = f'node-v{NODE}-' + ('win-x64.zip' if PLATFORM == 'windows' else 'lin
 electron_file = f'electron-v{ELECTRON}-' + ('win32-x64.zip' if PLATFORM == 'windows' else 'linux-x64.zip')
 for name in [node_file, electron_file]:
     if digest(INPUTS / name) != pins[name]: raise RuntimeError('Runtime hash mismatch: ' + name)
-subprocess.run(['npm', 'ls', '--omit=dev', '--all'], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+subprocess.run(['npm.cmd' if os.name == 'nt' else 'npm', 'ls', '--omit=dev', '--all'], cwd=ROOT, check=True, stdout=subprocess.DEVNULL, shell=os.name == 'nt')
 OUT.mkdir(parents=True, exist_ok=True)
 for role in ['near', 'far']:
     name = 'SSHRelay-' + role + '-' + PLATFORM + '-x64'
@@ -37,7 +37,7 @@ for role in ['near', 'far']:
     app.mkdir(parents=True)
     for directory in ['src', 'desktop', 'assets', 'profiles', 'launchers']:
         shutil.copytree(ROOT / directory, app / directory)
-    for item in ['package.json', 'package-lock.json', 'README.md']:
+    for item in ['package.json', 'package-lock.json']:
         shutil.copyfile(ROOT / item, app / item)
     # Copy the actual complete production tree; no hand-picked dependency trimming.
     shutil.copytree(ROOT / 'node_modules', app / 'node_modules', symlinks=True)

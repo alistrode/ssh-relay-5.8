@@ -1,4 +1,5 @@
 name: Package the verified application as complete role folders
+# Build revision 2: native npm command and repository source inputs.
 on:
   push:
     branches: [fix/ssh-pro-startup-20261019]

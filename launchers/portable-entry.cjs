@@ -33,4 +33,11 @@ if (args[0] === "--mcp") {
     console.log("将配对码交给近端 AI 的 ssh_connect 或近端图形界面。\n再次运行 Start 可生成新码；已有授权无需重新配对。");
   }
   console.log("关闭此窗口保留后台；Stop 入口可停止本角色。Open-UI 是现有的双角色管理界面。");
+  if (!args.includes("--headless")) {
+    const executable = path.join(root, process.platform === "win32" ? "SSHRelayPro.exe" : "ssh-relay-pro");
+    const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
+    const child = cp.spawn(executable, ["--no-shortcuts"], { detached: true, stdio: "ignore", env });
+    child.on("error", error => console.error("图形界面启动失败：" + error.message));
+    child.unref();
+  }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
