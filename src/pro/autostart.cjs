@@ -14,6 +14,7 @@ const ps = (s) => "'" + String(s).replace(/'/g, "''") + "'";
 function windowsElevationCommand(body) {
   const encoded = Buffer.from(body, "utf16le").toString("base64");
   return (
+    "$ErrorActionPreference='Stop';$env:PSModulePath=Join-Path $PSHOME 'Modules';" +
     "$p=Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList @('-NoProfile','-EncodedCommand'," +
     ps(encoded) +
     ");exit $p.ExitCode"
@@ -221,13 +222,17 @@ async function apply(options, { enabled, mode }) {
       }
       const file = path.join(stage, "configure.ps1"),
         result = path.join(stage, "result.txt");
+      const failure = path.join(stage, "install-error.txt");
       const installBody =
-        script + "\n'DONE' | Set-Content -LiteralPath " + ps(result);
+        "$ErrorActionPreference='Stop';$env:PSModulePath=Join-Path $PSHOME 'Modules';try{" + script +
+        "\n'DONE' | Set-Content -LiteralPath " + ps(result) +
+        "}catch{($_.Exception.Message | Out-String) | Set-Content -LiteralPath " + ps(failure) + ";exit 1}";
       // Keep a readable audit file; execute typed commands without changing OS script policy.
       text(file, Buffer.from("\ufeff" + installBody, "utf16le"));
       try {
         fs.unlinkSync(result);
       } catch {}
+      try { fs.unlinkSync(failure); } catch {}
       script = windowsElevationCommand(installBody);
       const r = cp.spawnSync(
         "powershell.exe",
@@ -239,8 +244,10 @@ async function apply(options, { enabled, mode }) {
         ],
         { encoding: "utf8", windowsHide: true, timeout: 120000 },
       );
-      if (r.error || r.status !== 0 || !fs.existsSync(result))
-        throw Error("Windows service setup was not authorized or failed");
+      if (r.error || r.status !== 0 || !fs.existsSync(result)) {
+        const detail = fs.existsSync(failure) ? fs.readFileSync(failure,"utf8").trim().slice(0,1000) : "";
+        throw Error("Windows service setup was not authorized or failed" + (detail ? ": " + detail : ""));
+      }
       script = null;
     }
     script = loginScript;
