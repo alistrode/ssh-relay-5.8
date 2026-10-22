@@ -1,0 +1,27 @@
+name: Upload the complete native folders to the repository release
+on:
+  push:
+    branches: [fix/ssh-pro-startup-20261019]
+    paths: ['.github/workflows/publish-complete-folders.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Upload the exact native build artifacts and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 39759657245 --repo "$GITHUB_REPOSITORY" --name complete-folders-linux --dir complete
+          gh run download 39759657245 --repo "$GITHUB_REPOSITORY" --name complete-folders-windows --dir complete
+          git archive --format=zip --output=complete/SSHRelay-complete-source.zip HEAD
+          cd complete
+          sha256sum SSHRelay-*.zip SSHRelay-*.tar.gz > SHA256SUMS
+          gh release upload ssh-relay-complete-20261022 SSHRelay-*.zip SSHRelay-*.tar.gz SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
