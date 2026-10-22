@@ -295,6 +295,7 @@ module.exports = async function (ARGS) {
           "pg_dump",
           [
             ...pg,
+            "--format=custom",
             "-d",
             ARGS.database,
             ...(ARGS.tables || []).flatMap((t) => ["-t", t]),
@@ -378,12 +379,24 @@ module.exports = async function (ARGS) {
       }
       if (ARGS.type === "mysql")
         command("mysql", [...mysql, "--database=" + ARGS.database], { input });
-      else if (ARGS.type === "postgresql")
-        command(
-          "psql",
-          [...pg, "-X", "-v", "ON_ERROR_STOP=1", "-d", ARGS.database],
-          { input },
-        );
+      else if (ARGS.type === "postgresql") {
+        const signature = Buffer.alloc(5), fd = fs.openSync(input, "r");
+        try { fs.readSync(fd, signature, 0, signature.length, 0); }
+        finally { fs.closeSync(fd); }
+        if (signature.toString("ascii") === "PGDMP")
+          command("pg_restore", [
+            ...pg, "--clean", "--if-exists", "--exit-on-error",
+            "-d", ARGS.database, input,
+          ]);
+        else
+          // Existing plain SQL exports remain importable; do not guess which
+          // unrelated objects should be removed from an arbitrary SQL file.
+          command(
+            "psql",
+            [...pg, "-X", "-v", "ON_ERROR_STOP=1", "-d", ARGS.database],
+            { input },
+          );
+      }
       else
         command("mongorestore", [
           ...mongo,

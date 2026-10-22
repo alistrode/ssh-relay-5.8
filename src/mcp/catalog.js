@@ -682,7 +682,7 @@ export const catalog = [
     name: "ssh_db_dump",
     config: {
       description:
-        "Dumps a database to a file on the remote server over SSH; it reads data only and does not modify the database. Supports mysql (using --single-transaction --routines --triggers), postgresql (custom format with --clean --if-exists, restorable via pg_restore), and mongodb. compress defaults to true and gzips the output. The optional tables list applies to MySQL and PostgreSQL only and is ignored for MongoDB.",
+        "Dumps a database to a file on the remote server over SSH; it reads data only and does not modify the database. Supports mysql (using --single-transaction --routines --triggers), postgresql (custom format, restorable via pg_restore --clean --if-exists), and mongodb. compress defaults to true and gzips the output. The optional tables list applies to MySQL and PostgreSQL only and is ignored for MongoDB.",
       inputSchema: {
         server: z.string().describe("Server name"),
         type: z
