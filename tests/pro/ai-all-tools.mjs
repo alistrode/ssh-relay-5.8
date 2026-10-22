@@ -16,15 +16,16 @@ const repo = path.resolve(import.meta.dirname, '../..'), windows = process.platf
 if (process.env.GITHUB_ACTIONS !== 'true') throw Error('Full native mutations are restricted to disposable GitHub Actions VMs');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-all-ai-')), nearDir = path.join(root, 'near');
 const output = path.join(repo, 'ai-results'); fs.mkdirSync(output, { recursive: true });
-const requiredSeconds = Number(process.argv[2] ?? 3600), rows = [], clients = new Set(), listeners = new Set();
+const coreOnly = process.argv.includes('--core');
+const requiredSeconds = coreOnly ? 0 : Number(process.argv[2] ?? 3600), rows = [], clients = new Set(), listeners = new Set();
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const quote = value => "'" + value.replaceAll("'", windows ? "''" : "'\\''") + "'";
 const echo = value => windows ? '[Console]::Write(' + quote(value) + ')' : 'printf %s ' + quote(value);
 let near, far, client, transport, tools = [], measuring = false, runtimeFailure, hourStart, ticks = 0;
 const summary = { passed: false, commit: process.env.GITHUB_SHA, platform: process.platform,
   osVersion: os.version(), node: process.version, scope: 'All 39 Agent MCP tools and native operations; Windows Server is not Windows 10',
-  requiredSeconds, cloudSelfTest: true, interventionsDuringHour: 0, checks: rows };
-function save() { fs.writeFileSync(path.join(output, 'coverage.json'), JSON.stringify(summary, null, 2)); }
+  requiredSeconds, phase: coreOnly ? 'non-database-direct-MCP' : 'all-tools-and-hour', cloudSelfTest: true, interventionsDuringHour: 0, checks: rows };
+function save() { fs.writeFileSync(path.join(output, coreOnly ? 'coverage-core.json' : 'coverage.json'), JSON.stringify(summary, null, 2)); }
 function native(args, options = {}) {
   const r = cp.spawnSync(args[0], args.slice(1).map(String), { encoding: 'utf8', timeout: 120000, windowsHide: true, ...options });
   if (r.error || r.status !== 0) throw Error(path.basename(args[0]) + ' fixture command failed: ' + (r.error?.message || r.stderr?.slice(0, 350)));
@@ -276,8 +277,11 @@ async function cancellationTimeoutAndRecovery(dir) {
 }
 function auditCoverage() {
   const exercised = new Set(rows.filter(row => row.passed).map(row => row.tool));
-  summary.missingTools = tools.filter(tool => !exercised.has(tool.name)).map(tool => tool.name);
-  summary.missingActions = tools.flatMap(tool => (tool.inputSchema.properties?.action?.enum || []).filter(action => !rows.some(row => row.passed && row.tool === tool.name && row.action === action)).map(action => tool.name + ':' + action));
+  const excluded = coreOnly ? ['ssh_db_dump', 'ssh_db_import', 'ssh_db_list', 'ssh_db_query', 'ssh_backup_schedule'] : [];
+  const expected = tools.filter(tool => !excluded.includes(tool.name));
+  summary.excludedTools = excluded;
+  summary.missingTools = expected.filter(tool => !exercised.has(tool.name)).map(tool => tool.name);
+  summary.missingActions = expected.flatMap(tool => (tool.inputSchema.properties?.action?.enum || []).filter(action => !rows.some(row => row.passed && row.tool === tool.name && row.action === action)).map(action => tool.name + ':' + action));
   assert.deepEqual(summary.missingTools, [], 'An advertised AI tool has not been exercised');
   assert.deepEqual(summary.missingActions, [], 'An advertised action has not been exercised');
   assert(rows.every(row => row.passed), 'One or more AI scenarios failed');
@@ -313,8 +317,19 @@ try {
   const connect = await must('AI-pair-new-device', 'ssh_connect', { code: offer.code, waitMs: 20000, requestId: crypto.randomUUID() });
   if (connect.connectionTaskId) await untilState(() => must('AI-poll-pairing-task', 'ssh_connect', { connectionTaskId: connect.connectionTaskId }), value => value.state === 'ready', 180);
   await untilState(() => near.status().devices[0], value => value?.state === 'online', 180);
-  const dir = await basicAndFiles(0); await configurationAndMonitoring(0, dir); await databaseOperations(0, dir);
-  await realSchedules(dir); await cancellationTimeoutAndRecovery(dir); auditCoverage();
+  let dir;
+  const group = async (name, fn) => { try { await fn(); } catch (error) {
+    rows.push({ label: name, passed: false, error: error.message.slice(0, 700) }); save();
+  }};
+  await group('command-files-sessions-deploy-backup', async () => { dir = await basicAndFiles(0); });
+  if (!dir) { dir = path.join(root, 'independent-checks'); fs.mkdirSync(path.join(dir, 'tree'), { recursive: true }); fs.writeFileSync(path.join(dir, 'tree/entry'), 'independent fixture'); }
+  await group('configuration-monitoring-tunnels-permissions', () => configurationAndMonitoring(0, dir));
+  await group('cancellation-timeout-MCP-restart-and-reconnect', () => cancellationTimeoutAndRecovery(dir));
+  if (!coreOnly) {
+    await group('real-database-roundtrips', () => databaseOperations(0, dir));
+    await group('real-scheduler-trigger', () => realSchedules(dir));
+  }
+  auditCoverage();
   hourStart = performance.now(); measuring = true; summary.hourStartedAtUtc = new Date().toISOString();
   const baseline = { near: { ...near.stats }, far: { ...far.stats } }; summary.hourCycles = 0;
   while (performance.now() - hourStart < requiredSeconds * 1000) {
