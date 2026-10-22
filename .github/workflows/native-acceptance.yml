@@ -28,6 +28,8 @@ jobs:
         run: python scripts/package-unified.py --platform win32 --cache work/runtime --out work/packaged
       - name: Start actual SYSTEM services and the packaged desktop
         run: node scripts/verify-windows-service.cjs work/packaged/SSHRelayPro-5.1-win32-x64 work/native-results
+      - name: Verify all six native capacity dialog choices
+        run: node tests/pro/consent-dialog.cjs work/packaged/SSHRelayPro-5.1-win32-x64/SSHRelayPro.exe work/native-results/dialogs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
