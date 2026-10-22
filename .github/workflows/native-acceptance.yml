@@ -1,13 +1,5 @@
 name: SSH Relay native acceptance
 on:
-  push:
-    branches: [fix/ssh-pro-startup-20261019]
-    paths:
-      - 'src/**'
-      - 'package*.json'
-      - 'tests/pro/native-acceptance.cjs'
-      - 'tests/fixtures/native-submit.cjs'
-      - '.github/workflows/native-acceptance.yml'
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,0 +1,36 @@
+name: Native VMs for direct MCP operation
+on:
+  push:
+    branches: [fix/ssh-pro-startup-20261019]
+    paths:
+      - '.github/workflows/operator-vms.yml'
+      - '.github/operator-public-key.pem'
+      - 'scripts/operator-host.cjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 190
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.0'
+      - run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+      - name: Start the normal application Agent and seal its pairing code
+        run: node scripts/operator-host.cjs offer
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: operator-authorization-${{ matrix.os }}
+          path: operator-exchange/offer.json
+          retention-days: 1
+      - name: Keep the normal Agent available for direct MCP use
+        run: node scripts/operator-host.cjs hold 10800

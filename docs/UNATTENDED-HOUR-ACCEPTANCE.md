@@ -5,7 +5,18 @@ Requested branch: `fix/ssh-pro-startup-20261019`.
 Current attempt: https://github.com/trlstdin/rororororo/actions/runs/39613605609
 
 Tested commit: `d9411314dc52d08cd79856ef483675a81584c872`.
-Status at this checkpoint: **running; no one-hour pass claimed**.
+Result: **the limited SSH/SFTP hour passed on both native platforms**. This is not all-function or all-AI acceptance.
+
+| Platform | Measured seconds | SSH/SFTP samples | Active ticks | Unexpected events | Manual interventions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Ubuntu 24.04 | 3618.504994131 | 147 | 242 | 0 | 0 |
+| Windows Server 2022 | 3622.1762712 | 140 | 243 | 0 | 0 |
+
+Windows measured 2026-10-21 14:06:38.957–15:07:01.203 UTC; Linux measured 14:05:47.635–15:06:06.140 UTC. Native Actions artifacts contain the original sanitized reports.
+
+## Latest user direction
+
+Do not run test suites or change the product to accommodate VM-only setup problems. The added scripted all-AI suite and database fixture have been removed, and automatic native-suite triggering has been disabled. The next work uses normal Agents on leased Actions VMs and actual MCP calls selected individually by the AI operator. No all-AI pass is claimed. The Windows PowerShell module compatibility fix addresses a real normal-launch path; fixture-only problems do not establish product bugs.
 
 ## Scope and pass criteria
 
