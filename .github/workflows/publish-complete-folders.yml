@@ -19,8 +19,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 39759657245 --repo "$GITHUB_REPOSITORY" --name complete-folders-linux --dir complete
-          gh run download 39759657245 --repo "$GITHUB_REPOSITORY" --name complete-folders-windows --dir complete
+          gh run download 39761456013 --repo "$GITHUB_REPOSITORY" --name complete-folders-linux --dir complete
+          gh run download 39761456013 --repo "$GITHUB_REPOSITORY" --name complete-folders-windows --dir complete
           git archive --format=zip --output=complete/SSHRelay-complete-source.zip HEAD
           cd complete
           sha256sum SSHRelay-*.zip SSHRelay-*.tar.gz > SHA256SUMS
