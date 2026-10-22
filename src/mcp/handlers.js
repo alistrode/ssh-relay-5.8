@@ -82,12 +82,13 @@ async function execute(a, sudo = false) {
         timeout,
       });
     } else if (sudo) {
-      const stripped = command.replace(/^sudo\s+/, "");
+      // Preserve explicit sudo options, including a requested target account.
+      // Removing just "sudo " turns "sudo -u postgres ..." into shell options.
       result = await run(
         a.server,
         a.password
-          ? `sudo -S -k -p '' sh -c ${shellQuote(stripped)}`
-          : `sudo -n sh -c ${shellQuote(stripped)}`,
+          ? `sudo -S -k -p '' sh -c ${shellQuote(command)}`
+          : `sudo -n sh -c ${shellQuote(command)}`,
         {
           cwd: a.cwd || config.defaultDir,
           timeout,
