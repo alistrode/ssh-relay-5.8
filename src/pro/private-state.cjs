@@ -20,7 +20,7 @@ function assertPrivateState(dir) {
   if (process.platform !== "win32" || !existing.length) return;
   // Check ACLs, do not alter inherited rights or request elevation.
   const script = "$ErrorActionPreference='Stop'\nImport-Module ($PSHOME + '\\Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop\nImport-Module ($PSHOME + '\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop\n$user=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value\n$trusted=@($user,'S-1-5-18','S-1-5-32-544')\n$paths=ConvertFrom-Json $env:SSH_RELAY_PRIVATE_STATE_CHECK\nforeach($p in $paths){\n  $acl=Get-Acl -LiteralPath $p\n  $owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value\n  if($trusted -notcontains $owner){exit 3}\n  foreach($rule in $acl.Access){\n    if($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow){\n      $sid=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value\n      if($trusted -notcontains $sid){exit 4}\n    }\n  }\n}\nexit 0";
-  const checkScript = "$env:PSModulePath=$PSHOME+'\\Modules';\n" + script.replace("$paths=ConvertFrom-Json",
+  const checkScript = "$env:PSModulePath=$PSHOME+'\\Modules';\n" + script.replace("$paths=ConvertFrom-Json", () =>
     "if($user -eq 'S-1-5-18' -and $env:SSH_RELAY_STATE_OWNER_SID -match '^S-1-5-21-(\\d+-){2}\\d+-\\d+$'){$trusted+= $env:SSH_RELAY_STATE_OWNER_SID}\n$paths=ConvertFrom-Json");
   const result = cp.spawnSync("powershell.exe",
     ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(checkScript, "utf16le").toString("base64")],
