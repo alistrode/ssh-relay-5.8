@@ -1,5 +1,8 @@
 name: Package the verified application as complete role folders
 on:
+  push:
+    branches: [fix/ssh-pro-startup-20261019]
+    paths: ['.github/workflows/package-stable-folders.yml']
   workflow_dispatch:
 permissions:
   contents: read
