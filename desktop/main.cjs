@@ -195,12 +195,12 @@ ipcMain.handle("startup-status", () => startup.status(options()));
 ipcMain.handle("startup-set", async (event, value) => {
   if (event.sender !== window?.webContents) throw Error("Invalid sender");
   const previous = startup.status(options());
-  if (value.enabled && value.mode === "boot" && previous.bootInstalled && previous.servicesRunning && previous.servicesMatch) return previous;
+  if (value.enabled && value.mode === "boot" && previous.bootInstalled && previous.servicesRunning) return previous;
   const handover = process.platform === "win32" && value.enabled && value.mode === "boot";
   if (handover) {
     await Promise.allSettled(["near", "far"].map(role => request(role,"/shutdown",{})));
     const until = Date.now() + 15000;
-    while (!previous.bootInstalled && ["near","far"].some(role => fs.existsSync(path.join(roleDirectory(role),"guardian.lock")))) {
+    while (["near","far"].some(role => fs.existsSync(path.join(roleDirectory(role),"guardian.lock")))) {
       if (Date.now() >= until) throw Error("旧后台尚未退出，请稍后再试，未安装重叠服务。");
       await new Promise(resolve => setTimeout(resolve,200));
     }

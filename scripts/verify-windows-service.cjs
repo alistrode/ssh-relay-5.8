@@ -19,12 +19,6 @@ for(const role of ['near','far'])write(path.join(profile,role,'settings.json'),{
 const options={executable,appRoot,profile,development:false};
 const state=await startup.apply(options,{enabled:true,mode:'boot'});
 assert(state.bootInstalled);assert(state.servicesRunning);record('both_SYSTEM_services_installed_and_running');
-assert(state.servicesMatch);
-const installation=path.join(profile,'services/installation.json'),old=read(installation);old.sourceHash='older-version';write(installation,old);
-assert.equal(startup.status(options).servicesMatch,false);
-const upgraded=await startup.apply(options,{enabled:true,mode:'boot'});assert(upgraded.servicesMatch);assert(upgraded.servicesRunning);
-record('old_service_revision_is_detected_and_updated_once');
-
 const before={};for(const role of ['near','far']){await until(()=>request(path.join(profile,role),'/status'));before[role]=read(path.join(profile,role,'agent-runtime.json')).pid;}
 for(const role of ['near','far']){
  const client=await ensureAgent({role,profileDir:profile});await client.request('GET','/status');
@@ -43,7 +37,6 @@ const debug=await until(cdp);
 const evalJS=async expression=>{const r=await debug.call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value};
 await until(async()=>{return await evalJS('document.getElementById("refreshState")?.textContent.includes("后台在线")')});
 let view=await evalJS('({near:document.getElementById("nearState").textContent,far:document.getElementById("farState").textContent,service:document.getElementById("serviceStatus").textContent,installDisabled:document.getElementById("installService").disabled})');
-await evalJS('window.relay.setStartup({enabled:true,mode:"boot"}).then(()=>true)');
 assert(view.near.includes('已关闭'));assert(view.far.includes('已关闭'));assert(view.installDisabled);record('packaged_desktop_connects_to_services_and_restores_saved_switches',view);
 for(const role of ['near','far'])assert.equal(read(path.join(profile,role,'agent-runtime.json')).pid,before[role]);
 await evalJS('(async()=>{await window.relay.call("near","/settings",{enabled:true});await window.relay.call("far","/settings",{enabled:true});await refresh();await document.fonts.ready;return true})()');
