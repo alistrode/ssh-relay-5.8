@@ -1,8 +1,5 @@
-name: Upload the complete native folders to the repository release
+name: Publish the verified 5.1 single-folder Windows package
 on:
-  push:
-    branches: [fix/ssh-pro-startup-20261019]
-    paths: ['.github/workflows/publish-complete-folders.yml']
   workflow_dispatch:
 permissions:
   actions: read
@@ -10,19 +7,41 @@ permissions:
 jobs:
   upload:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Upload the exact native build artifacts and checksums
+      - name: Fetch only the completed native validation artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 39809372554 --repo "$GITHUB_REPOSITORY" --name unified-windows-5.1 --dir work/verified
+      - name: Validate the one-folder runtime and prepare only that ZIP
+        run: |
+          mkdir -p work/upload
+          cp work/verified/packaged/SSHRelayPro-5.1-win32-x64.zip work/upload/SSHRelayPro-5.1-Windows-x64.zip
+          echo 'bf2c763cec38131ec9b4caf24e38eb214296e11014dc1e7255fa2844a75a1560  work/upload/SSHRelayPro-5.1-Windows-x64.zip' | sha256sum -c -
+          python - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('work/upload/SSHRelayPro-5.1-Windows-x64.zip') as z:
+              names=z.namelist()
+              assert {n.split('/')[0] for n in names} == {'SSHRelayPro-5.1-win32-x64'}
+              assert 'SSHRelayPro-5.1-win32-x64/Start.cmd' in names
+              assert not any(any(bad in n for bad in ('/.runtime-cache/','/.npm-cache/','/work/','/.git/','/native-results/','/node_modules/electron/','/node_modules/esbuild/')) for n in names)
+          PY
+      - name: Upload only the ready-to-run package
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 39761456013 --repo "$GITHUB_REPOSITORY" --name complete-folders-linux --dir complete
-          gh run download 39762679916 --repo "$GITHUB_REPOSITORY" --name complete-folders-windows --dir complete
-          python scripts/include-portable-font.py complete
-          git archive --format=zip --output=complete/SSHRelay-complete-source.zip HEAD
-          cd complete
-          sha256sum SSHRelay-*.zip SSHRelay-*.tar.gz > SHA256SUMS
-          gh release upload ssh-relay-complete-20261022 SSHRelay-*.zip SSHRelay-*.tar.gz SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          cat > work/notes.md <<'TEXT'
+          Windows x64 统一单文件夹运行包。完整解压后运行 Start.cmd，无需安装 Node/npm。
+
+          首次授权安装 SYSTEM 后台，以后正常打开复用后台。两种连接功能独立开启并保存状态；双向五台同时连接，逐条断开；第六台请求可保留现有连接或指定替换 1–5。
+
+          仅上传运行包，不附带开发缓存、源码包、测试记录或截图。不含旧后台识别或更新功能。
+
+          已通过 Windows Server 2022 原生服务、界面与六个弹窗选项验证；不冒称 Windows 10 实机验收。
+
+          SHA-256: bf2c763cec38131ec9b4caf24e38eb214296e11014dc1e7255fa2844a75a1560
+          TEXT
+          gh release create ssh-relay-5.1-20261023 work/upload/SSHRelayPro-5.1-Windows-x64.zip --repo "$GITHUB_REPOSITORY" --target 6e918b22e2ba488eb8c3bce05cd29d7cf46adbd4 --title 'SSH Relay Pro 5.1 · Windows 统一单文件夹运行包' --notes-file work/notes.md
