@@ -28,7 +28,7 @@ record('desktop_client_reuses_service_agents_without_unprivileged_fallback');
 const owners=cp.spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"$a=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-near'\";$b=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-far'\";@($a.StartName,$b.StartName)|ConvertTo-Json"],{encoding:'utf8'});
 assert.deepEqual(JSON.parse(owners.stdout),['LocalSystem','LocalSystem']);record('native_SCM_confirms_LocalSystem_identity');
 for(const role of ['near','far'])await request(path.join(profile,role),'/settings',{enabled:true});
-await until(async()=>{const s=await request(path.join(profile,'far'),'/status');return s.workerPid&&s.admission});
+await until(async()=>{const s=await request(path.join(profile,'far'),'/status');return s.workerPid&&s.state==='waiting'});
 record('service_role_switches_enable_both_backgrounds');
 for(const role of ['near','far'])await request(path.join(profile,role),'/settings',{enabled:false});
 const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
