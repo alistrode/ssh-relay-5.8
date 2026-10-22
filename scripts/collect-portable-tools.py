@@ -62,6 +62,20 @@ if platform == 'windows':
         for pattern in ['*LICENSE*', '*COPYING*', '*NOTICE*']:
             for item in source.glob(pattern):
                 if item.is_file(): shutil.copy2(item, destination / (source.name + '-' + item.name))
+    # App-local deployment avoids relying on a VC++ runtime installed on the VM.
+    redist = Path('C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT')
+    if not redist.is_dir(): raise RuntimeError('Pinned Visual C++ app-local runtime is missing')
+    runtime_files = sorted(redist.glob('*.dll'))
+    if not {'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'}.issubset({p.name.lower() for p in runtime_files}): raise RuntimeError('VC++ runtime is incomplete')
+    for directory in vendor.glob('*/bin'):
+        for dll in runtime_files: shutil.copy2(dll, directory / dll.name)
+    notice = vendor / 'microsoft-vc-runtime'
+    notice.mkdir()
+    license_url = 'https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/'
+    with urllib.request.urlopen(license_url, timeout=90) as r: (notice / 'LICENSE.html').write_bytes(r.read())
+    (notice / 'NOTICE.txt').write_text('Microsoft Visual C++ 2015-2022 app-local redistributable runtime, 14.44.35112, x64. Copyright Microsoft.\nLicense: ' + license_url + '\nRedistribution list: https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution\n')
+    provenance.append({'microsoftAppLocalCRT': '14.44.35112', 'origin': str(redist), 'license': license_url,
+        'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in runtime_files}})
 else:
     for name in ['psql', 'pg_dump', 'pg_restore', 'mysql', 'mysqldump']:
         source = Path('/usr/lib/postgresql/16/bin') / name if name in ['psql', 'pg_dump', 'pg_restore'] else Path(shutil.which(name) or '/missing')
