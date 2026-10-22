@@ -2,7 +2,7 @@
 
 Requested branch: `fix/ssh-pro-startup-20261019`.
 
-Current attempt: https://github.com/trlstdin/rororororo/actions/runs/39613605609
+Completed historical attempt: https://github.com/trlstdin/rororororo/actions/runs/39613605609
 
 Tested commit: `d9411314dc52d08cd79856ef483675a81584c872`.
 Result: **the limited SSH/SFTP hour passed on both native platforms**. This is not all-function or all-AI acceptance.
@@ -16,7 +16,7 @@ Windows measured 2026-10-21 14:06:38.957–15:07:01.203 UTC; Linux measured 14:0
 
 ## Latest user direction
 
-Do not run test suites or change the product to accommodate VM-only setup problems. The added scripted all-AI suite and database fixture have been removed, and automatic native-suite triggering has been disabled. The next work uses normal Agents on leased Actions VMs and actual MCP calls selected individually by the AI operator. No all-AI pass is claimed. The Windows PowerShell module compatibility fix addresses a real normal-launch path; fixture-only problems do not establish product bugs.
+Do not run test suites or change the product to accommodate VM-only setup problems. The added scripted all-AI suite and database fixture have been removed, and automatic native-suite triggering has been disabled. The subsequent work uses normal Agents on leased Actions VMs and actual MCP calls selected individually by the AI operator. No all-AI pass is claimed. The Windows PowerShell module compatibility fix addresses a real normal-launch path; fixture-only problems do not establish product bugs.
 
 ## Scope and pass criteria
 
@@ -32,8 +32,8 @@ Windows Server 2022 is **not Windows 10**. This attempt cannot certify Windows 1
 
 ## Patches and earlier attempts
 
-Earlier attempts failed before Windows measurement began or were cancelled; none counts toward the final hour. The fixture now restricts only its newly created Windows temporary directory using `icacls`, without changing existing profiles or system permissions.
+Earlier attempts failed before Windows measurement began or were cancelled; none counts toward the final hour. That historical fixture restricted only its newly created Windows temporary directory using `icacls`, without changing existing profiles or system permissions.
 
-Native PowerShell 5.1 ACL inspection failed under the PowerShell 7 module search environment inherited from Actions. Production patch `544cb3a`, completed in `d941131`, explicitly imports the matching security and JSON utility modules from the invoked PowerShell's own `$PSHOME`. Existing ACL rejection rules remain intact. The Windows harness must accept the private fixture and reject a deliberately shared child directory before starting the agents.
+Native PowerShell 5.1 ACL inspection failed under the PowerShell 7 module search environment inherited from Actions. Production patch `544cb3a`, completed in `d941131`, explicitly imports the matching security and JSON utility modules from the invoked PowerShell's own `$PSHOME`. Existing ACL rejection rules remain intact. That historical Windows harness checked its private fixture and deliberately shared child directory; the harness was later removed at the user’s request.
 
-The Linux private-state regression passed locally. Separate native preflight run for the final source: https://github.com/trlstdin/rororororo/actions/runs/39613605836 . Final one-hour evidence is pending and must be recorded after completion, without substituting historical short tests.
+The Linux private-state regression passed locally. Separate historical native preflight run: https://github.com/trlstdin/rororororo/actions/runs/39613605836 . The completed limited-hour results are recorded above. The later final-source debugging uses the user-requested ten-minute window; see [direct MCP debugging](DIRECT-MCP-DEBUG-20261022.md).

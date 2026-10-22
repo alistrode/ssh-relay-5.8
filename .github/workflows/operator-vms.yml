@@ -1,11 +1,5 @@
 name: Native VMs for direct MCP operation
 on:
-  push:
-    branches: [fix/ssh-pro-startup-20261019]
-    paths:
-      - '.github/workflows/operator-vms.yml'
-      - '.github/operator-public-key.pem'
-      - 'scripts/operator-host.cjs'
   workflow_dispatch:
 permissions:
   contents: read
