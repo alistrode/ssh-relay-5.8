@@ -10,10 +10,18 @@ const transport = new StdioClientTransport({ command: process.execPath,
 transport.stderr.on('data', data => fs.appendFileSync(path.join(dir, 'mcp-private.log'), data, { mode: 0o600 }));
 const client = new Client({ name: 'direct-ai-operator', version: '1' }); await client.connect(transport);
 console.log(JSON.stringify({ ready: true }));
-for await (const line of readline.createInterface({ input: process.stdin })) {
+function output(value) {
+  fs.appendFileSync(path.join(dir, 'operator-private-results.jsonl'), JSON.stringify({ time: new Date().toISOString(), ...value }) + '\n', { mode: 0o600 });
+  console.log(JSON.stringify(value));
+}
+async function handle(line) {
   try {
     const input = JSON.parse(line), params = input.params || {}; let result;
     if (input.method === 'tools/call') {
+      if (params.arguments?.privateArgsFile) {
+        const { privateArgsFile, ...args } = params.arguments;
+        params.arguments = { ...args, ...JSON.parse(fs.readFileSync(privateArgsFile)) };
+      }
       if (params.name === 'ssh_connect' && params.arguments?.codeFile) {
         const { codeFile, ...args } = params.arguments;
         params.arguments = { ...args, code: JSON.parse(fs.readFileSync(codeFile)).code };
@@ -24,7 +32,12 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
     else if (input.method === 'prompts/get') result = await client.getPrompt(params);
     else if (input.method === 'resources/read') result = await client.readResource(params);
     else throw Error('Use an MCP tools, prompts or resource method');
-    console.log(JSON.stringify({ id: input.id, result }));
-  } catch (error) { console.log(JSON.stringify({ error: error.message })); }
+    output({ id: input.id, method: input.method, tool: params.name, result });
+  } catch (error) { output({ error: error.message }); }
 }
+const pending = new Set();
+for await (const line of readline.createInterface({ input: process.stdin })) {
+  const work = handle(line); pending.add(work); work.finally(() => pending.delete(work));
+}
+await Promise.allSettled(pending);
 await client.close();
