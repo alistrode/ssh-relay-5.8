@@ -16,6 +16,7 @@ const $ = (id) => document.getElementById(id),
     unsupported_remote: "远端不支持占用探测，已阻止自动连接",
   };
 let farEnabled = false, nearEnabled = false, pairRevision = 0;
+let startupBusy = false, lastStartup;
 let refreshTask, refreshAgain = false, refreshTimer, logsTask, logsTimer;
 const roleErrors = new Map(), rows = {near:new Map(),far:new Map()};
 const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
@@ -169,9 +170,11 @@ $("saveStartup").onclick = () =>
     message("已保存并核对自启动设置。");
   });
 function showStartup(s) {
-  $("installService").disabled = s.bootInstalled;
-  $("installService").textContent = s.bootInstalled ? "管理员后台已安装" : "首次授权并安装管理员后台";
-  $("serviceStatus").textContent = s.bootInstalled
+  lastStartup = s;
+  ["saveStartup", "autoStart", "startMode"].map($).forEach(c => c.disabled = startupBusy || !!s.effectiveUnknown);
+  $("installService").disabled = startupBusy || !!s.effectiveUnknown || s.bootInstalled;
+  $("installService").textContent = s.effectiveUnknown ? "后台设置暂时无法读取" : s.bootInstalled ? "管理员后台已安装" : "首次授权并安装管理员后台";
+  $("serviceStatus").textContent = s.effectiveUnknown ? "未能读取服务设置，请稍后重新打开界面" : s.bootInstalled
     ? (s.servicesRunning === false ? "服务已安装，当前未运行" : "服务已安装 · 无需重复 UAC")
     : "尚未安装 · Windows 首次安装确认一次 UAC";
   $("autoStart").checked = s.enabled;
@@ -210,11 +213,13 @@ for(const id of ["offer","cancelCode","farToggle","nearToggle","retry","clearLog
   const element=$(id), original=element.onclick;
   element.onclick=async()=>{if(element.disabled)return;element.disabled=true;try{await original();}finally{element.disabled=false;}};
 }
-let startupBusy=false;
-const save=$("saveStartup").onclick;
-$("saveStartup").onclick=async()=>{
-  if(startupBusy)return;startupBusy=true;
-  const controls=["saveStartup","autoStart","startMode","installService"].map($);
-  controls.forEach(c=>c.disabled=true);
-  try{await save();}finally{startupBusy=false;controls.slice(0,3).forEach(c=>c.disabled=false);await window.relay.startup().then(showStartup).catch(e=>message(e.message));}
-};
+for (const id of ["installService", "saveStartup"]) {
+  const element = $(id), original = element.onclick;
+  element.onclick = async () => {
+    if (startupBusy || element.disabled) return;
+    startupBusy = true;
+    if (lastStartup) showStartup(lastStartup);
+    try { await original(); }
+    finally { startupBusy = false; if (lastStartup) showStartup(lastStartup); }
+  };
+}

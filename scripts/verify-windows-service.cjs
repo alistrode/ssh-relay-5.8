@@ -36,6 +36,7 @@ ui=cp.spawn(executable,['--profile-dir',profile,'--no-shortcuts','--remote-debug
 const debug=await until(cdp);
 const evalJS=async expression=>{const r=await debug.call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value};
 await until(async()=>{return await evalJS('document.getElementById("refreshState")?.textContent.includes("后台在线")')});
+await until(async()=>await evalJS('document.getElementById("serviceStatus")?.textContent.includes("服务已安装")'));
 let view=await evalJS('({near:document.getElementById("nearState").textContent,far:document.getElementById("farState").textContent,service:document.getElementById("serviceStatus").textContent,installDisabled:document.getElementById("installService").disabled})');
 assert(view.near.includes('已关闭'));assert(view.far.includes('已关闭'));assert(view.installDisabled);record('packaged_desktop_connects_to_services_and_restores_saved_switches',view);
 for(const role of ['near','far'])assert.equal(read(path.join(profile,role,'agent-runtime.json')).pid,before[role]);
@@ -51,6 +52,12 @@ for(const role of ['near','far'])await request(path.join(profile,role),'/setting
 const restart=cp.spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Restart-Service SSHRelayPro-near,SSHRelayPro-far -ErrorAction Stop"],{encoding:'utf8',timeout:60000});assert.equal(restart.status,0,restart.stderr);
 for(const role of ['near','far']){await until(()=>request(path.join(profile,role),'/status'));const s=await request(path.join(profile,role),'/status');assert.equal(s.settings.enabled,false);}
 record('SCM_restart_keeps_saved_role_choices');
+// Changing desktop login preferences must preserve automatic SYSTEM services.
+const loginOff = await startup.apply(options, {enabled:false, mode:'login'});
+assert(loginOff.bootInstalled);assert(loginOff.servicesRunning);
+const bootAgain = await startup.apply(options, {enabled:true, mode:'boot'});
+assert(bootAgain.bootInstalled);assert(bootAgain.servicesRunning);
+record('login_preferences_preserve_automatic_SYSTEM_services');
  }catch(e){
 const details=[];
 for(const role of ['near','far']) {

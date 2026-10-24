@@ -60,15 +60,15 @@
       </section>
       <section>
         <h2>启动与后台</h2>
-        <div class="row"><button id="installService">首次授权并安装管理员后台</button>
+        <div class="row"><button id="installService" disabled>正在读取后台设置</button>
           <span id="serviceStatus" class="muted">正在检查后台服务</span></div>
         <p class="muted">Windows 首次安装需确认一次 UAC，之后界面与后台自动复用服务，无需每次确认。服务使用 SYSTEM 账户执行操作；两项功能开关分别保存，关闭功能不会删除配对。</p>
         <div class="row">
-          <label><input type="checkbox" id="autoStart" /> 自动启动</label
-          ><select id="startMode">
+          <label><input type="checkbox" id="autoStart" disabled /> 自动启动</label
+          ><select id="startMode" disabled>
             <option value="login">登录后启动界面与后台</option>
             <option value="boot">管理员后台服务，登录后显示界面</option></select
-          ><button id="saveStartup" class="secondary">应用设置</button>
+          ><button id="saveStartup" class="secondary" disabled>应用设置</button>
         </div>
         <p id="startupStatus" class="muted">正在核对系统实际设置</p>
         <p class="muted">
