@@ -4,8 +4,8 @@
 
 - 源码分支：`5.3`
 - 配对修复源码提交：`13ed4ff5fed06860bbc87015ec2739ff14f2d956`
-- 文件：`SSHRelayPro-5.3-win32-x64.zip`（179834743 字节）
-- SHA256：`af21fbf2bac2f37e69ca8c492ea98da3e2367a3982e1b07b340f72fb52bf3f85`
+- 文件：`SSHRelayPro-5.3-win32-x64.zip`（179834805 字节）
+- SHA256：`72c880c108c66fd30df7903391c04739ca0358aa434065c29fb70d07e3a13db1`
 - 保留原 Windows 运行时，更新配对实现及界面；具体文件校验见包内 `PAIRING-FIX.json`。
 
 完整解压后双击 `Start.cmd` 或 `SSHRelayPro.exe`。保留整个文件夹。
