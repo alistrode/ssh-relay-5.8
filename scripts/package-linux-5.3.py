@@ -53,7 +53,7 @@ Linux x86_64，glibc 2.28+。云端无桌面可使用全部后台入口；桌面
 ./Start.sh
 ./CLI.sh devices
 ./CLI.sh connect --args-stdin
-# 在标准输入提供 {"code":"一次性配对码","waitMs":20000}
+# 在标准输入提供 {"code":"配对码","waitMs":20000}
 ./CLI.sh status
 ./MCP.sh
 # 有桌面时：
