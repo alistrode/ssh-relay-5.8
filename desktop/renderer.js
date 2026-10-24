@@ -133,7 +133,7 @@ $("offer").onclick = () =>
     const p = await window.relay.call("far", "/pair/create", {});
     const revision = ++pairRevision;
     $("pairCode").textContent = p.code;
-    message("配对码 24 小时内可供多个近端配对；生成新码或取消会使旧码失效。不要公开分享。");
+    message("每个配对码自生成起独立有效 24 小时，可重复配对；生成新码不影响旧码。不要公开分享。");
     setTimeout(
       () => { if (revision === pairRevision) $("pairCode").textContent = ""; },
       Math.max(0, p.expiresAt - Date.now()),
@@ -195,8 +195,6 @@ refresh();
 
 $("copyCode").onclick = () =>
   action(() => window.relay.copyCode($("pairCode").textContent));
-$("cancelCode").onclick = () =>
-  action(() => window.relay.call("far", "/pair/cancel", {}));
 $("autoStart").onchange = () => $("saveStartup").click();
 $("startMode").onchange = () => {
   if ($("autoStart").checked) $("saveStartup").click();

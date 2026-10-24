@@ -144,7 +144,10 @@ class Agent {
       apiVersion: 1,
       profileId: this.identity.deviceId,
     });
-    if (this.role === "far") this.initFar();
+    if (this.role === "far") {
+      this.initFar();
+      await this.restorePairInvitations();
+    }
     this.log("agent_started", { deviceId: this.identity.deviceId });
     this.timer = setInterval(() => this.tick(), 500);
     this.tick();
@@ -236,12 +239,20 @@ class Agent {
       throw Error("Pairing host fingerprint mismatch");
     return info;
   }
-  async createPair() {
+  async restorePairInvitations() {
+    const file = this.file("pair-invitations-private.json");
+    const records = read(file, []).filter(item => item.expiresAt > Date.now());
+    write(file, records);
+    for (const invitation of records) await this.createPair(invitation);
+  }
+  async createPair(invitation) {
     if (this.role !== "far")
       throw Error("Only a far end can create a pairing code");
-    this.offer?.cancel();
-    this.offer = await pairing.offer({
+    this.pairOffers ||= new Set();
+    for (const previous of this.pairOffers) if (!previous.active) this.pairOffers.delete(previous);
+    const offer = await pairing.offer({
       reusable: true,
+      invitation,
       broker: this.broker,
       info: { ...this.info, label: this.settings.label },
       authorize: async (who) => {
@@ -256,8 +267,16 @@ class Agent {
       },
       log: (event, details) => this.log(event, details),
     });
-    this.log("pair_offer_created", { expiresAt: this.offer.expiresAt });
-    return { code: this.offer.code, expiresAt: this.offer.expiresAt };
+    this.pairOffers.add(offer);
+    this.offer = offer;
+    if (!invitation) {
+      const file = this.file("pair-invitations-private.json");
+      const records = read(file, []).filter(item => item.expiresAt > Date.now());
+      records.push({ code: offer.code, expiresAt: offer.expiresAt });
+      write(file, records);
+    }
+    this.log("pair_offer_created", { expiresAt: offer.expiresAt });
+    return { code: offer.code, expiresAt: offer.expiresAt };
   }
   async joinPair(code) {
     if (this.role !== "near")
@@ -968,7 +987,7 @@ class Agent {
       } else if (req.method === "POST" && req.url === "/pair/create")
         value = await this.createPair();
       else if (req.method === "POST" && req.url === "/pair/cancel") {
-        this.offer?.cancel();
+        throw Error("Pairing codes remain valid for their full 24-hour lifetime");
       } else if (req.method === "POST" && req.url === "/pair/connect")
         value = await this.joinPair(data.code);
       else if (req.method === "POST" && req.url === "/controller") {
@@ -1111,7 +1130,7 @@ class Agent {
     this.stopping = true;
     this.taskManager?.close();
     clearInterval(this.timer);
-    this.offer?.cancel();
+    for (const offer of this.pairOffers || []) offer.cancel();
     for (const t of this.targets.values()) this.invalidateTarget(t);
     for (const key of this.children.keys()) this.stopWorker(key);
     this.log("agent_stopped");

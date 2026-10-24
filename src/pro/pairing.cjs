@@ -61,11 +61,13 @@ function open(key, value, aad) {
     ]).toString(),
   );
 }
-async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, reusable = false }) {
+async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, reusable = false, invitation }) {
   await opaque.ready;
-  const room = random(10),
-    password = random(10),
-    code = room + "-" + password,
+  const code = invitation?.code || random(10) + "-" + random(10);
+  if (!new RegExp("^[" + ALPHABET + "]{10}-[" + ALPHABET + "]{10}$").test(code) ||
+      (invitation && (!Number.isSafeInteger(invitation.expiresAt) || invitation.expiresAt <= Date.now())))
+    throw Error("Invalid or expired pairing invitation");
+  const [room, password] = code.split("-"),
     topic = "ssh-public-relay/pro-pair/v1/" + room,
     setup = opaque.server.createSetup();
   const reg = opaque.client.startRegistration({ password });
@@ -99,8 +101,8 @@ async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, 
     clearTimeout(receiptTimer);
     client.end(true);
   };
-  const expiresAt = Date.now() + ttl,
-    timer = setTimeout(cancel, ttl);
+  const expiresAt = invitation?.expiresAt ?? Date.now() + ttl,
+    timer = setTimeout(cancel, Math.max(0, expiresAt - Date.now()));
   timer.unref();
   client.on("error", () => log?.("pair_broker_error"));
   client.on("connect", () => client.subscribe(topic, { qos: 1 }));
