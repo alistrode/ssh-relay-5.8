@@ -10,15 +10,6 @@ diagnostic.record("main_enter", { pid: process.pid, platform: process.platform }
 // Monitor without swallowing fatal exceptions or changing Node's exit behavior.
 process.on("uncaughtExceptionMonitor", () => diagnostic.record("uncaught_exception"));
 process.on("exit", code => diagnostic.record("process_exit", { exitCode: code }));
-if (process.platform === "win32") {
-  const token = require("node:child_process").spawnSync("whoami.exe", ["/groups", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true, timeout: 10000 });
-  const integrity = /S-1-16-(\d+)/.exec(token.stdout || "");
-  if (token.error || token.status !== 0 || !integrity || Number(integrity[1]) < 8192) {
-    diagnostic.record(integrity ? "startup_permission_rejected" : "permission_check_failed");
-    process.stderr.write("Windows startup token is unavailable or low-integrity. Open Start.cmd from a normal desktop terminal.\n");
-    process.exit(2);
-  }
-}
 const {
   app,
   BrowserWindow,
@@ -72,13 +63,44 @@ function roleDirectory(role) {
     ? path.resolve(arg("--far-state-dir")) : path.join(profile, role);
 }
 function request(role, route, body) {
-  return agentClient.request(roleDirectory(role), route, body);
+  return agentClient.request(roleDirectory(role), route, body,
+    body === undefined ? { timeoutMs: 5000 } : {});
 }
 async function ensure(role) {
   await agentClient.ensureAgent({
     dir: roleDirectory(role), role,
+    requireService: process.platform === "win32",
     allowCloudSelfTest: args.includes("--allow-cloud-self-test"),
   });
+}
+const statusPending = new Map(), roleDisabled = new Map(), recoverAfter = new Map();
+function statusRequest(role) {
+  if (!statusPending.has(role)) {
+    const task = request(role, "/status").catch(async error => {
+      const transport = ["ECONNREFUSED", "ECONNRESET", "ENOENT"].includes(error.code) || ["Agent is not running", "Agent request timeout"].includes(error.message);
+      if (!transport || args.includes("--observe-only") || Date.now() < (recoverAfter.get(role) || 0)) throw error;
+      recoverAfter.set(role, Date.now() + 15000);
+      await ensure(role);
+      return request(role, "/status");
+    }).then(value => {
+      roleDisabled.set(role, !value.settings.enabled);
+      return value;
+    }).finally(() => statusPending.delete(role));
+    statusPending.set(role, task);
+  }
+  return statusPending.get(role);
+}
+let prompting = false;
+const seenAdmission = new Set();
+async function checkAdmission(status) {
+  if (prompting || quitting || args.includes("--observe-only")) return;
+  const pending = status.admission?.pending?.find(p => p.expiresAt > Date.now() && !seenAdmission.has(p.requestId));
+  if (!pending) return;
+  prompting = true; seenAdmission.add(pending.requestId);
+  if (seenAdmission.size > 128) seenAdmission.delete(seenAdmission.values().next().value);
+  try { show(); await switchPrompt(pending, status); }
+  catch { diagnostic.record("switch_prompt_unavailable"); }
+  finally { prompting = false; }
 }
 function show() {
   if (window) {
@@ -140,7 +162,7 @@ function create() {
       {
         label: "关闭所有连接并退出",
         click: async () => {
-          const managed = startup.status(options()).bootInstalled;
+          const managed = (await startup.statusAsync(options())).bootInstalled;
           await Promise.allSettled(
             ["near", "far"].map((r) => managed
               ? request(r, "/settings", {enabled:false}) : request(r, "/shutdown", {})),
@@ -180,8 +202,9 @@ ipcMain.handle("relay", async (event, role, route, body) => {
     route !== "/logs"
   )
     throw Error("Read-only validation window");
-  if (!args.includes("--observe-only")) await ensure(role);
-  const result = await request(role, route, body);
+  const result = route === "/status" ? await statusRequest(role) : await request(role, route, body);
+  if (role === "far" && route === "/status") void checkAdmission(result);
+  if (route === "/settings" && typeof body?.enabled === "boolean") roleDisabled.set(role, !body.enabled);
   if (route === "/logs/clear") require("../src/pro/manual-logs.cjs").clearLogs(diagnosticDirectory);
   return result;
 });
@@ -191,12 +214,18 @@ ipcMain.handle("pair-copy", async (event, code) => {
   await clipboard.writeText(code);
   return true;
 });
-ipcMain.handle("startup-status", () => startup.status(options()));
+ipcMain.handle("startup-status", (event) => {
+  if (event.sender !== window?.webContents) throw Error("Invalid sender");
+  return startup.statusAsync(options());
+});
+let startupChanging = false;
 ipcMain.handle("startup-set", async (event, value) => {
   if (event.sender !== window?.webContents) throw Error("Invalid sender");
-  const previous = startup.status(options());
-  if (value.enabled && value.mode === "boot" && previous.bootInstalled && previous.servicesRunning) return previous;
-  const handover = process.platform === "win32" && value.enabled && value.mode === "boot";
+  if (startupChanging) throw Error("启动设置正在保存，请稍候");
+  startupChanging = true;
+  try {
+  const previous = await startup.statusAsync(options());
+  const handover = process.platform === "win32" && value.enabled && value.mode === "boot" && !previous.bootInstalled;
   if (handover) {
     await Promise.allSettled(["near", "far"].map(role => request(role,"/shutdown",{})));
     const until = Date.now() + 15000;
@@ -210,26 +239,31 @@ ipcMain.handle("startup-set", async (event, value) => {
     if (handover) await Promise.all(["near","far"].map(ensure));
     return result;
   } catch (error) {
-    if (handover && !startup.status(options()).bootInstalled)
+    if (handover && !(await startup.statusAsync(options())).bootInstalled)
       await Promise.allSettled(["near","far"].map(ensure));
     throw error;
   }
+  } finally { startupChanging = false; }
 });
 ipcMain.handle("logs-export", async () => {
   const d = await dialog.showSaveDialog(window, {
     defaultPath: "ssh-relay-pro-diagnostics-" + Date.now() + ".json.gz",
   });
-  if (!d.canceled) diagnostics.exportDiagnostics(diagnosticDirectory, d.filePath);
+  if (!d.canceled) await new Promise((resolve, reject) => {
+    cp.execFile(process.execPath, [path.join(root, "src/pro/gui-diagnostics.cjs"), diagnosticDirectory, d.filePath],
+      { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, windowsHide: true, timeout: 30000 },
+      error => error ? reject(Error("日志导出失败，请保留本地日志")) : resolve());
+  });
   return !d.canceled;
 });
 app.on("before-quit", () => { diagnostic.record("before_quit"); quitting = true; });
-async function switchPrompt(pending) {
+async function switchPrompt(pending, snapshot) {
   const label = String(pending.label || "已授权近端").replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g, "").slice(0,80);
   const cancel = new AbortController();
   const timer = setTimeout(() => cancel.abort(), Math.max(1, pending.expiresAt - Date.now()));
   try {
     diagnostic.record("switch_prompt_shown");
-    const status=await request("far","/status");
+    const status=snapshot || await request("far","/status");
     const connected=(status.admission?.connectedControllerIds || []).slice(0,5);
     const devices=connected.map(id=>status.devices.find(d=>d.id===id) || {id,label:id.slice(-8)});
     const response = await dialog.showMessageBox({
@@ -262,26 +296,28 @@ app.whenReady().then(async () => {
       write(file,{enabled:false,autoConnect:true,label:os.hostname(),defaultDevice:null});
   }
   create();
-  if (!args.includes("--observe-only")) {
-    let prompting = false;
-    const seen = new Set();
-    const checkSwitch = async () => {
-      if (prompting || quitting) return;
+  let pollTimer;
+  const poll = async () => {
+    if (quitting) return;
+    const visible = window && window.isVisible();
+    if (visible) { pollTimer = setTimeout(poll, 3000); return; }
+    await Promise.allSettled(["near", "far"].map(async role => {
+      if (!visible && (role === "near" || roleDisabled.get(role))) return;
       try {
-        const status = await request("far", "/status");
-        if (status.admission?.mode === "concurrent" && status.admission.connectedControllerIds?.length < 5) return;
-        const pending = status.admission?.pending?.find(p => p.expiresAt > Date.now() && !seen.has(p.requestId));
-        if (!pending) return;
-        prompting = true; seen.add(pending.requestId);
-        if (seen.size > 128) seen.delete(seen.values().next().value);
-        show();
-        await switchPrompt(pending);
-      } catch { diagnostic.record("switch_prompt_unavailable"); }
-      finally { prompting = false; }
-    };
-    const switchTimer = setInterval(checkSwitch, 1500);
-    app.once("will-quit", () => clearInterval(switchTimer));
-  }
+        const status = await statusRequest(role);
+        if (!visible && role === "far") await checkAdmission(status);
+      } catch { /* The visible renderer displays role-specific errors. */ }
+    }));
+    if (!quitting) pollTimer = setTimeout(poll, 3000);
+  };
+  window.on("show", () => window.webContents.send("relay-visible"));
+  app.once("will-quit", () => clearTimeout(pollTimer));
+  // Renderer owns visible refreshes. Main polls only while hidden for admission.
+  const hiddenPoll = async () => {
+    if (window?.isVisible()) { pollTimer = setTimeout(hiddenPoll, 3000); return; }
+    await poll();
+  };
+  pollTimer = setTimeout(hiddenPoll, 3000);
   let diagnosticTimer;
   if (args.includes("--diagnostic-check")) {
     if (!args.includes("--observe-only") || !args.includes("--no-shortcuts")) throw Error("Diagnostic check requires an isolated read-only launch");
@@ -296,7 +332,7 @@ app.whenReady().then(async () => {
     !args.includes("--observe-only")
   )
     try {
-      require("./shortcuts.cjs").install(options());
+      await require("./shortcuts.cjs").install(options());
     } catch (error) {
       console.error("Shortcut: " + error.message);
     }
@@ -423,10 +459,10 @@ app.whenReady().then(async () => {
             'document.getElementById("startMode").value="login";document.getElementById("autoStart").checked=true;document.getElementById("autoStart").dispatchEvent(new Event("change"));true',
           );
           for (let i = 0; i < 40; i++) {
-            if (startup.status(options()).enabled) break;
+            if ((await startup.statusAsync(options())).enabled) break;
             await new Promise((r) => setTimeout(r, 250));
           }
-          if (!startup.status(options()).loginInstalled)
+          if (!(await startup.statusAsync(options())).loginInstalled)
             throw Error(
               "Login startup was not registered in isolated XDG profile",
             );
@@ -445,10 +481,10 @@ app.whenReady().then(async () => {
             'document.getElementById("autoStart").checked=false;document.getElementById("autoStart").dispatchEvent(new Event("change"));true',
           );
           for (let i = 0; i < 40; i++) {
-            if (!startup.status(options()).enabled) break;
+            if (!(await startup.statusAsync(options())).enabled) break;
             await new Promise((r) => setTimeout(r, 250));
           }
-          if (startup.status(options()).loginInstalled)
+          if ((await startup.statusAsync(options())).loginInstalled)
             throw Error("Isolated login startup was not removed");
           result.loginStartupRemembered = true;
           result.osBootRestartTested = false;

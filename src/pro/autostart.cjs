@@ -11,6 +11,13 @@ const quote = (s) =>
   '"';
 const shell = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 const ps = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+function run(command, args, options = {}) {
+  return new Promise(resolve => {
+    cp.execFile(command, args, { ...options, maxBuffer: 2 * 1024 * 1024 }, (error, stdout, stderr) => {
+      resolve({ stdout, stderr, status: error ? (typeof error.code === "number" ? error.code : -1) : 0, error });
+    });
+  });
+}
 function windowsElevationCommand(body) {
   const encoded = Buffer.from(body, "utf16le").toString("base64");
   return (
@@ -100,6 +107,56 @@ function status(options) {
   }
   return { ...settings, supported: false };
 }
+async function statusAsync(options) {
+  const { profile } = options,
+    settings = read(path.join(profile, "startup.json"), {
+      enabled: false,
+      mode: "login",
+    });
+  if (process.platform === "linux") {
+    const login = path.join(
+      process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
+      "autostart/ssh-relay-pro.desktop",
+    );
+    const checks = await Promise.all(["near", "far"].map(async (role) =>
+      (await run(
+          "systemctl",
+          [
+            "is-enabled",
+            "ssh-relay-pro-" + role + "-" + process.getuid() + ".service",
+          ],
+          { encoding: "utf8", timeout: 5000 },
+        )).stdout?.trim(),
+    ));
+    return {
+      ...settings,
+      loginInstalled: fs.existsSync(login),
+      bootInstalled: checks.every((v) => v === "enabled"),
+      supported: true,
+    };
+  }
+  if (process.platform === "win32") {
+    const r = await run(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(
+          "$env:PSModulePath=$PSHOME+'\\Modules';$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro.lnk';$a=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-near'\" -ErrorAction SilentlyContinue;$b=Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-far'\" -ErrorAction SilentlyContinue;@{loginInstalled=(Test-Path $p);bootInstalled=($a.StartMode -eq 'Auto' -and $b.StartMode -eq 'Auto');servicesRunning=($a.State -eq 'Running' -and $b.State -eq 'Running')}|ConvertTo-Json",
+          "utf16le",
+        ).toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 20000 },
+    );
+    try {
+      return { ...settings, ...JSON.parse(r.stdout), supported: true };
+    } catch {
+      return { ...settings, supported: true, effectiveUnknown: true };
+    }
+  }
+  return { ...settings, supported: false };
+}
 async function apply(options, { enabled, mode }) {
   if (typeof enabled !== "boolean" || !["login", "boot"].includes(mode))
     throw Error("Invalid autostart setting");
@@ -111,7 +168,7 @@ async function apply(options, { enabled, mode }) {
       "autostart/ssh-relay-pro.desktop",
     );
 
-    if (mode === "boot" || status(options).bootInstalled) {
+    if (mode === "boot" || (await statusAsync(options)).bootInstalled) {
       const stage = folder(
           path.join(
             profile,
@@ -144,7 +201,7 @@ async function apply(options, { enabled, mode }) {
             shell(name),
         );
       text(path.join(stage, "install.sh"), script.join("\n") + "\n");
-      const r = cp.spawnSync(
+      const r = await run(
         "pkexec",
         ["/bin/sh", path.join(stage, "install.sh")],
         { encoding: "utf8", timeout: 120000 },
@@ -181,13 +238,14 @@ async function apply(options, { enabled, mode }) {
           ps(path.join(appRoot, "assets/relay.ico") + ",0") +
           ";$s.Save()"
         : "if(Test-Path $p){Remove-Item -LiteralPath $p}");
-    if (mode === "boot" || status(options).bootInstalled) {
+    // Desktop login preferences must not disable or reinstall the SYSTEM services.
+    if (enabled && mode === "boot" && !(await statusAsync(options)).bootInstalled) {
       const stage = folder(path.join(profile, "services"));
       const winsw = path.join(appRoot, "vendor/WinSW-x64.exe");
       if (!fs.existsSync(winsw))
         throw Error("Bundled Windows service host missing");
       script = "$ErrorActionPreference='Stop';";
-      const identity = cp.spawnSync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding:"utf8", windowsHide:true, timeout:10000 });
+      const identity = await run("whoami.exe", ["/user", "/fo", "csv", "/nh"], { encoding:"utf8", windowsHide:true, timeout:10000 });
       const ownerSid = /S-1-5-21-(?:\d+-){2}\d+-\d+/.exec(identity.stdout || "")?.[0];
       if (!ownerSid) throw Error("Cannot verify the current Windows account");
       // Both the desktop owner and SYSTEM must be able to use this one profile.
@@ -234,7 +292,7 @@ async function apply(options, { enabled, mode }) {
       } catch {}
       try { fs.unlinkSync(failure); } catch {}
       script = windowsElevationCommand(installBody);
-      const r = cp.spawnSync(
+      const r = await run(
         "powershell.exe",
         [
           "-NoProfile",
@@ -252,7 +310,7 @@ async function apply(options, { enabled, mode }) {
     }
     script = loginScript;
     if (script) {
-      const r = cp.spawnSync(
+      const r = await run(
         "powershell.exe",
         [
           "-NoProfile",
@@ -271,7 +329,7 @@ async function apply(options, { enabled, mode }) {
     mode,
     changedAt: Date.now(),
   });
-  return status(options);
+  return statusAsync(options);
 }
 module.exports = {
   linuxUnit,
@@ -279,5 +337,6 @@ module.exports = {
   linuxLogin,
   windowsElevationCommand,
   status,
+  statusAsync,
   apply,
 };

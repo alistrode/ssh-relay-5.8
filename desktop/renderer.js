@@ -15,142 +15,103 @@ const $ = (id) => document.getElementById(id),
     slot_paused: "五台名额已满，连接已暂停",
     unsupported_remote: "远端不支持占用探测，已阻止自动连接",
   };
-let farEnabled = false,
-  nearEnabled = false,
-  busy = false,
-  pairRevision = 0;
-function message(text) {
-  $("message").textContent = text;
-  $("message").style.display = "block";
-}
+let farEnabled = false, nearEnabled = false, pairRevision = 0;
+let refreshTask, refreshAgain = false, refreshTimer, logsTask, logsTimer;
+const roleErrors = new Map(), rows = {near:new Map(),far:new Map()};
+const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
+function message(value) { text($("message"), value); $("message").style.display = "block"; }
 async function action(fn) {
-  try {
-    await fn();
-    await refresh();
-  } catch (e) {
-    message(e.message);
-  }
+  try { await fn(); await refresh(); }
+  catch (e) { message(e.message.includes("timeout") ? "操作结果待确认，请查看最新连接状态。" : e.message); await refresh(); }
 }
-function button(text, fn) {
-  const b = document.createElement("button");
-  b.className = "secondary";
-  b.textContent = text;
-  b.onclick = () => action(fn);
-  return b;
+function button(label, fn) {
+  const b=document.createElement("button"); b.className="secondary"; b.textContent=label;
+  b.onclick=async()=>{
+    const group=b.closest(".device") || b.parentElement;
+    const controls=[...group.querySelectorAll("button")];
+    if(controls.some(c=>c.dataset.pending))return;
+    const previous=controls.map(c=>c.disabled);
+    controls.forEach(c=>{c.dataset.pending="1";c.disabled=true;});
+    try { await action(fn); }
+    finally { controls.forEach((c,i)=>{delete c.dataset.pending;c.disabled=previous[i];}); }
+  }; return b;
 }
-async function refresh() {
-  if (busy) return;
-  busy = true;
-  const observedPairRevision = pairRevision;
-  try {
-    const [near, far] = await Promise.all([
-      window.relay.call("near", "/status"),
-      window.relay.call("far", "/status"),
-    ]);
-    $("refreshState").textContent =
-      "后台在线 · " + new Date().toLocaleTimeString();
-    farEnabled = far.settings.enabled;
-    nearEnabled = near.settings.enabled;
-    if (!far.pairing?.active && observedPairRevision === pairRevision)
-      $("pairCode").textContent = "";
-    $("farState").textContent = farEnabled ? "已允许连接 · " + (states[far.state] || far.state) : "已关闭 · 本机不接受连接";
-    $("farToggle").textContent = farEnabled ? "关闭本机被连接" : "允许连接本机";
-    $("nearToggle").textContent = nearEnabled ? "关闭连接功能" : "启用连接功能";
-    $("nearState").textContent = nearEnabled ? "已开启 · 最多同时连接五台电脑，断开互不影响" : "已关闭 · 配对记录保留";
-    $("nearControls").hidden = !nearEnabled;
-    $("farControls").hidden = !farEnabled;
-    $("nearCount").textContent = near.devices.filter(d => d.state === "online").length + " / 5 台已连接";
-    $("farCount").textContent = (far.admission?.connectedControllerIds?.length || 0) + " / 5 台已连接";
-    $("devices").replaceChildren();
-    for (const d of near.devices) {
-      const row = document.createElement("div");
-      row.className = "device";
-      const name = document.createElement("strong");
-      name.textContent = d.label;
-      const state = document.createElement("span");
-      state.textContent = states[d.state] || d.state;
-      const info = document.createElement("p");
-      info.textContent =
-        d.hostname +
-        " · " +
-        d.target +
-        " · " +
-        d.id +
-        (d.retryAt > Date.now()
-          ? " · " + Math.ceil((d.retryAt - Date.now()) / 1000) + " 秒后重试"
-          : "") +
-        (near.settings.defaultDevice === d.id ? " · 默认电脑" : "");
-      row.append(
-        name,
-        state,
-        info,
-        button(d.enabled ? "断开此电脑" : "连接此电脑", () =>
-          window.relay.call("near", "/device", {
-            id: d.id,
-            enabled: !d.enabled,
-          }),
-        ),
-        button("设为默认", () =>
-          window.relay.call("near", "/device", {
-            id: d.id,
-            default: true,
-            enabled: true,
-          }),
-        ),
-        button("立即重试", () =>
-          window.relay.call("near", "/device", { id: d.id, retry: true }),
-        ),
-        button("取消配对", async () => {
-          if (confirm("移除这台电脑的本地配对记录？"))
-            await window.relay.call("near", "/unpair", { id: d.id });
-        }),
-      );
-      $("devices").append(row);
+function renderRows(role, status) {
+  const container=$(role==="near"?"devices":"authorized"), map=rows[role];
+  const ids=new Set(status.devices.map(d=>d.id));
+  for(const [id,entry] of map)if(!ids.has(id)){entry.row.remove();map.delete(id);}
+  if(status.devices.length)container.querySelector(".empty-devices")?.remove();
+  for(const d of status.devices){
+    let entry=map.get(d.id);
+    if(!entry){
+      const row=document.createElement("div");row.className="device";
+      const name=document.createElement("strong"),state=document.createElement("span"),info=document.createElement("p");
+      entry={row,name,state,info,d}; row.append(name,state,info);
+      const call=(route,body)=>window.relay.call(role,route,{id:d.id,...body});
+      entry.toggle=button("",()=>call(role==="near"?"/device":"/controller",{enabled:!entry.d.enabled}));
+      row.append(entry.toggle);
+      if(role==="near")row.append(button("设为默认",()=>call("/device",{default:true,enabled:true})),button("立即重试",()=>call("/device",{retry:true})));
+      row.append(button(role==="near"?"取消配对":"撤销授权",async()=>{
+        if(confirm(role==="near"?"移除这台电脑的本地配对记录？":"撤销此近端授权并断开现有远端会话？"))await call("/unpair",{});
+      }));
+      map.set(d.id,entry);container.append(row);
     }
-    if (!near.devices.length)
-      $("devices").textContent = "尚未配对电脑。配对成功后会自动保存在这里。";
-    $("authorized").replaceChildren();
-    for (const d of far.devices) {
-      const p = document.createElement("p");
-      p.className = "device";
-      p.textContent = d.label + " · " + (d.connected ? "已连接" : d.enabled ? "等待连接" : "已暂停") + " · " + d.id.slice(-8);
-      p.append(
-        button(d.enabled ? "断开此连接" : "允许重新连接", () =>
-          window.relay.call("far", "/controller", {id:d.id,enabled:!d.enabled})),
-        button("撤销授权", async () => {
-          if (confirm("撤销此近端授权并断开现有远端会话？"))
-            await window.relay.call("far", "/unpair", { id: d.id });
-        }),
-      );
-      $("authorized").append(p);
-    }
-    const logs = await Promise.all(
-      ["near", "far"].map(async (role) => {
-        const result = await window.relay.call(role, "/logs");
-        return result.events.map((event) => ({ ...event, role }));
-      }),
-    );
-    $("logs").textContent = logs
-      .flat()
-      .sort((a, b) => a.time.localeCompare(b.time))
-      .slice(-35)
-      .map((x) =>
-        [
-          x.time,
-          x.role === "near" ? "近端" : "远端",
-          x.event,
-          x.deviceId || "",
-          x.reason || "",
-          x.delayMs !== undefined ? "重试等待 " + x.delayMs + " ms" : "",
-        ].join(" "),
-      )
-      .join("\n");
-  } catch (e) {
-    $("refreshState").textContent = "后台恢复中";
-  } finally {
-    busy = false;
+    entry.d=d;text(entry.name,d.label);
+    text(entry.state,role==="near"?(states[d.state]||d.state):(d.connected?"已连接":d.enabled?"等待连接":"已暂停"));
+    text(entry.info,role==="near"?`${d.hostname} · ${d.target} · ${d.id}${status.settings.defaultDevice===d.id?" · 默认电脑":""}`:d.id.slice(-8));
+    text(entry.toggle,role==="near"?(d.enabled?"断开此电脑":"连接此电脑"):(d.enabled?"断开此连接":"允许重新连接"));
   }
+  if(!status.devices.length && !container.querySelector(".empty-devices")){const empty=document.createElement("p");empty.className="empty-devices";empty.textContent="尚未配对电脑。配对记录会保存在这里。";container.append(empty);}
 }
+async function refreshRole(role) {
+  const revision=pairRevision;
+  try {
+    const value=await window.relay.call(role,"/status");roleErrors.delete(role);
+    if(role==="near"){
+      nearEnabled=value.settings.enabled;
+      text($("nearState"),nearEnabled?"已开启 · 最多同时连接五台电脑，断开互不影响":"已关闭 · 配对记录保留");
+      text($("nearToggle"),nearEnabled?"关闭连接功能":"启用连接功能");
+      $("nearControls").hidden=!nearEnabled;
+      text($("nearCount"),value.devices.filter(d=>d.state==="online").length+" / 5 台已连接");
+    } else {
+      farEnabled=value.settings.enabled;
+      if(!value.pairing?.active && revision===pairRevision)text($("pairCode"),"");
+      text($("farState"),farEnabled?"已允许连接 · "+(states[value.state]||value.state):"已关闭 · 本机不接受连接");
+      text($("farToggle"),farEnabled?"关闭本机被连接":"允许连接本机");
+      $("farControls").hidden=!farEnabled;
+      text($("farCount"),(value.admission?.connectedControllerIds?.length||0)+" / 5 台已连接");
+    }
+    renderRows(role,value);
+  } catch(e){roleErrors.set(role,e.message);text($(role+"State"),"状态读取失败，保留上次显示："+e.message);}
+}
+function refresh() {
+  refreshAgain=true;
+  if(refreshTask)return refreshTask;
+  clearTimeout(refreshTimer);
+  refreshTask=(async()=>{
+    do {refreshAgain=false;await Promise.all([refreshRole("near"),refreshRole("far")]);}while(refreshAgain);
+    text($("refreshState"),roleErrors.size?[...roleErrors].map(([r,e])=>(r==="near"?"连接其他电脑":"允许连接本机")+"："+e).join("；"):"后台在线");
+  })().finally(()=>{
+    refreshTask=null;
+    if(!document.hidden)refreshTimer=setTimeout(refresh,3000);
+  });return refreshTask;
+}
+async function refreshLogs(){
+  clearTimeout(logsTimer);
+  if(logsTask || document.hidden || !$("logPanel").open)return;
+  logsTask=(async()=>{
+    const values=await Promise.allSettled(["near","far"].map(async role=>{
+      const result=await window.relay.call(role,"/logs");return result.events.map(e=>({...e,role}));
+    }));
+    const lines=values.flatMap((r,i)=>r.status==="fulfilled"?r.value:[{time:"",role:i?"far":"near",event:"日志读取失败："+r.reason.message}]);
+    text($("logs"),lines.sort((a,b)=>a.time.localeCompare(b.time)).slice(-35).map(x=>[x.time,x.role==="near"?"近端":"远端",x.event,x.deviceId||"",x.reason||""].join(" ")).join("\n"));
+  })().finally(()=>{logsTask=null;if(!document.hidden && $("logPanel").open)logsTimer=setTimeout(refreshLogs,5000);});
+  return logsTask;
+}
+function resume(){if(!document.hidden){refresh();refreshLogs();}else{clearTimeout(refreshTimer);clearTimeout(logsTimer);}}
+document.addEventListener("visibilitychange",resume);
+window.relay.onVisible(resume);
+$("logPanel").ontoggle=()=>{$("logPanel").open?refreshLogs():clearTimeout(logsTimer);};
 $("pair").onsubmit = (e) => {
   e.preventDefault();
   action(async () => {
@@ -169,11 +130,11 @@ $("pair").onsubmit = (e) => {
 $("offer").onclick = () =>
   action(async () => {
     const p = await window.relay.call("far", "/pair/create", {});
-    pairRevision++;
+    const revision = ++pairRevision;
     $("pairCode").textContent = p.code;
     message("配对码五分钟内有效，只使用一次；不要公开分享。");
     setTimeout(
-      () => ($("pairCode").textContent = ""),
+      () => { if (revision === pairRevision) $("pairCode").textContent = ""; },
       Math.max(0, p.expiresAt - Date.now()),
     );
   });
@@ -227,7 +188,7 @@ window.relay
   .then(showStartup)
   .catch((e) => message(e.message));
 refresh();
-setInterval(refresh, 3000);
+
 
 $("copyCode").onclick = () =>
   action(() => window.relay.copyCode($("pairCode").textContent));
@@ -244,3 +205,16 @@ $("clearLogs").onclick = () => action(async () => {
   await window.relay.call("far", "/logs/clear", {});
   message("已清理连接日志；任务状态和请求记录保留。");
 });
+
+for(const id of ["offer","cancelCode","farToggle","nearToggle","retry","clearLogs","export"]){
+  const element=$(id), original=element.onclick;
+  element.onclick=async()=>{if(element.disabled)return;element.disabled=true;try{await original();}finally{element.disabled=false;}};
+}
+let startupBusy=false;
+const save=$("saveStartup").onclick;
+$("saveStartup").onclick=async()=>{
+  if(startupBusy)return;startupBusy=true;
+  const controls=["saveStartup","autoStart","startMode","installService"].map($);
+  controls.forEach(c=>c.disabled=true);
+  try{await save();}finally{startupBusy=false;controls.slice(0,3).forEach(c=>c.disabled=false);await window.relay.startup().then(showStartup).catch(e=>message(e.message));}
+};

@@ -5,7 +5,6 @@ const http = require("node:http"),
   os = require("node:os"),
   cp = require("node:child_process"),
   { folder, read } = require("./store.cjs");
-const { assertPrivateState } = require("./private-state.cjs");
 function request(dir, route, body, options = {}) {
   return new Promise((resolve, reject) => {
     if (typeof route !== "string" || !route.startsWith("/") || route.startsWith("//") ||
@@ -20,7 +19,6 @@ function request(dir, route, body, options = {}) {
     }
     let runtime;
     try {
-      assertPrivateState(dir);
       runtime = read(path.join(dir, "agent-runtime.json"));
       if (!runtime) throw Error("Agent is not running");
       if (!Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 ||
@@ -107,7 +105,6 @@ async function health(dir, role) {
 }
 async function startAgent(options, dir) {
   const role = options.role || "near";
-  assertPrivateState(dir);
   const check = async () => {
     try { await health(dir, role); return true; }
     catch (error) {
@@ -120,7 +117,7 @@ async function startAgent(options, dir) {
   };
   if (await check()) return;
   const startup = read(path.join(path.dirname(dir), "startup.json"), {});
-  if (process.platform === "win32" && startup.enabled && startup.mode === "boot") {
+  if (process.platform === "win32" && (options.requireService || (startup.enabled && startup.mode === "boot"))) {
     // Never silently replace the elevated service with an ordinary user Agent.
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {

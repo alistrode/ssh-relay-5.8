@@ -1,47 +1,56 @@
-name: Publish the verified 5.1 single-folder Windows package
+name: Package and publish the current 5.1 Windows folder
 on:
   workflow_dispatch:
 permissions:
-  actions: read
   contents: write
 jobs:
-  upload:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Fetch only the completed native validation artifact
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.0'
+      - name: Prepare production dependencies
+        run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+      - name: Fetch pinned runtime and service host
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download 39809372554 --repo "$GITHUB_REPOSITORY" --name unified-windows-5.1 --dir work/verified
-      - name: Validate the one-folder runtime and prepare only that ZIP
         run: |
-          mkdir -p work/upload
-          cp work/verified/packaged/SSHRelayPro-5.1-win32-x64.zip work/upload/SSHRelayPro-5.1-Windows-x64.zip
-          echo 'bf2c763cec38131ec9b4caf24e38eb214296e11014dc1e7255fa2844a75a1560  work/upload/SSHRelayPro-5.1-Windows-x64.zip' | sha256sum -c -
-          python - <<'PY'
-          import zipfile
-          with zipfile.ZipFile('work/upload/SSHRelayPro-5.1-Windows-x64.zip') as z:
-              names=z.namelist()
-              assert {n.split('/')[0] for n in names} == {'SSHRelayPro-5.1-win32-x64'}
-              assert 'SSHRelayPro-5.1-win32-x64/Start.cmd' in names
-              assert not any(any(bad in n for bad in ('/.runtime-cache/','/.npm-cache/','/work/','/.git/','/native-results/','/node_modules/electron/','/node_modules/esbuild/')) for n in names)
-          PY
-      - name: Upload only the ready-to-run package
+          New-Item -ItemType Directory -Force work/runtime | Out-Null
+          curl.exe -fL --speed-limit 819200 --speed-time 15 -o work/runtime/electron-v44.8.0-win32-x64.zip https://github.com/electron/electron/releases/download/v44.8.0/electron-v44.8.0-win32-x64.zip
+          if ($LASTEXITCODE) {
+            gh release download v44.8.0 --repo electron/electron --pattern electron-v44.8.0-win32-x64.zip --dir work/runtime --clobber
+            if ($LASTEXITCODE) { throw 'Runtime download failed on both sources' }
+          }
+          curl.exe -fL --speed-limit 819200 --speed-time 15 -o work/runtime/WinSW.NET4.exe https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW.NET4.exe
+          if ($LASTEXITCODE) {
+            gh release download v2.12.0 --repo winsw/winsw --pattern WinSW.NET4.exe --dir work/runtime --clobber
+            if ($LASTEXITCODE) { throw 'Service host download failed on both sources' }
+          }
+          curl.exe -fL -o work/runtime/WinSW-LICENSE https://raw.githubusercontent.com/winsw/winsw/v2.12.0/LICENSE.txt
+          if ($LASTEXITCODE) { throw 'Service host license download failed' }
+      - name: Copy-only packaging with pinned input checksums
+        run: python scripts/package-unified.py --platform win32 --cache work/runtime --out work/packaged
+      - name: Start the packaged desktop and actual SYSTEM services
+        run: node scripts/verify-windows-service.cjs work/packaged/SSHRelayPro-5.1-win32-x64 work/native-results
+      - name: Publish only the ready-to-run folder ZIP
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > work/notes.md <<'TEXT'
-          Windows x64 统一单文件夹运行包。完整解压后运行 Start.cmd，无需安装 Node/npm。
+          修复窗口卡顿：删除请求前的文件访问权限检查，复用后台，合并状态查询，设备行局部更新，日志按需读取。
 
-          首次授权安装 SYSTEM 后台，以后正常打开复用后台。两种连接功能独立开启并保存状态；双向五台同时连接，逐条断开；第六台请求可保留现有连接或指定替换 1–5。
+          保留首次授权安装 SYSTEM 后台服务及后续管理员功能；窗口登录启动设置不再关闭后台服务的自动启动。保留双向五连接、逐台断开及第六台指定替换。
 
-          仅上传运行包，不附带开发缓存、源码包、测试记录或截图。不含旧后台识别或更新功能。
+          完整解压后运行 Start.cmd；Restart.cmd 可重新打开窗口。无需安装 Node/npm。仅提供单文件夹运行包，不上传开发缓存。
 
-          已通过 Windows Server 2022 原生服务、界面与六个弹窗选项验证；不冒称 Windows 10 实机验收。
-
-          SHA-256: bf2c763cec38131ec9b4caf24e38eb214296e11014dc1e7255fa2844a75a1560
+          未运行测试套件。连接操作遍历记录见对应分支文档；本流程实际启动 Windows Server 2022 上的 SYSTEM 服务及打包窗口，不冒称 Windows 10/11 用户实机验证。
           TEXT
-          gh release create ssh-relay-5.1-20261023 work/upload/SSHRelayPro-5.1-Windows-x64.zip --repo "$GITHUB_REPOSITORY" --target 6e918b22e2ba488eb8c3bce05cd29d7cf46adbd4 --title 'SSH Relay Pro 5.1 · Windows 统一单文件夹运行包' --notes-file work/notes.md
+          tag="ssh-relay-5.1-responsive-${GITHUB_RUN_ID}"
+          gh release create "$tag" work/packaged/SSHRelayPro-5.1-win32-x64.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'SSH Relay Pro 5.1 · 窗口响应修复' --notes-file work/notes.md

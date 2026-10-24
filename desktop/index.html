@@ -75,14 +75,15 @@
           关闭窗口后保持后台连接。可从托盘重新打开，或明确停止本版本后台。
         </p>
       </section>
-      <section>
+      <details id="logPanel">
+        <summary>连接日志（点击展开）</summary>
         <div class="row">
           <h2>连接日志</h2>
           <button id="clearLogs" class="secondary">手动清理日志</button>
           <button id="export" class="secondary">导出脱敏日志</button>
         </div>
         <pre id="logs"></pre>
-      </section>
+      </details>
       <p id="message" role="status"></p>
     </main>
     <script src="renderer.js"></script>

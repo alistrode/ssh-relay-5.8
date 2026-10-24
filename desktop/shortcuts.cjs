@@ -4,7 +4,8 @@ const fs = require("node:fs"),
   os = require("node:os"),
   cp = require("node:child_process"),
   { pathToFileURL } = require("node:url");
-function install({ executable, appRoot, profile, development }) {
+const execFile = require("node:util").promisify(cp.execFile);
+async function install({ executable, appRoot, profile, development }) {
   if (process.platform === "win32") {
     const q = (s) => "'" + s.replace(/'/g, "''") + "'";
     const script =
@@ -22,7 +23,7 @@ function install({ executable, appRoot, profile, development }) {
       ";$s.IconLocation=" +
       q(path.join(appRoot, "assets/relay.ico") + ",0") +
       ";$s.Save()";
-    const r = cp.spawnSync(
+    await execFile(
       "powershell.exe",
       [
         "-NoProfile",
@@ -32,8 +33,6 @@ function install({ executable, appRoot, profile, development }) {
       ],
       { encoding: "utf8", windowsHide: true, timeout: 20000 },
     );
-    if (r.error || r.status !== 0)
-      throw Error("Desktop shortcut could not be created");
   } else if (process.platform === "linux") {
     const { linuxLogin } = require("../src/pro/autostart.cjs");
     const menu = path.join(
@@ -50,11 +49,8 @@ function install({ executable, appRoot, profile, development }) {
     fs.writeFileSync(path.join(menu, "ssh-relay-pro.desktop"), entry, {
       mode: 0o755,
     });
-    const xdg = cp.spawnSync("xdg-user-dir", ["DESKTOP"], { encoding: "utf8" }),
-      desktop =
-        xdg.status === 0 && xdg.stdout.trim()
-          ? xdg.stdout.trim()
-          : path.join(os.homedir(), "Desktop");
+    const xdg = await execFile("xdg-user-dir", ["DESKTOP"], { encoding: "utf8", timeout: 5000 }).catch(() => ({ stdout: "" }));
+    const desktop = xdg.stdout.trim() || path.join(os.homedir(), "Desktop");
     fs.mkdirSync(desktop, { recursive: true });
     const link = path.join(desktop, "SSH-Relay-Pro");
     try {
@@ -68,7 +64,7 @@ function install({ executable, appRoot, profile, development }) {
       if (e.code !== "ENOENT") throw e;
     }
     fs.symlinkSync(executable, link);
-    cp.spawnSync(
+    await execFile(
       "gio",
       [
         "set",
@@ -76,8 +72,8 @@ function install({ executable, appRoot, profile, development }) {
         "metadata::custom-icon",
         pathToFileURL(path.join(appRoot, "assets/relay.svg")).href,
       ],
-      { stdio: "ignore" },
-    );
+      { timeout: 5000 },
+    ).catch(() => {});
   }
 }
 module.exports = { install };

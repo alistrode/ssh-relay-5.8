@@ -24,7 +24,6 @@ const DEFAULT_BROKER = "wss://broker.emqx.io:8084/mqtt";
 const { DeviceSlots } = require("./device-slots.cjs");
 const { Connections, fault } = require("./connections.cjs");
 const { commitPair, recoverPairTransactions } = require("./pair-state.cjs");
-const { assertPrivateState } = require("./private-state.cjs");
 const { TaskManager } = require("./tasks.cjs");
 const { SessionManager } = require("./session-manager.cjs");
 const { FileService } = require("./file-service.cjs");
@@ -82,7 +81,6 @@ class Agent {
     return path.join(this.dir, name);
   }
   async start() {
-    assertPrivateState(this.dir);
     const lock = this.file("agent.lock");
     try {
       fs.mkdirSync(lock, { mode: 0o700 });
