@@ -1,10 +1,16 @@
 name: Package and publish the current 5.1 Windows folder
 on:
   workflow_dispatch:
+    inputs:
+      linux_only:
+        description: Publish Linux x64 alongside the existing responsive Windows release
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
   package:
+    if: ${{ !inputs.linux_only }}
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
@@ -54,3 +60,32 @@ jobs:
           TEXT
           tag="ssh-relay-5.1-responsive-${GITHUB_RUN_ID}"
           gh release create "$tag" work/packaged/SSHRelayPro-5.1-win32-x64.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'SSH Relay Pro 5.1 · 窗口响应修复' --notes-file work/notes.md
+
+  linux:
+    if: ${{ inputs.linux_only }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5f53bec087dc8cec15217c2958a539b4bf16898f
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.0'
+      - name: Prepare production dependencies
+        run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+      - name: Fetch the pinned Linux runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p work/runtime
+          if ! curl -fL --speed-limit 819200 --speed-time 15 -o work/runtime/electron-v44.8.0-linux-x64.zip https://github.com/electron/electron/releases/download/v44.8.0/electron-v44.8.0-linux-x64.zip; then
+            gh release download v44.8.0 --repo electron/electron --pattern electron-v44.8.0-linux-x64.zip --dir work/runtime --clobber
+          fi
+      - name: Copy-only packaging using the same runtime source commit
+        run: python scripts/package-unified.py --platform linux --cache work/runtime --out work/packaged
+      - name: Publish only the ready-to-run Linux folder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ssh-relay-5.1-responsive-40073599010 work/packaged/SSHRelayPro-5.1-linux-x64.tar.gz --repo "$GITHUB_REPOSITORY"
