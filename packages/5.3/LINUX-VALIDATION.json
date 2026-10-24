@@ -1,0 +1,16 @@
+{
+  "sourceCommit": "770f918435d0ca81a34df085654b1676fda2b1de",
+  "archive": "SSHRelayPro-5.3-linux-x64.tar.gz",
+  "sha256": "baffb5b647dbd83d23e5b57fb1b1ad8045d3819ea0ecba1b18678b4500778495",
+  "bytes": 187715424,
+  "sourceFilesVerified": 99,
+  "credentialScanPassed": true,
+  "extractedPackage": {
+    "node": "24.19.0",
+    "cliHelp": true,
+    "agentStartDevicesStop": true,
+    "mcpStdioHandshake": true,
+    "mcpToolCount": 39
+  },
+  "desktopAcceptance": "Not run: cloud environment has no desktop session"
+}
