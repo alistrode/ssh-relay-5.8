@@ -69,7 +69,6 @@ function request(role, route, body) {
 async function ensure(role) {
   await agentClient.ensureAgent({
     dir: roleDirectory(role), role,
-    requireService: process.platform === "win32",
     allowCloudSelfTest: args.includes("--allow-cloud-self-test"),
   });
 }

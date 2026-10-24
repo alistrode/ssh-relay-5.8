@@ -116,8 +116,7 @@ async function startAgent(options, dir) {
     }
   };
   if (await check()) return;
-  const startup = read(path.join(path.dirname(dir), "startup.json"), {});
-  if (process.platform === "win32" && (options.requireService || (startup.enabled && startup.mode === "boot"))) {
+  if (process.platform === "win32") {
     // Never silently replace the elevated service with an ordinary user Agent.
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
