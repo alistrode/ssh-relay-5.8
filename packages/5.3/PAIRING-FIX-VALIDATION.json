@@ -1,0 +1,75 @@
+{
+  "sourceCommit": "13ed4ff5fed06860bbc87015ec2739ff14f2d956",
+  "rules": [
+    "24 hours from original creation",
+    "reusable by multiple near ends",
+    "new invitations preserve existing invitations",
+    "restart restores original code and expiry",
+    "no early-cancellation UI",
+    "five concurrent device limit unchanged"
+  ],
+  "tests": {
+    "agentPairingLoopbackRegression": true,
+    "unitConnectionAdmissionSlotTests": 21,
+    "publicRelayFullDayRegression": {
+      "passed": true,
+      "sameCodeMultipleNearEnds": true,
+      "newCodePreservesOld": true,
+      "restartPreservesOriginalExpiry": true
+    },
+    "publicRelayMultiDeviceAcceptance": [
+      {
+        "name": "five_near_ends_execute_simultaneously_without_takeover",
+        "passed": true
+      },
+      {
+        "name": "sixth_controller_refused_without_disturbing_five",
+        "passed": true
+      },
+      {
+        "name": "explicit_sixth_replacement_disconnects_only_selected_controller",
+        "passed": true
+      },
+      {
+        "name": "far_side_disconnect_keeps_other_four_connections_working",
+        "passed": true
+      },
+      {
+        "name": "resume_retains_pairing",
+        "passed": true
+      },
+      {
+        "name": "one_near_end_executes_on_five_targets_simultaneously",
+        "passed": true
+      },
+      {
+        "name": "sixth_target_refused",
+        "passed": true
+      },
+      {
+        "name": "near_side_disconnect_keeps_other_four_targets_working",
+        "passed": true
+      },
+      {
+        "name": "unchanged_sftp_roundtrip_hash_matches",
+        "passed": true
+      }
+    ],
+    "linuxExtractedStartDevicesStopAndMcpHandshake": true,
+    "windowsArchiveIntegrityAndChangedSourceMatches": true
+  },
+  "limitations": [
+    "Windows native GUI execution not repeated in the Linux cloud environment",
+    "Devices running an earlier package require upgrade; previously discarded codes cannot be reconstructed"
+  ],
+  "archives": {
+    "SSHRelayPro-5.3-win32-x64.zip": {
+      "bytes": 179834743,
+      "sha256": "af21fbf2bac2f37e69ca8c492ea98da3e2367a3982e1b07b340f72fb52bf3f85"
+    },
+    "SSHRelayPro-5.3-linux-x64.tar.gz": {
+      "bytes": 187715729,
+      "sha256": "69e3a5ea87b1a31e18718171dcef689c9c13d23ab4fe98778815c506fad5ac15"
+    }
+  }
+}
