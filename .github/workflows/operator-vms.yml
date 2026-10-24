@@ -6,6 +6,10 @@ on:
         description: Authorized legacy Cloudflare endpoint for read-only connection diagnosis
         type: string
         default: ''
+      bridge_config:
+        description: Temporary transport configuration, no user SSH credentials
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -36,7 +40,7 @@ jobs:
         run: node scripts/operator-host.cjs hold 10800
 
   legacy-connection:
-    if: ${{ inputs.debug_host != '' }}
+    if: ${{ inputs.debug_host != '' && inputs.bridge_config == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -61,3 +65,23 @@ jobs:
           done
           tail -n 15 cloudflared.log
           exit 1
+
+  diagnostic-bridge:
+    if: ${{ inputs.debug_host != '' && inputs.bridge_config != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.0'
+      - run: npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+      - name: Prepare the official Cloudflare client
+        run: |
+          curl -fL --speed-limit 819200 --speed-time 15 -o cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.10.3/cloudflared-linux-amd64
+          echo '053b80b0a23031a038fdbf3c073f59f82b8f1f152aa67971d7383ffafc0dbab0  cloudflared' | sha256sum -c -
+          chmod 700 cloudflared
+      - name: Forward only the authorized SSH byte stream
+        run: node scripts/legacy-debug-bridge.cjs
