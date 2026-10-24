@@ -61,7 +61,7 @@ function open(key, value, aad) {
     ]).toString(),
   );
 }
-async function offer({ broker, info, authorize, log, ttl = 300000, reusable = false }) {
+async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, reusable = false }) {
   await opaque.ready;
   const room = random(10),
     password = random(10),
