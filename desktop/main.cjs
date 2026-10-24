@@ -279,6 +279,7 @@ async function switchPrompt(pending, snapshot) {
 }
 app.whenReady().then(async () => {
   diagnostic.record("app_ready");
+  await require("./runtime-image-labels.cjs").prepareRuntimeImages(diagnostic.record);
   if (args.includes("--consent-only")) {
     try {
       const status = await request("far", "/status");
