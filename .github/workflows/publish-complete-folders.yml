@@ -1,4 +1,4 @@
-name: Package and publish the current 5.1 Windows folder
+name: Package and publish the current 5.3 Windows folder
 on:
   workflow_dispatch:
     inputs:
@@ -43,14 +43,14 @@ jobs:
       - name: Copy-only packaging with pinned input checksums
         run: python scripts/package-unified.py --platform win32 --cache work/runtime --out work/packaged
       - name: Start the packaged desktop and actual SYSTEM services
-        run: node scripts/verify-windows-service.cjs work/packaged/SSHRelayPro-5.1-win32-x64 work/native-results
+        run: node scripts/verify-windows-service.cjs work/packaged/SSHRelayPro-5.3-win32-x64 work/native-results
       - name: Publish only the ready-to-run folder ZIP
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > work/notes.md <<'TEXT'
-          修复窗口卡顿：删除请求前的文件访问权限检查，复用后台，合并状态查询，设备行局部更新，日志按需读取。
+          5.3 分支运行包：新生成的配对码有效期为 24 小时，仍只能使用一次；保留此前窗口响应修复。
 
           保留首次授权安装 SYSTEM 后台服务及后续管理员功能；窗口登录启动设置不再关闭后台服务的自动启动。保留双向五连接、逐台断开及第六台指定替换。
 
@@ -58,8 +58,8 @@ jobs:
 
           未运行测试套件。连接操作遍历记录见对应分支文档；本流程实际启动 Windows Server 2022 上的 SYSTEM 服务及打包窗口，不冒称 Windows 10/11 用户实机验证。
           TEXT
-          tag="ssh-relay-5.1-responsive-${GITHUB_RUN_ID}"
-          gh release create "$tag" work/packaged/SSHRelayPro-5.1-win32-x64.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'SSH Relay Pro 5.1 · 窗口响应修复' --notes-file work/notes.md
+          tag="ssh-relay-5.3-responsive-${GITHUB_RUN_ID}"
+          gh release create "$tag" work/packaged/SSHRelayPro-5.3-win32-x64.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'SSH Relay Pro 5.3 · 配对码有效期 24 小时' --notes-file work/notes.md
 
   linux:
     if: ${{ inputs.linux_only }}
