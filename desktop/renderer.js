@@ -133,7 +133,7 @@ $("offer").onclick = () =>
     const p = await window.relay.call("far", "/pair/create", {});
     const revision = ++pairRevision;
     $("pairCode").textContent = p.code;
-    message("配对码一天（24 小时）内有效，只使用一次；不要公开分享。");
+    message("配对码 24 小时内可供多个近端配对；生成新码或取消会使旧码失效。不要公开分享。");
     setTimeout(
       () => { if (revision === pairRevision) $("pairCode").textContent = ""; },
       Math.max(0, p.expiresAt - Date.now()),

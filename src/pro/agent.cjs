@@ -241,6 +241,7 @@ class Agent {
       throw Error("Only a far end can create a pairing code");
     this.offer?.cancel();
     this.offer = await pairing.offer({
+      reusable: true,
       broker: this.broker,
       info: { ...this.info, label: this.settings.label },
       authorize: async (who) => {
