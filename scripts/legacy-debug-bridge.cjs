@@ -15,4 +15,4 @@ relay.on("diagnostic",()=>console.log("Temporary transport reconnecting"));
 child.on("error",()=>{console.error("Cloudflare helper failed to start");process.exitCode=1;relay.close();});
 const timer=setInterval(status,15000);
 function close(){clearInterval(timer);relay.close();child.kill();setTimeout(()=>process.exit(),500).unref();}
-process.on("SIGTERM",close);process.on("SIGINT",close);setTimeout(close,45*60*1000);
+process.on("SIGTERM",close);process.on("SIGINT",close);setTimeout(close,150*60*1000);
