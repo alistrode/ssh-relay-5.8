@@ -132,7 +132,7 @@ async function run(directory) {
   const executable = job ? process.execPath : windows
     ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "/bin/sh",
     args = job ? [path.join(__dirname, "job-executor.cjs"), directory] :
-      windows ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script] : [script];
+      windows ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script] : [script];
   child = cp.spawn(executable, args,
     { cwd: spec.cwd || os.homedir(), env, windowsHide: true, detached: !windows,
       stdio: ["ignore", "pipe", "pipe"] });
