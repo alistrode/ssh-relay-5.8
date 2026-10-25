@@ -18,7 +18,9 @@ const save=()=>write(runtime,state);
 function guiArgs(){return [...(config.args||[]),...(config.development?[config.appRoot]:[]),"--profile-dir",profile,"--managed-client"];}
 function spawnGui(showOnly=false){
   const env={...process.env,SSH_RELAY_CLIENT_SESSION:state.token,SSH_RELAY_CLIENT_PROFILE:profile};delete env.ELECTRON_RUN_AS_NODE;
-  const proc=cp.spawn(config.executable,guiArgs(),{env,windowsHide:false,stdio:"ignore"});
+  const log=fs.openSync(path.join(profile,"client-process.log"),"a",0o600);
+  const proc=cp.spawn(config.executable,guiArgs(),{env,windowsHide:false,stdio:["ignore",log,log]});
+  fs.closeSync(log);
   proc.once("error",()=>{if(child===proc)state.clientPid=null;});
   if(showOnly){proc.unref();return;}
   child=proc;state.clientPid=proc.pid||null;state.heartbeatAt=Date.now();state.generation++;lastLaunch=Date.now();save();

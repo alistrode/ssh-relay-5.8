@@ -39,7 +39,13 @@ let renderer,main;
   record.operations.push("tray_exit_handler_closed_client_and_owned_backends");record.finishedAt=new Date().toISOString();record.completed=true;save();
   renderer.socket.close();main.socket.close();console.log(JSON.stringify(record,null,2));
 })().catch(async error=>{
-  record.completed=false;record.error=error.message;save();console.error(error.message);
+  record.completed=false;record.error=error.message;
+  record.failureDiagnostics=[];
+  for(const name of ["launch-private.log","client-process.log","client-supervisor.log"])try{
+    const lines=fs.readFileSync(path.join(profile,name),"utf8").split("\n");
+    record.failureDiagnostics.push(...lines.filter(line=>/Error:|FATAL|SUID|sandbox|shared libraries|Missing X|display|TypeError|failed to/i.test(line)).slice(-12).map(line=>line.replace(/[a-f0-9]{32,}/gi,"[private-id]").slice(0,700)));
+  }catch{}
+  save();console.error(error.message);console.error(record.failureDiagnostics.join("\n"));
   try{const lifecycle=require("../src/pro/client-lifecycle.cjs"),state=lifecycle.clientState(profile);if(state?.clientPid)await lifecycle.command(profile,"tray-exit",{pid:state.clientPid});}catch{}
   renderer?.socket.close();main?.socket.close();process.exitCode=1;
 });

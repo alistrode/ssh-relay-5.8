@@ -29,6 +29,8 @@ jobs:
       - name: Start the Linux desktop display
         if: runner.os == 'Linux'
         run: |
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
           Xvfb :99 -screen 0 1440x1100x24 > /tmp/ssh-relay-display.log 2>&1 &
           echo 'DISPLAY=:99' >> "$GITHUB_ENV"
       - name: Run the actual client and close it through the tray exit handler
