@@ -1,7 +1,7 @@
 "use strict";
 const $=id=>document.getElementById(id),states={online:"已连接",waiting:"等待连接",connecting:"正在连接",retrying:"自动重连中",disconnected:"已断开",identity_error:"设备身份或授权需要核对",starting:"正在启动",running:"运行中",remote_busy:"等待远端确认",remote_full:"远端 20 台连接已满",remote_paused:"远端已暂停此连接",slot_paused:"20 台名额已满",unsupported_remote:"远端需要升级"};
 const rows={near:new Map(),far:new Map()},selected={near:new Set(),far:new Set()},snapshots={near:null,far:null},roleErrors=new Map(),batchBusy=new Set();
-let nearEnabled=false,farEnabled=false,pairRevision=0,refreshTask,refreshAgain=false,refreshTimer,logsTask,logsTimer,lastStartup,admission;
+let nearEnabled=false,farEnabled=false,pairRevision=0,pairTimer,refreshTask,refreshAgain=false,refreshTimer,logsTask,logsTimer,lastStartup,admission;
 const text=(node,value)=>{if(node.textContent!==String(value))node.textContent=String(value);};
 function message(value,kind="info"){text($("message"),value);$("message").dataset.kind=kind;$("message").style.display="block";}
 async function action(control,fn,success="操作已完成"){
@@ -17,6 +17,12 @@ async function action(control,fn,success="操作已完成"){
   }
 }
 function button(label,fn){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=label;b.onclick=()=>action(b,fn);return b;}
+function showPair(invitation){
+  clearTimeout(pairTimer);
+  const active=invitation&&invitation.expiresAt>Date.now();
+  text($("pairCode"),active?invitation.code:"");syncCode();
+  if(active)pairTimer=setTimeout(()=>{text($("pairCode"),"");syncCode();},Math.max(0,invitation.expiresAt-Date.now()));
+}
 function syncCode(){const active=!!$("pairCode").textContent;for(const id of ["copyCode","cancelCode"])if(!$(id).dataset.busy&&!$(id).dataset.feedback)$(id).disabled=!active;}
 function syncSelection(role){
   const toolbar=document.querySelector(`.batch-toolbar[data-role="${role}"]`),map=rows[role],set=selected[role];
@@ -64,7 +70,7 @@ async function refreshRole(role){
       if(!$("nearToggle").dataset.busy&&!$("nearToggle").dataset.feedback)text($("nearToggle"),nearEnabled?"关闭连接功能":"启用连接功能");
       $("nearControls").hidden=!nearEnabled;text($("nearCount"),value.devices.filter(d=>d.state==="online").length+" / 20 台已连接");
     }else{
-      farEnabled=value.settings.enabled;if(!value.pairing?.active&&revision===pairRevision)text($("pairCode"),"");
+      farEnabled=value.settings.enabled;const invitation=await window.relay.call("far","/pair/current");if(revision===pairRevision)showPair(invitation);
       text($("farState"),farEnabled?"已允许连接 · "+(states[value.state]||value.state):"已关闭 · 本机不接受连接");
       if(!$("farToggle").dataset.busy&&!$("farToggle").dataset.feedback)text($("farToggle"),farEnabled?"关闭本机被连接":"允许连接本机");
       $("farControls").hidden=!farEnabled;text($("farCount"),(value.admission?.connectedControllerIds?.length||0)+" / 20 台已连接");
@@ -83,9 +89,9 @@ function resume(){if(!document.hidden){void refresh();void refreshLogs();}else{c
 document.addEventListener("visibilitychange",resume);window.relay.onVisible(resume);window.relay.onNotice(message);
 $("logPanel").ontoggle=()=>{$("logPanel").open?refreshLogs():clearTimeout(logsTimer);};
 $("pair").onsubmit=event=>{event.preventDefault();void action($("pairButton"),async()=>{await window.relay.call("near","/pair/connect",{code:$("code").value.trim()});$("code").value="";return "配对已保存，正在自动连接";});};
-$("offer").onclick=()=>action($("offer"),async()=>{const p=await window.relay.call("far","/pair/create",{}),revision=++pairRevision;text($("pairCode"),p.code);syncCode();setTimeout(()=>{if(revision===pairRevision){text($("pairCode"),"");syncCode();}},Math.max(0,p.expiresAt-Date.now()));return "配对码已生成，有效 24 小时，请仅交给可信电脑";});
+$("offer").onclick=()=>action($("offer"),async()=>{const p=await window.relay.call("far","/pair/create",{});pairRevision++;showPair(p);return "配对码已生成，有效 24 小时，请仅交给可信电脑";});
 $("copyCode").onclick=()=>action($("copyCode"),async()=>{await window.relay.copyCode($("pairCode").textContent);return "✓ 配对码已复制到剪贴板";});
-$("cancelCode").onclick=()=>action($("cancelCode"),async()=>{await window.relay.call("far","/pair/cancel",{});pairRevision++;text($("pairCode"),"");return "有效配对码已取消";});
+$("cancelCode").onclick=()=>action($("cancelCode"),async()=>{await window.relay.call("far","/pair/cancel",{});pairRevision++;showPair(null);return "有效配对码已取消";});
 $("nearToggle").onclick=()=>action($("nearToggle"),()=>window.relay.call("near","/settings",{enabled:!nearEnabled}),nearEnabled?"连接功能已关闭":"连接功能已开启");
 $("farToggle").onclick=()=>action($("farToggle"),()=>window.relay.call("far","/settings",{enabled:!farEnabled}),farEnabled?"本机被连接已关闭":"已允许连接本机");
 $("retry").onclick=()=>action($("retry"),()=>window.relay.call("near","/retry",{}),"所有已启用电脑的重连请求已提交");

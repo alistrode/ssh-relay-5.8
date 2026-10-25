@@ -241,6 +241,12 @@ class Agent {
       throw Error("Pairing host fingerprint mismatch");
     return info;
   }
+  currentPairInvitation() {
+    if (this.role !== "far") throw Error("Only a far end has a pairing invitation");
+    const records = read(this.file("pair-invitations-private.json"), []);
+    const invitation = records.filter(item => item.expiresAt > Date.now()).at(-1);
+    return invitation ? { code: invitation.code, expiresAt: invitation.expiresAt } : null;
+  }
   async restorePairInvitations() {
     const file = this.file("pair-invitations-private.json");
     const records = read(file, []).filter(item => item.expiresAt > Date.now());
@@ -997,7 +1003,9 @@ class Agent {
             .sort((a, b) => String(a.time).localeCompare(String(b.time)))
             .slice(-300),
         };
-      } else if (req.method === "POST" && req.url === "/pair/create")
+      } else if (req.method === "GET" && req.url === "/pair/current")
+        value = this.currentPairInvitation();
+      else if (req.method === "POST" && req.url === "/pair/create")
         value = await this.createPair();
       else if (req.method === "POST" && req.url === "/pair/cancel") {
         throw Error("Pairing codes remain valid for their full 24-hour lifetime");

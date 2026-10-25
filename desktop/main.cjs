@@ -58,7 +58,7 @@ else{
     tray.setContextMenu(Menu.buildFromTemplate([{label:"打开客户端",click:show},{label:"重连已启用电脑",click:async()=>{notice("正在重新连接…");try{await request("near","/retry",{});notice("重连请求已提交");}catch(error){notice(error.message);}}},{type:"separator"},{id:"tray-exit",label:"退出（关闭全部连接和进程）",click:()=>void trayExit()}]));tray.on("click",show);
   }
   const validSender=event=>event.sender===window?.webContents;
-  const routes=new Set(["/status","/logs","/logs/clear","/pair/create","/pair/cancel","/pair/connect","/settings","/device","/controller","/unpair","/retry","/connection/decision"]);
+  const routes=new Set(["/status","/logs","/logs/clear","/pair/create","/pair/current","/pair/cancel","/pair/connect","/settings","/device","/controller","/unpair","/retry","/connection/decision"]);
   ipcMain.handle("relay",async(event,role,route,body)=>{
     if(!validSender(event)||!["near","far"].includes(role)||!routes.has(route)||exiting)throw Error("Invalid UI request");
     if(!backendReady)throw Error("客户端正在准备，请稍候");
