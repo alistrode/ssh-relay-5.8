@@ -5,8 +5,8 @@ const require = createRequire(import.meta.url);
 const { requestHash } = require("../pro/task-spec.cjs");
 // Resolve and save the complete plan before allowing the first side effect.
 export async function prepareGroupPlan(targets, command, options, { connect, localAgentClient, execSpec }) {
-  if (!Array.isArray(targets) || targets.length < 1 || targets.length > 5)
-    throw Error("Group execution requires between one and five targets");
+  if (!Array.isArray(targets) || targets.length < 1 || targets.length > 20)
+    throw Error("Group execution requires between one and twenty targets");
   const deviceIds = targets.map(target => target.config?.agentDeviceId).filter(Boolean);
   if (new Set(deviceIds).size !== deviceIds.length) throw Error("Group contains duplicate target devices");
   if (targets.some(target => !target.config?.agentDeviceId ||

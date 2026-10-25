@@ -25,7 +25,7 @@ class OperationGroups {
     if (!record) throw failure("OPERATION_NOT_FOUND", "Unknown group operation");
     if (record.operationId !== key || record.profileId !== this.agent.identity.deviceId ||
         record.kind !== "exec-group" || !Array.isArray(record.children) ||
-        record.children.length < 1 || record.children.length > 5)
+        record.children.length < 1 || record.children.length > 20)
       throw failure("OPERATION_CORRUPT", "Group operation metadata is invalid");
     try {
       operationId(record.operationId);
@@ -59,8 +59,8 @@ class OperationGroups {
     const key = operationId(params.operationId);
     if (this.operations.exists(key)) throw failure("REQUEST_CONFLICT", "Operation ID already belongs to a single target");
     if (!/^[a-f0-9]{64}$/.test(params.requestHash) || !Array.isArray(params.children) ||
-        params.children.length < 1 || params.children.length > 5)
-      throw failure("INVALID_REQUEST", "Group requires one to five fixed device children");
+        params.children.length < 1 || params.children.length > 20)
+      throw failure("INVALID_REQUEST", "Group requires one to twenty fixed device children");
     const ids = new Set([key]), devices = new Set();
     const children = params.children.map(child => {
       const value = { operationId: operationId(child.operationId), childOperationId: operationId(child.childOperationId),

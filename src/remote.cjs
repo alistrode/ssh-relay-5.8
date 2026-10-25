@@ -1,4 +1,6 @@
 "use strict";
+if (require.main === module) throw Error("5.5 不支持独立后台入口，请启动 SSH Relay Pro 客户端");
+
 var fs = require("node:fs");
 var path = require("node:path");
 var os = require("node:os");
@@ -285,6 +287,7 @@ server.listen(config.sshPort, "127.0.0.1", () => {
     },
     fingerprint,
     platform: process.platform,
+    system: require("./pro/os-version.cjs").systemVersion(),
     user: config.user,
     hostname: os.hostname(),
     permissions: executionContext,
@@ -298,7 +301,10 @@ server.listen(config.sshPort, "127.0.0.1", () => {
   relay.on("peer", peer => {
     if (admission && peer.controllerProbe && config.clientKeysFile) {
       const request = verifyProbe(peer.controllerProbe, JSON.parse(fs.readFileSync(config.clientKeysFile,"utf8")), Date.now(), value => admission.acceptsChallenge(value));
-      if (request) admission.request(request);
+      if (request) {
+        admission.request(request);
+        if (request.system && process.connected) process.send({ type: "controller-metadata", controllerId: request.controllerId, system: request.system, hostname: request.hostname });
+      }
     }
     publishStatus();
   });

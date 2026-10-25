@@ -11,6 +11,8 @@
 
 使用本分支的连接 Skill 和 MCP/CLI 支持的入口。普通连接断开不能成为结束用户任务的理由。
 
-恢复提示规则来自 src/pro/ai-recovery.cjs；改动后运行 node scripts/sync-ai-recovery.cjs，保持文档同步。保持 37 个原工具与 2 个 Agent 工具的描述、名称和参数兼容。
+恢复提示规则来自 src/pro/ai-recovery.cjs；改动后运行 node scripts/sync-ai-recovery.cjs，保持文档同步。保持 37 个原工具与 2 个 Agent 工具的名称和参数兼容，仅同步真实容量为 20。
+
+5.5 必须客户端与后台一起启动；仅托盘退出是主动退出，其余意外退出由客户端守护恢复。不再安装独立后台服务。设备连接与被连接上限各 20，批量操作和按钮反馈适用于两端。GitHub 实际运行使用 .github/workflows/run-5.5.yml，不创建测试套件。
 
 按用户要求，5.5 删除全部项目自有测试、测试数据、测试入口和测试工作流，不再创建或运行测试。构建命令为 npm run build。

@@ -61,6 +61,7 @@ function commitPair(agent, info, keys) {
   text(path.join(stage, "client_key"), keys.privateKey);
   write(path.join(stage, "device.json"), {
     id: info.deviceId, label: info.label || info.hostname, hostname: info.hostname,
+    system: require("./os-version.cjs").normalizeSystem(info.system),
     target: info.target, enabled: true, desiredConnected: true,
     schemaVersion: 1, autoConnect: true,
     pairedAt: agent.registry()[info.deviceId]?.pairedAt || Date.now(),

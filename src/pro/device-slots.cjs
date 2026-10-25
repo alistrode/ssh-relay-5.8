@@ -4,7 +4,7 @@
 // Offline devices must not silently give their reserved slot to another host.
 class DeviceSlots {
   constructor() {
-    this.limit = 5;
+    this.limit = 20;
     this.reservations = new Set();
   }
 
@@ -43,7 +43,7 @@ class DeviceSlots {
     if (this.snapshot(registry).active.includes(deviceId)) return;
     const reserved = this.reservations.size - (this.reservations.has(reservation) ? 1 : 0);
     if (others.length + reserved >= this.limit) {
-      const error = Error("Five device slots are in use; disable or unpair a device first");
+      const error = Error("Twenty device slots are in use; disable or unpair a device first");
       error.code = "DEVICE_LIMIT_REACHED";
       error.details = { occupiedDevices: this.snapshot(registry).active };
       throw error;

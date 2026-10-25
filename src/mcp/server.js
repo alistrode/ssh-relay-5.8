@@ -89,7 +89,7 @@ function sanitized(value, args) {
 }
 if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_connect")))
   server.registerTool("ssh_connect", {
-    description: "Pair a device using a code, or connect a remembered server. At most five active devices. Pass connectionTaskId alone to query a pending request. Reuse requestId when retrying the same input.",
+    description: "Pair a device using a code, or connect a remembered server. At most twenty active devices. Pass connectionTaskId alone to query a pending request. Reuse requestId when retrying the same input.",
     inputSchema: {
       code: z.string().optional(),
       server: z.string().optional(),

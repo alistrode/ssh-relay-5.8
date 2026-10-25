@@ -1,0 +1,52 @@
+name: Run SSH Relay 5.5 desktop
+on:
+  push:
+    branches: ['5.5']
+    paths: ['src/**', 'desktop/**', 'scripts/run-github-client.cjs', '.github/workflows/run-5.5.yml', 'package*.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  run-client:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.0'
+      - name: Install application dependencies and the native Electron runtime
+        shell: bash
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
+      - name: Start the Linux desktop display
+        if: runner.os == 'Linux'
+        run: |
+          Xvfb :99 -screen 0 1440x1100x24 > /tmp/ssh-relay-display.log 2>&1 &
+          echo 'DISPLAY=:99' >> "$GITHUB_ENV"
+      - name: Run the actual client and close it through the tray exit handler
+        run: node scripts/run-github-client.cjs
+      - name: Archive full source without dependencies, historical packages or private state
+        if: always()
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess,zipfile
+          Path('run-output').mkdir(exist_ok=True)
+          with zipfile.ZipFile('run-output/SSHRelayPro-5.5-source.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for entry in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
+                  if entry and not entry.startswith('packages/') and Path(entry).is_file():
+                      archive.write(entry,'SSHRelayPro-5.5/'+entry)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ssh-relay-5.5-run-${{ matrix.os }}
+          path: run-output/
+          retention-days: 7

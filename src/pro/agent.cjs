@@ -1,4 +1,6 @@
 "use strict";
+const { systemVersion, normalizeSystem } = require("./os-version.cjs");
+const { clientActive } = require("./client-lifecycle.cjs");
 const { withRecovery } = require("./ai-recovery.cjs");
 const fs = require("node:fs"),
   path = require("node:path"),
@@ -82,6 +84,7 @@ class Agent {
     return path.join(this.dir, name);
   }
   async start() {
+    if (!clientActive(this.dir)) throw Error("必须启动客户端，禁止独立后台运行");
     const lock = this.file("agent.lock");
     try {
       fs.mkdirSync(lock, { mode: 0o700 });
@@ -178,6 +181,7 @@ class Agent {
     }
     if (info.deviceId !== this.identity.deviceId)
       throw Error("Far device identity mismatch");
+    info.system = systemVersion();
     this.info = info;
     const clients = path.join(dir, "authorized-clients.json");
     if (!fs.existsSync(clients)) write(clients, {});
@@ -262,6 +266,8 @@ class Agent {
         clients[id(who.deviceId)] = {
           publicKey: who.publicKey,
           label: String(who.label || "Near end").slice(0, 80),
+          hostname: String(who.hostname || "").slice(0, 160),
+          system: normalizeSystem(who.system),
           pairedAt: Date.now(),
         };
         write(file, clients);
@@ -299,6 +305,8 @@ class Agent {
           deviceId: this.identity.deviceId,
           publicKey: keys.publicKey,
           label: this.settings.label,
+          hostname: os.hostname(),
+          system: systemVersion(),
         },
         accept: async (value) => {
           this.safeInfo(value);
@@ -346,6 +354,14 @@ class Agent {
           if (child.connected) child.send({ type: "task-rpc-result", rpcId: message.rpcId, ok: false,
             error: publicFailure(error) }, () => {});
         });
+      }
+      if (key === "far" && this.children.get(key) === item && message?.type === "controller-metadata") {
+        const clients = read(this.file("far/authorized-clients.json"), {}), entry = clients[message.controllerId];
+        const system = normalizeSystem(message.system);
+        if (entry && system && JSON.stringify(entry.system) !== JSON.stringify(system)) {
+          entry.system = system; entry.hostname = String(message.hostname || "").slice(0, 160);
+          write(this.file("far/authorized-clients.json"), clients);
+        }
       }
       if (key === "far" && this.children.get(key) === item && message?.type === "admission-status") {
         this.admission = message.value;
@@ -421,21 +437,7 @@ class Agent {
       item.child.kill("SIGTERM");
     }
   }
-  notifyConsent() {
-    if (this.admission?.mode === "concurrent") return; // The logged-in UI polls capacity prompts; a SYSTEM service cannot show a desktop.
-    if (!process.versions.electron || this.stopping || this.role !== "far") return;
-    this.notifiedRequests ||= new Set();
-    const pending = this.admission?.pending?.find(p => p.expiresAt > Date.now() && !this.notifiedRequests.has(p.requestId));
-    if (!pending) return;
-    this.notifiedRequests.add(pending.requestId);
-    if (this.notifiedRequests.size > 128) this.notifiedRequests.delete(this.notifiedRequests.values().next().value);
-    const appRoot = path.resolve(__dirname, "../..");
-    const packaged = fs.existsSync(path.join(path.dirname(process.execPath), "resources/app"));
-    const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-    const child = cp.spawn(process.execPath, [ ...(packaged ? [] : [appRoot]), "--consent-only", "--far-state-dir", this.dir, "--profile-dir", path.dirname(this.dir), "--no-shortcuts" ], { env, detached:true, stdio:"ignore", windowsHide:false });
-    child.on("error", () => this.log("consent_notification_unavailable"));
-    child.unref();
-  }
+  notifyConsent() { /* Capacity prompts are displayed by the coupled client. */ }
   invalidateTarget(t) {
     // Invalidate callbacks before destroying the client: close/error can fire
     // synchronously or arrive after a replacement worker has started.
@@ -474,6 +476,7 @@ class Agent {
   }
   tick() {
     if (this.stopping) return;
+    if (!clientActive(this.dir)) { void this.close().then(() => process.exit(0)); return; }
     try { this.taskManager?.tick(); }
     catch (error) { this.log("task_manager_storage_error", { code: error.code || "TASK_STORAGE_FAILED" }); }
     try { this.sessionManager?.tick(); }
@@ -788,6 +791,7 @@ class Agent {
       const peer = read(path.join(t.dir, "peer.json"), {});
       savedDevice.verifiedIdentity = { hostname: lines[1], remoteUser: lines[0], fingerprint: info.fingerprint };
       savedDevice.permissionSnapshot = peer.permissions || null;
+      savedDevice.system = normalizeSystem(peer.system) || savedDevice.system || normalizeSystem(info.system);
       savedDevice.lastVerifiedAt = verifiedAt;
       this.saveRegistry(registry);
       t.lastProbe = verifiedAt;
@@ -817,6 +821,7 @@ class Agent {
               lastVerifiedAt: t?.lastProbe || d.lastVerifiedAt || null,
               remoteUser: t?.remoteUser || d.verifiedIdentity?.remoteUser || null,
               lastErrorCode: t?.lastErrorCode || null,
+              system: d.system || null,
               permissionSnapshot: d.permissionSnapshot || null,
               workerPid: this.children.get(d.id)?.child.pid || null,
               connectionReport:
@@ -827,9 +832,11 @@ class Agent {
           })
         : Object.entries(
             read(this.file("far/authorized-clients.json"), {}),
-          ).map(([id, d]) => ({ id, label: d.label, pairedAt: d.pairedAt, enabled:d.enabled !== false, connected:!!this.admission?.connectedControllerIds?.includes(id) }));
+          ).map(([id, d]) => ({ id, label: d.label, hostname: d.hostname || "", system: normalizeSystem(d.system), pairedAt: d.pairedAt, enabled:d.enabled !== false, connected:!!this.admission?.connectedControllerIds?.includes(id) }));
     return {
       role: this.role,
+      system: systemVersion(),
+      connectionLimit: 20,
       deviceId: this.identity.deviceId,
       settings: this.settings,
       state:
@@ -1106,9 +1113,7 @@ class Agent {
           item.child.send({ type: "test-drop-network" });
         this.log("test_network_drop");
       } else if (req.method === "POST" && req.url === "/shutdown") {
-        if (typeof process.send === "function")
-          process.send({ type: "stop-guardian" });
-        setTimeout(() => this.close().then(() => process.exit(0)), 100);
+        throw Error("仅允许通过客户端托盘退出，禁止单独停止客户端所属后台");
       } else {
         reply(404, { error: "Unknown agent endpoint" });
         return;

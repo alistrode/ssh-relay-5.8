@@ -1,520 +1,121 @@
 "use strict";
-const diagnostics = require("../src/pro/gui-diagnostics.cjs");
-const startupPath = require("node:path"), startupOs = require("node:os");
-const startupArgs = process.argv.slice(1), profileIndex = startupArgs.indexOf("--profile-dir");
-const startupProfile = startupPath.resolve(profileIndex >= 0 && startupArgs[profileIndex + 1] ? startupArgs[profileIndex + 1] : startupPath.join(startupOs.homedir(), ".ssh-relay-pro"));
-const diagnosticDirectory = startupPath.join(startupProfile, "logs");
-const diagnostic = diagnostics.create(diagnosticDirectory);
+const {app,BrowserWindow,Tray,Menu,nativeImage,ipcMain,dialog,clipboard}=require("electron");
+const fs=require("node:fs"),path=require("node:path"),os=require("node:os"),cp=require("node:child_process");
+const {folder,read,write}=require("../src/pro/store.cjs"),lifecycle=require("../src/pro/client-lifecycle.cjs"),startup=require("../src/pro/autostart.cjs");
+const args=process.argv.slice(1),arg=(name,fallback)=>args.includes(name)?args[args.indexOf(name)+1]:fallback;
+const root=path.resolve(__dirname,".."),profile=path.resolve(arg("--profile-dir",path.join(os.homedir(),".ssh-relay-pro")));
+const diagnostics=require("../src/pro/gui-diagnostics.cjs"),diagnosticDirectory=path.join(profile,"logs"),diagnostic=diagnostics.create(diagnosticDirectory);
 diagnostics.installPipeGuards(diagnostic.record);
-diagnostic.record("main_enter", { pid: process.pid, platform: process.platform });
-// Monitor without swallowing fatal exceptions or changing Node's exit behavior.
-process.on("uncaughtExceptionMonitor", () => diagnostic.record("uncaught_exception"));
-process.on("exit", code => diagnostic.record("process_exit", { exitCode: code }));
-const {
-  app,
-  BrowserWindow,
-  Tray,
-  Menu,
-  nativeImage,
-  ipcMain,
-  dialog,
-  shell,
-  clipboard,
-} = require("electron");
-const fs = require("node:fs"),
-  path = require("node:path"),
-  os = require("node:os"),
-  http = require("node:http"),
-  cp = require("node:child_process"),
-  { folder, read, write } = require("../src/pro/store.cjs"),
-  startup = require("../src/pro/autostart.cjs");
-const root = path.resolve(__dirname, ".."),
-  args = process.argv.slice(1),
-  arg = (n, d) => (args.includes(n) ? args[args.indexOf(n) + 1] : d),
-  profile = path.resolve(
-    arg("--profile-dir", path.join(os.homedir(), ".ssh-relay-pro")),
-  );
-let window,
-  tray,
-  quitting = false;
-app.setName("SSH Relay Pro");
-diagnostic.record("electron_loaded", { version: app.getVersion() });
-app.on("child-process-gone", (_event, details) => diagnostic.record("child_process_gone", details));
-app.on("render-process-gone", (_event, _contents, details) => diagnostic.record("render_process_gone", details));
-if (process.platform === "win32") app.setAppUserModelId("rororo.ssh-relay.pro");
-if (process.platform === "linux") {
-  app.setDesktopName("ssh-relay-pro.desktop");
-  app.commandLine.appendSwitch("class", "ssh-relay-pro");
-}
-app.setPath("userData", path.join(profile, "ui"));
-if (!app.requestSingleInstanceLock()) app.quit();
-else app.on("second-instance", () => show());
-function options() {
-  return {
-    executable: process.execPath,
-    appRoot: root,
-    profile,
-    development: !app.isPackaged,
-  };
-}
-const agentClient = require("../src/pro/agent-client.cjs");
-function roleDirectory(role) {
-  return role === "far" && args.includes("--far-state-dir")
-    ? path.resolve(arg("--far-state-dir")) : path.join(profile, role);
-}
-function request(role, route, body) {
-  return agentClient.request(roleDirectory(role), route, body,
-    body === undefined ? { timeoutMs: 5000 } : {});
-}
-async function ensure(role) {
-  await agentClient.ensureAgent({
-    dir: roleDirectory(role), role,
-    allowCloudSelfTest: args.includes("--allow-cloud-self-test"),
+const forwarded=[...new Set([...args,...process.execArgv,...(app.commandLine.hasSwitch("inspect")?["--inspect="+app.commandLine.getSwitchValue("inspect")]:[])])].filter(value=>/^--(?:no-shortcuts|allow-cloud-self-test|disable-gpu|remote-debugging-port=\d+|inspect=\d+)$/.test(value));
+function options(){return {executable:process.execPath,appRoot:root,profile,development:!app.isPackaged,args:forwarded};}
+app.setName("SSH Relay Pro");app.setPath("userData",path.join(profile,"ui"));
+if(!args.includes("--managed-client")){
+  // The launcher has no backend. A separate parent owns and restores the client.
+  lifecycle.launch({...options(),bootstrapPid:process.pid}).then(()=>app.exit(0)).catch(error=>{diagnostic.record("client_launch_failed",{reason:error.message});console.error(error.message);app.exit(1);});
+}else if(!app.requestSingleInstanceLock())app.exit(0);
+else{
+  let window,tray,quitting=false,exiting=false,heartbeat,pollTimer,startupChanging=false,backendReady=false;
+  const agentClient=require("../src/pro/agent-client.cjs"),statusPending=new Map(),seenAdmission=new Set();
+  let prompting=false;
+  if(process.platform==="win32")app.setAppUserModelId("rororo.ssh-relay.pro");
+  if(process.platform==="linux"){app.setDesktopName("ssh-relay-pro.desktop");app.commandLine.appendSwitch("class","ssh-relay-pro");}
+  app.on("second-instance",()=>show());
+  function roleDirectory(role){return path.join(profile,role);}
+  async function ensure(role){return agentClient.ensureAgent({dir:roleDirectory(role),role,allowCloudSelfTest:args.includes("--allow-cloud-self-test")});}
+  function request(role,route,body){return agentClient.request(roleDirectory(role),route,body,body===undefined?{timeoutMs:5000}:{});}
+  function statusRequest(role){
+    if(!backendReady)return Promise.reject(Error("客户端正在迁移并启动连接服务"));
+    if(!statusPending.has(role))statusPending.set(role,(async()=>{
+      try{return await request(role,"/status");}catch(error){await ensure(role);return request(role,"/status");}
+    })().finally(()=>statusPending.delete(role)));
+    return statusPending.get(role);
+  }
+  function show(){if(!window||window.isDestroyed())createWindow();if(window.isMinimized())window.restore();window.show();window.focus();}
+  function notice(message){window?.webContents.send("relay-notice",message);}
+  function createWindow(){
+    if(quitting)return;
+    window=new BrowserWindow({width:1180,height:850,minWidth:860,minHeight:650,title:"SSH Relay Pro 5.5",icon:path.join(root,"assets/relay.ico"),
+      webPreferences:{preload:path.join(__dirname,"preload.cjs"),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+    window.webContents.on("did-finish-load",()=>diagnostic.record("window_loaded"));
+    window.webContents.on("render-process-gone",()=>{if(!quitting)setTimeout(()=>{if(window&&!window.isDestroyed())window.reload();},500);});
+    window.loadFile(path.join(__dirname,"index.html")).catch(error=>diagnostic.record("window_load_failed",{reason:error.message}));
+    window.on("close",event=>{if(!quitting){event.preventDefault();window.hide();}});
+    window.on("closed",()=>{window=null;if(!quitting)setTimeout(createWindow,500);});
+    window.on("show",()=>window.webContents.send("relay-visible"));
+    window.webContents.setWindowOpenHandler(()=>({action:"deny"}));window.webContents.on("will-navigate",event=>event.preventDefault());
+  }
+  async function trayExit(){
+    if(exiting||quitting)return;exiting=true;notice("正在关闭全部连接和所属进程…");
+    try{
+      await lifecycle.command(profile,"tray-exit",{pid:process.pid});
+      quitting=true;clearInterval(heartbeat);clearInterval(pollTimer);tray?.destroy();tray=null;app.quit();
+    }catch(error){exiting=false;show();notice("退出未完成："+error.message);await dialog.showMessageBox(window,{type:"error",message:"部分进程尚未退出，正在保留客户端以便继续清理",detail:error.message});}
+  }
+  module.exports={trayExit};
+  function createTray(){
+    tray=new Tray(nativeImage.createFromPath(path.join(root,"assets/relay-tray.png")));tray.setToolTip("SSH Relay Pro 5.5");
+    tray.setContextMenu(Menu.buildFromTemplate([{label:"打开客户端",click:show},{label:"重连已启用电脑",click:async()=>{notice("正在重新连接…");try{await request("near","/retry",{});notice("重连请求已提交");}catch(error){notice(error.message);}}},{type:"separator"},{id:"tray-exit",label:"退出（关闭全部连接和进程）",click:()=>void trayExit()}]));tray.on("click",show);
+  }
+  const validSender=event=>event.sender===window?.webContents;
+  const routes=new Set(["/status","/logs","/logs/clear","/pair/create","/pair/cancel","/pair/connect","/settings","/device","/controller","/unpair","/retry","/connection/decision"]);
+  ipcMain.handle("relay",async(event,role,route,body)=>{
+    if(!validSender(event)||!["near","far"].includes(role)||!routes.has(route)||exiting)throw Error("Invalid UI request");
+    if(!backendReady)throw Error("客户端正在准备，请稍候");
+    const value=route==="/status"?await statusRequest(role):await request(role,route,body);
+    if(role==="far"&&route==="/status")void checkAdmission(value);return value;
   });
-}
-const statusPending = new Map(), roleDisabled = new Map(), recoverAfter = new Map();
-function statusRequest(role) {
-  if (!statusPending.has(role)) {
-    const task = request(role, "/status").catch(async error => {
-      const transport = ["ECONNREFUSED", "ECONNRESET", "ENOENT"].includes(error.code) || ["Agent is not running", "Agent request timeout"].includes(error.message);
-      if (!transport || args.includes("--observe-only") || Date.now() < (recoverAfter.get(role) || 0)) throw error;
-      recoverAfter.set(role, Date.now() + 15000);
-      await ensure(role);
-      return request(role, "/status");
-    }).then(value => {
-      roleDisabled.set(role, !value.settings.enabled);
-      return value;
-    }).finally(() => statusPending.delete(role));
-    statusPending.set(role, task);
-  }
-  return statusPending.get(role);
-}
-let prompting = false;
-const seenAdmission = new Set();
-async function checkAdmission(status) {
-  if (prompting || quitting || args.includes("--observe-only")) return;
-  const pending = status.admission?.pending?.find(p => p.expiresAt > Date.now() && !seenAdmission.has(p.requestId));
-  if (!pending) return;
-  prompting = true; seenAdmission.add(pending.requestId);
-  if (seenAdmission.size > 128) seenAdmission.delete(seenAdmission.values().next().value);
-  try { show(); await switchPrompt(pending, status); }
-  catch { diagnostic.record("switch_prompt_unavailable"); }
-  finally { prompting = false; }
-}
-function show() {
-  if (window) {
-    window.show();
-    window.focus();
-  }
-}
-function create() {
-  diagnostic.record("window_create");
-  window = new BrowserWindow({
-    width: 1060,
-    height: 780,
-    minWidth: 820,
-    minHeight: 620,
-    title: "SSH Relay Pro",
-    icon: path.join(root, "assets/relay.ico"),
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
+  ipcMain.handle("relay-batch",async(event,role,action,ids)=>{
+    if(!validSender(event)||!["near","far"].includes(role)||!["connect","disconnect","unpair","retry"].includes(action)||!Array.isArray(ids)||ids.length>1000||!ids.every(id=>/^[a-f0-9-]{36}$/.test(id))||exiting)throw Error("Invalid batch request");
+    const queue=[...new Set(ids)],results=[];let offset=0;
+    await Promise.all(Array.from({length:Math.min(4,queue.length)},async()=>{
+      while(offset<queue.length){const id=queue[offset++];try{
+        if(action==="unpair")await request(role,"/unpair",{id});
+        else await request(role,role==="near"?"/device":"/controller",{id,...(action==="retry"?{retry:true}:{enabled:action==="connect"})});
+        results.push({id,ok:true});
+      }catch(error){results.push({id,ok:false,error:error.message});}}
+    }));return {results,succeeded:results.filter(r=>r.ok).length,failed:results.filter(r=>!r.ok).length};
   });
-  window.webContents.on("did-finish-load", () => diagnostic.record("window_loaded"));
-  window.webContents.on("did-fail-load", (_e, errorCode) => diagnostic.record("window_load_failed", { errorCode }));
-  window.on("show", () => diagnostic.record("window_shown"));
-  window.loadFile(path.join(__dirname, "index.html")).catch(() => {
-    diagnostic.record("window_load_rejected");
-    app.exit(1);
+  ipcMain.handle("pair-copy",async(event,code)=>{
+    if(!validSender(event)||!/^\w{10}-\w{10}$/.test(code))throw Error("请先生成配对码");
+    clipboard.writeText(code);if(clipboard.readText()!==code)throw Error("复制失败，请重试");return true;
   });
-  window.on("close", (event) => {
-    if (!quitting) {
-      event.preventDefault();
-      window.hide();
-    }
+  ipcMain.handle("startup-status",event=>{if(!validSender(event))throw Error("Invalid sender");return startup.statusAsync(options());});
+  ipcMain.handle("startup-set",async(event,value)=>{
+    if(!validSender(event)||startupChanging)throw Error("启动设置正在保存");startupChanging=true;
+    try{return await startup.apply(options(),value);}finally{startupChanging=false;}
   });
-  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  window.webContents.on("will-navigate", (e) => e.preventDefault());
-  if (args.includes("--tray")) window.hide();
-  tray = new Tray(
-    nativeImage.createFromPath(path.join(root, "assets/relay-tray.png")),
-  );
-  tray.setToolTip("SSH Relay Pro");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "打开连接界面", click: show },
-      {
-        label: "立即重试已配对电脑",
-        click: () => request("near", "/retry", {}).catch(() => {}),
-      },
-      { type: "separator" },
-      {
-        label: "退出界面，保留后台连接",
-        click: () => {
-          quitting = true;
-          app.quit();
-        },
-      },
-      {
-        label: "关闭所有连接并退出",
-        click: async () => {
-          const managed = (await startup.statusAsync(options())).bootInstalled;
-          await Promise.allSettled(
-            ["near", "far"].map((r) => managed
-              ? request(r, "/settings", {enabled:false}) : request(r, "/shutdown", {})),
-          );
-          quitting = true;
-          app.quit();
-        },
-      },
-    ]),
-  );
-  tray.on("click", show);
-}
-const routes = new Set([
-  "/status",
-  "/logs",
-  "/logs/clear",
-  "/pair/create",
-  "/pair/cancel",
-  "/pair/connect",
-  "/settings",
-  "/device",
-  "/controller",
-  "/unpair",
-  "/retry",
-  "/connection/decision",
-]);
-ipcMain.handle("relay", async (event, role, route, body) => {
-  if (
-    event.sender !== window?.webContents ||
-    !["near", "far"].includes(role) ||
-    !routes.has(route)
-  )
-    throw Error("Invalid UI request");
-  if (
-    args.includes("--observe-only") &&
-    route !== "/status" &&
-    route !== "/logs"
-  )
-    throw Error("Read-only validation window");
-  const result = route === "/status" ? await statusRequest(role) : await request(role, route, body);
-  if (role === "far" && route === "/status") void checkAdmission(result);
-  if (route === "/settings" && typeof body?.enabled === "boolean") roleDisabled.set(role, !body.enabled);
-  if (route === "/logs/clear") require("../src/pro/manual-logs.cjs").clearLogs(diagnosticDirectory);
-  return result;
-});
-ipcMain.handle("pair-copy", async (event, code) => {
-  if (event.sender !== window?.webContents || !/^\w{10}-\w{10}$/.test(code))
-    throw Error("Invalid pairing code");
-  await clipboard.writeText(code);
-  return true;
-});
-ipcMain.handle("startup-status", (event) => {
-  if (event.sender !== window?.webContents) throw Error("Invalid sender");
-  return startup.statusAsync(options());
-});
-let startupChanging = false;
-ipcMain.handle("startup-set", async (event, value) => {
-  if (event.sender !== window?.webContents) throw Error("Invalid sender");
-  if (startupChanging) throw Error("启动设置正在保存，请稍候");
-  startupChanging = true;
-  try {
-  const previous = await startup.statusAsync(options());
-  const handover = process.platform === "win32" && value.enabled && value.mode === "boot" && !previous.bootInstalled;
-  if (handover) {
-    await Promise.allSettled(["near", "far"].map(role => request(role,"/shutdown",{})));
-    const until = Date.now() + 15000;
-    while (["near","far"].some(role => fs.existsSync(path.join(roleDirectory(role),"guardian.lock")))) {
-      if (Date.now() >= until) throw Error("旧后台尚未退出，请稍后再试，未安装重叠服务。");
-      await new Promise(resolve => setTimeout(resolve,200));
-    }
-  }
-  try {
-    const result = await startup.apply(options(), value);
-    if (handover) await Promise.all(["near","far"].map(ensure));
-    return result;
-  } catch (error) {
-    if (handover && !(await startup.statusAsync(options())).bootInstalled)
-      await Promise.allSettled(["near","far"].map(ensure));
-    throw error;
-  }
-  } finally { startupChanging = false; }
-});
-ipcMain.handle("logs-export", async () => {
-  const d = await dialog.showSaveDialog(window, {
-    defaultPath: "ssh-relay-pro-diagnostics-" + Date.now() + ".json.gz",
+  ipcMain.handle("logs-export",async event=>{
+    if(!validSender(event))throw Error("Invalid sender");
+    const dest=await dialog.showSaveDialog(window,{defaultPath:"ssh-relay-pro-diagnostics-"+Date.now()+".json.gz"});
+    if(dest.canceled)return false;
+    await new Promise((resolve,reject)=>cp.execFile(process.execPath,[path.join(root,"src/pro/gui-diagnostics.cjs"),diagnosticDirectory,dest.filePath],{env:{...process.env,ELECTRON_RUN_AS_NODE:"1"},windowsHide:true,timeout:30000},error=>error?reject(Error("日志导出失败")):resolve()));return true;
   });
-  if (!d.canceled) await new Promise((resolve, reject) => {
-    cp.execFile(process.execPath, [path.join(root, "src/pro/gui-diagnostics.cjs"), diagnosticDirectory, d.filePath],
-      { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, windowsHide: true, timeout: 30000 },
-      error => error ? reject(Error("日志导出失败，请保留本地日志")) : resolve());
-  });
-  return !d.canceled;
-});
-app.on("before-quit", () => { diagnostic.record("before_quit"); quitting = true; });
-async function switchPrompt(pending, snapshot) {
-  const label = String(pending.label || "已授权近端").replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g, "").slice(0,80);
-  const cancel = new AbortController();
-  const timer = setTimeout(() => cancel.abort(), Math.max(1, pending.expiresAt - Date.now()));
-  try {
-    diagnostic.record("switch_prompt_shown");
-    const status=snapshot || await request("far","/status");
-    const connected=(status.admission?.connectedControllerIds || []).slice(0,5);
-    const devices=connected.map(id=>status.devices.find(d=>d.id===id) || {id,label:id.slice(-8)});
-    const response = await dialog.showMessageBox({
-      title:"SSH Relay Pro — 五台连接已满", type:"question",
-      buttons:["保留现有连接",...devices.map((d,i)=>"替换 " +(i+1))],
-      defaultId:0,cancelId:0,signal:cancel.signal,
-      message:"第六台电脑请求连接，请选择要替换的连接。",
-      detail:"新请求："+label+"（"+pending.controllerId.slice(-8)+"）\n\n"+devices.map((d,i)=>(i+1)+". "+String(d.label||"已授权电脑").slice(0,60)+"（"+d.id.slice(-8)+"）").join("\n")+"\n\n选择后仅暂停指定电脑并接入新电脑，其他四台继续连接。关闭弹窗保留现有连接。",
-    });
-    const chosen=devices[response.response-1];
-    await request("far", "/connection/decision", {requestId:pending.requestId,approve:!!chosen,replaceControllerId:chosen?.id});
-    diagnostic.record(chosen ? "switch_prompt_approved" : "switch_prompt_declined");
-  } finally { clearTimeout(timer); }
-}
-app.whenReady().then(async () => {
-  diagnostic.record("app_ready");
-  await require("./runtime-image-labels.cjs").prepareRuntimeImages(diagnostic.record);
-  if (args.includes("--consent-only")) {
-    try {
-      const status = await request("far", "/status");
-      const pending = status.admission?.pending?.find(p => p.expiresAt > Date.now());
-      if (pending) await switchPrompt(pending);
-    } catch { diagnostic.record("switch_prompt_unavailable"); }
-    quitting = true; app.quit(); return;
+  async function checkAdmission(status){
+    if(prompting||quitting||exiting)return;
+    const pending=status.admission?.pending?.find(p=>p.expiresAt>Date.now()&&!seenAdmission.has(p.requestId));if(!pending)return;
+    seenAdmission.add(pending.requestId);if(seenAdmission.size>128)seenAdmission.delete(seenAdmission.values().next().value);prompting=true;
+    try{
+      show();const ids=status.admission.connectedControllerIds||[],devices=ids.map(id=>status.devices.find(d=>d.id===id)||{id,label:id.slice(-8)});
+      // Capacity replacement is selected inside the scrollable device list, not a 21-button OS dialog.
+      window.webContents.send("relay-admission",{requestId:pending.requestId,label:String(pending.label||"已授权电脑").slice(0,80),expiresAt:pending.expiresAt,devices:devices.map(d=>({id:d.id,label:d.label}))});
+    }finally{prompting=false;}
   }
-  folder(profile);
-  // Fresh installations remain idle; existing settings and pairings are preserved.
-  for (const role of ["near","far"]) {
-    const file = path.join(roleDirectory(role),"settings.json");
-    if (!fs.existsSync(file) && !args.includes("--observe-only"))
-      write(file,{enabled:false,autoConnect:true,label:os.hostname(),defaultDevice:null});
-  }
-  create();
-  let pollTimer;
-  const poll = async () => {
-    if (quitting) return;
-    const visible = window && window.isVisible();
-    if (visible) { pollTimer = setTimeout(poll, 3000); return; }
-    await Promise.allSettled(["near", "far"].map(async role => {
-      if (!visible && (role === "near" || roleDisabled.get(role))) return;
-      try {
-        const status = await statusRequest(role);
-        if (!visible && role === "far") await checkAdmission(status);
-      } catch { /* The visible renderer displays role-specific errors. */ }
-    }));
-    if (!quitting) pollTimer = setTimeout(poll, 3000);
-  };
-  window.on("show", () => window.webContents.send("relay-visible"));
-  app.once("will-quit", () => clearTimeout(pollTimer));
-  // Renderer owns visible refreshes. Main polls only while hidden for admission.
-  const hiddenPoll = async () => {
-    if (window?.isVisible()) { pollTimer = setTimeout(hiddenPoll, 3000); return; }
-    await poll();
-  };
-  pollTimer = setTimeout(hiddenPoll, 3000);
-  let diagnosticTimer;
-  if (args.includes("--diagnostic-check")) {
-    if (!args.includes("--observe-only") || !args.includes("--no-shortcuts")) throw Error("Diagnostic check requires an isolated read-only launch");
-    diagnosticTimer = setTimeout(() => {
-      diagnostic.record("startup_failed");
-      quitting = true; app.exit(1);
-    }, 120000);
-  }
-  if (
-    !args.includes("--ui-smoke") &&
-    !args.includes("--no-shortcuts") &&
-    !args.includes("--observe-only")
-  )
-    try {
-      await require("./shortcuts.cjs").install(options());
-    } catch (error) {
-      console.error("Shortcut: " + error.message);
-    }
-  if (!args.includes("--observe-only"))
-    await Promise.allSettled(["near", "far"].map(ensure));
-  if (args.includes("--observe-only")) {
-    const capture = async () => {
-      try {
-        const status = await window.webContents.executeJavaScript(
-          '({title:document.title,devices:document.querySelectorAll(".device").length,state:document.getElementById("refreshState").textContent})',
-        );
-        fs.writeFileSync(
-          path.join(profile, "gui-status.json"),
-          JSON.stringify({
-            time: new Date().toISOString(),
-            pid: process.pid,
-            ...status,
-          }),
-        );
-        if (args.includes("--diagnostic-check") || !fs.existsSync(path.join(profile, "observer.png")))
-          fs.writeFileSync(
-            path.join(profile, "observer.png"),
-            (await window.webContents.capturePage()).toPNG(),
-          );
-        if (args.includes("--diagnostic-check")) {
-          clearTimeout(diagnosticTimer); quitting = true; app.exit(0);
-        }
-      } catch (error) {
-        fs.appendFileSync(
-          path.join(profile, "gui-errors.log"),
-          error.message + "\n",
-        );
-      }
+  app.on("before-quit",event=>{if(!quitting){event.preventDefault();show();notice("请通过托盘菜单退出；关闭窗口只会收起客户端。");}});
+  app.on("window-all-closed",()=>{if(!quitting&&!window)createWindow();});
+  app.whenReady().then(async()=>{
+    folder(profile);
+    await require("./runtime-image-labels.cjs").prepareRuntimeImages(diagnostic.record);
+    for(const role of ["near","far"]){const dir=folder(roleDirectory(role));write(path.join(dir,"client-owner.json"),{profile});if(!fs.existsSync(path.join(dir,"settings.json")))write(path.join(dir,"settings.json"),{enabled:false,autoConnect:true,label:os.hostname(),defaultDevice:null});}
+    createWindow();createTray();
+    const beat=async()=>{
+      if(quitting||exiting)return;
+      try{await lifecycle.command(profile,"heartbeat",{pid:process.pid});}
+      catch{try{await lifecycle.launch({...options(),adoptPid:process.pid,sessionToken:process.env.SSH_RELAY_CLIENT_SESSION});}catch(error){diagnostic.record("client_guardian_recovery_failed",{reason:error.message});}}
     };
-    setTimeout(capture, 8000);
-    setInterval(capture, 30000);
-  }
-  if (args.includes("--ui-smoke")) {
-    setTimeout(async () => {
-      try {
-        // All UI validation writes are confined to an explicitly isolated profile.
-        if (!args.includes("--no-shortcuts"))
-          throw Error("UI smoke requires --no-shortcuts and a private profile");
-        const isolatedConfig = process.env.XDG_CONFIG_HOME;
-        if (
-          process.platform === "linux" &&
-          (!isolatedConfig ||
-            !path.resolve(isolatedConfig).startsWith(profile + path.sep))
-        )
-          throw Error(
-            "UI smoke requires XDG_CONFIG_HOME below its private profile",
-          );
-        await window.webContents.executeJavaScript(
-          'document.getElementById("offer").click(); true',
-        );
-        for (let i = 0; i < 60; i++) {
-          if (
-            await window.webContents.executeJavaScript(
-              '!!document.getElementById("pairCode").textContent',
-            )
-          )
-            break;
-          await new Promise((r) => setTimeout(r, 500));
-        }
-        await window.webContents.executeJavaScript(
-          'document.getElementById("copyCode").click(); true',
-        );
-        await new Promise((r) => setTimeout(r, 500));
-        const displayed = await window.webContents.executeJavaScript(
-          'document.getElementById("pairCode").textContent',
-        );
-        const copied = await clipboard.readText();
-        if (!displayed || copied !== displayed)
-          throw Error("Pair code copy failed");
-        await clipboard.clear();
-        await window.webContents.executeJavaScript(
-          'document.getElementById("cancelCode").click(); true',
-        );
-        await new Promise((r) => setTimeout(r, 1000));
-        if ((await request("far", "/status")).pairing?.active)
-          throw Error("Pair code cancellation failed");
-        await window.webContents.executeJavaScript(
-          'document.getElementById("offer").click(); true',
-        );
-        let code;
-        for (let i = 0; i < 60; i++) {
-          code = await window.webContents.executeJavaScript(
-            'document.getElementById("pairCode").textContent',
-          );
-          if (code) break;
-          await new Promise((r) => setTimeout(r, 500));
-        }
-        if (!code) throw Error("UI did not create a pairing code");
-        await window.webContents.executeJavaScript(
-          'document.getElementById("code").value=' +
-            JSON.stringify(code) +
-            ';document.getElementById("pair").requestSubmit(); true',
-        );
-        let status;
-        for (let i = 0; i < 120; i++) {
-          status = await request("near", "/status");
-          if (status.devices[0]?.state === "online") break;
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-        if (status.devices[0]?.state !== "online")
-          throw Error("UI pairing did not establish pinned SSH");
-        await window.webContents.executeJavaScript(
-          'refresh().then(()=>{document.getElementById("pairCode").textContent="";})',
-        );
-        const result = await window.webContents.executeJavaScript(
-          '({title:document.title,ready:!!window.relay,buttons:document.querySelectorAll("button").length,rememberedDevices:document.querySelectorAll(".device").length})',
-        );
-        result.pairedSshVerified = true;
-        result.copyAndCancelVerified = true;
-        window.close();
-        if (window.isDestroyed() || window.isVisible())
-          throw Error("Window did not hide to tray");
-        if ((await request("near", "/status")).devices[0]?.state !== "online")
-          throw Error("Closing window stopped background");
-        result.closeKeepsBackground = true;
-        show();
-        if (process.platform === "linux") {
-          await window.webContents.executeJavaScript(
-            'document.getElementById("startMode").value="login";document.getElementById("autoStart").checked=true;document.getElementById("autoStart").dispatchEvent(new Event("change"));true',
-          );
-          for (let i = 0; i < 40; i++) {
-            if ((await startup.statusAsync(options())).enabled) break;
-            await new Promise((r) => setTimeout(r, 250));
-          }
-          if (!(await startup.statusAsync(options())).loginInstalled)
-            throw Error(
-              "Login startup was not registered in isolated XDG profile",
-            );
-          window.reload();
-          await new Promise((resolve) =>
-            window.webContents.once("did-finish-load", resolve),
-          );
-          await new Promise((r) => setTimeout(r, 1000));
-          if (
-            !(await window.webContents.executeJavaScript(
-              'document.getElementById("autoStart").checked',
-            ))
-          )
-            throw Error("Startup setting was not remembered after UI reload");
-          await window.webContents.executeJavaScript(
-            'document.getElementById("autoStart").checked=false;document.getElementById("autoStart").dispatchEvent(new Event("change"));true',
-          );
-          for (let i = 0; i < 40; i++) {
-            if (!(await startup.statusAsync(options())).enabled) break;
-            await new Promise((r) => setTimeout(r, 250));
-          }
-          if ((await startup.statusAsync(options())).loginInstalled)
-            throw Error("Isolated login startup was not removed");
-          result.loginStartupRemembered = true;
-          result.osBootRestartTested = false;
-        }
-        result.trayObjectCreated = !!tray;
-        result.actualDesktopTrayHostTested = false;
-        fs.writeFileSync(
-          path.join(profile, "ui-smoke.json"),
-          JSON.stringify(result),
-        );
-        fs.writeFileSync(
-          path.join(profile, "ui-smoke.png"),
-          (await window.webContents.capturePage()).toPNG(),
-        );
-      } catch (error) {
-        fs.writeFileSync(
-          path.join(profile, "ui-smoke-error.txt"),
-          error.message,
-        );
-      }
-      await Promise.allSettled(
-        ["near", "far"].map((r) => request(r, "/shutdown", {})),
-      );
-      quitting = true;
-      app.quit();
-    }, 5000);
-  }
-}).catch(() => {
-  diagnostic.record("startup_failed");
-  app.exit(1);
-});
-app.on("window-all-closed", () => {});
-
+    await beat();heartbeat=setInterval(()=>void beat(),2000);
+    try{await startup.migrateLegacy(options());backendReady=true;await Promise.all(["near","far"].map(ensure));}
+    catch(error){notice("启动尚未完成："+error.message);diagnostic.record("client_backend_start_failed",{reason:error.message});}
+    if(!args.includes("--no-shortcuts"))try{await require("./shortcuts.cjs").install(options());}catch(error){diagnostic.record("shortcut_failed",{reason:error.message});}
+    pollTimer=setInterval(()=>{if(!quitting&&!exiting&&window&&!window.isVisible())void statusRequest("far").then(checkAdmission).catch(()=>{});},3000);
+  }).catch(error=>{diagnostic.record("client_start_failed",{reason:error.message});app.exit(1);});
+}

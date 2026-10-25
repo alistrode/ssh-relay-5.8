@@ -118,15 +118,7 @@ async function startAgent(options, dir) {
     }
   };
   if (await check()) return;
-  if (process.platform === "win32") {
-    // Never silently replace the elevated service with an ordinary user Agent.
-    const deadline = Date.now() + 20000;
-    while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 400));
-      if (await check()) return;
-    }
-    throw Error("管理员后台服务未就绪。请在 Windows 服务中检查 SSHRelayPro-" + role + "；未降级启动普通权限后台。");
-  }
+  await require("./client-lifecycle.cjs").requireClient(dir);
   folder(dir);
   const fd = fs.openSync(path.join(dir, "bootstrap.log"), "a", 0o600);
   try {
@@ -136,7 +128,7 @@ async function startAgent(options, dir) {
       ...(options.testHooks ? ["--test-hooks"] : []),
     ], {
       stdio: ["ignore", fd, fd], detached: true, windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SSH_RELAY_CLIENT_PROFILE: require("./client-lifecycle.cjs").profileFor(dir) },
     });
     await new Promise((resolve, reject) => {
       child.once("error", reject);
@@ -153,6 +145,7 @@ async function startAgent(options, dir) {
 }
 async function ensureAgent(options = {}) {
   const dir = stateDirectory(options), role = options.role || "near";
+  await require("./client-lifecycle.cjs").requireClient(dir);
   const key = role + ":" + dir;
   if (!starting.has(key)) {
     const task = startAgent(options, dir).finally(() => starting.delete(key));

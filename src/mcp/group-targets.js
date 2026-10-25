@@ -1,8 +1,8 @@
 // Resolve group membership before starting any remote command. Two aliases
 // pointing to one verified device must never execute a command twice.
 export function planGroupTargets(servers, resolve) {
-  if (!Array.isArray(servers) || servers.length < 1 || servers.length > 5)
-    throw new Error("Group execution requires between one and five targets");
+  if (!Array.isArray(servers) || servers.length < 1 || servers.length > 20)
+    throw new Error("Group execution requires between one and twenty targets");
   const seen = new Set(), names = new Set();
   for (const name of servers) {
     if (typeof name !== "string" || !name)

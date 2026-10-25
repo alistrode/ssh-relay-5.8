@@ -15,7 +15,7 @@ def main():
  pins=json.loads((ROOT/'assets/pro-runtime-inputs.json').read_text());runtime=next(p for p in pins['electron']['files'] if p['platform']==args.platform)
  source=args.cache/runtime['file']
  if digest(source)!=runtime['sha256']:raise RuntimeError('Electron checksum mismatch')
- args.out.mkdir(parents=True,exist_ok=True);name='SSHRelayPro-5.3-'+args.platform+'-x64';folder=args.out/name
+ args.out.mkdir(parents=True,exist_ok=True);name='SSHRelayPro-5.5-'+args.platform+'-x64';folder=args.out/name
  if folder.exists():shutil.rmtree(folder)
  folder.mkdir()
  with zipfile.ZipFile(source) as z:
@@ -37,9 +37,6 @@ def main():
   if parts:modules.add(str(Path(*parts[:2] if parts[0].startswith('@') else parts[:1])))
  for module in sorted(modules):shutil.copytree(ROOT/'node_modules'/module,app/'node_modules'/module,dirs_exist_ok=True,ignore=shutil.ignore_patterns('test','tests','__tests__','.github','benchmarks','examples'))
  if args.platform=='win32':
-  winsw=args.cache/pins['winsw']['file']
-  if digest(winsw)!=pins['winsw']['sha256']:raise RuntimeError('Service host checksum mismatch')
-  (app/'vendor').mkdir();shutil.copy2(winsw,app/'vendor/WinSW-x64.exe');shutil.copy2(args.cache/'WinSW-LICENSE',app/'vendor/LICENSE.WinSW')
   for filename in ['Start.cmd','Restart.cmd']:
    (folder/filename).write_bytes(b'@echo off\r\nsetlocal DisableDelayedExpansion\r\nset ELECTRON_RUN_AS_NODE=\r\nstart "" "%~dp0SSHRelayPro.exe" --no-shortcuts %*\r\n')
   for filename,script in [('MCP.cmd','src\\mcp.cjs'),('CLI.cmd','src\\pro\\cli.cjs')]:
@@ -56,9 +53,9 @@ def main():
   (folder/'Generate-MCP.cmd').write_bytes(b'@echo off\r\nsetlocal\r\nset ELECTRON_RUN_AS_NODE=1\r\n"%~dp0SSHRelayPro.exe" "%~dp0Generate-MCP.cjs"\r\n')
  else:
   (folder/'Generate-MCP.sh').write_text('#!/bin/sh\nROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nELECTRON_RUN_AS_NODE=1 exec "$ROOT/ssh-relay-pro" "$ROOT/Generate-MCP.cjs"\n');(folder/'Generate-MCP.sh').chmod(0o755)
- (folder/'README.txt').write_text('SSH Relay Pro 5.3 — 统一版\n运行 Start.cmd（Windows）或 ./Start.sh（Linux）。无需安装 Node/npm。\n通过界面分别开启“连接其他电脑”和“允许其他电脑连接本机”，可同时开启，开关状态自动保存。\nWindows 首次点击“安装管理员后台”，确认一次 UAC。后台使用 SYSTEM 账户并立即启动，以后正常打开无需重复授权。安装后保持程序目录不变。\n首次将原用户后台切换为 SYSTEM，实际执行账户和默认目录会改变；已配对近端如提示账户变化，需显式重新配对确认新账户，不能绕过身份核验。\n一台可连接五台，五台可连接本机；断开某台只影响对应连接，授权记录保留。\n首次配对输入一次性配对码；以后保留设备身份和密钥，正常情况下自动连接。\nGenerate-MCP 生成当前路径的 MCP-CONFIG.json，将配置加入 AI 客户端。MCP 会复用后台。\nRestart/Start 均可一键重新打开窗口，已运行时聚焦现有窗口，不中断已有连接。\n退出界面保留后台。需要暂停时使用两项功能开关；不删除配对。\nLinux 开机服务按当前账户运行，不冒称 Windows 管理员服务；桌面库与可用的 Chromium 沙箱属于系统前提。\n未包含 AI 客户端、数据库服务器、数据库工具、用户密钥、配对码或私人状态。未改变已有执行/传输引擎。\n',encoding='utf8')
+ (folder/'README.txt').write_text('SSH Relay Pro 5.5\n运行 Start.cmd（Windows）或 ./Start.sh（Linux）。无需安装 Node/npm。\n客户端与后台一起运行，不提供独立后台服务。关闭窗口收起到托盘，异常退出自动恢复，只有托盘退出会清理全部所属进程。\n主动连接与被连接各最多 20 台。设备显示系统版本，支持全选、框选及批量连接、断开、取消授权。\n复制配对码和所有操作按钮均显示处理结果。\n升级会移除同一配置目录的旧独立服务；Windows 使用当前客户端账户执行，所需权限由客户端启动令牌决定。\nGenerate-MCP 生成当前路径的 MCP 配置；MCP 与 CLI 自动复用或打开完整客户端，不启动独立后台。\n首次配对使用远端配对码，之后沿用已保存授权。未内置用户密钥、私人状态或 AI 客户端。\n',encoding='utf8')
  source_hash={str(p.relative_to(app)):digest(p) for d in ['src','desktop','launchers'] for p in sorted((app/d).rglob('*')) if p.is_file()}
- manifest={'version':'5.3','roles':['near','far'],'platform':args.platform,'architecture':'x64','runtime':runtime,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'sourceFilesSHA256':source_hash,'lockfileSHA256':digest(app/'package-lock.json'),'credentialsIncluded':False}
+ manifest={'version':'5.5','roles':['near','far'],'platform':args.platform,'architecture':'x64','runtime':runtime,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'sourceFilesSHA256':source_hash,'lockfileSHA256':digest(app/'package-lock.json'),'credentialsIncluded':False}
  (folder/'PACKAGE.json').write_text(json.dumps(manifest,indent=2)+'\n')
  if args.platform=='win32':
   archive=args.out/(name+'.zip')

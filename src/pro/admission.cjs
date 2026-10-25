@@ -4,7 +4,7 @@ const { utils } = require("ssh2");
 const validId = value => typeof value === "string" && /^[a-f0-9-]{36}$/.test(value);
 function probe(privateKey, controllerId, requestId, challenge) {
   if (!validId(controllerId) || !validId(requestId)) throw Error("Invalid admission request");
-  const payload = JSON.stringify({ controllerId, requestId, time: Date.now(), ...(challenge ? {challenge} : {}) });
+  const payload = JSON.stringify({ controllerId, requestId, time: Date.now(), system: require("./os-version.cjs").systemVersion(), hostname: require("node:os").hostname(), ...(challenge ? {challenge} : {}) });
   const key = utils.parseKey(privateKey);
   if (key instanceof Error) throw key;
   const signature = key.sign(Buffer.from(payload));
@@ -13,7 +13,7 @@ function probe(privateKey, controllerId, requestId, challenge) {
 }
 function verifyProbe(envelope, authorized, now = Date.now(), acceptChallenge = null) {
   try {
-    if (typeof envelope?.payload !== "string" || envelope.payload.length > 512 || typeof envelope.signature !== "string" || envelope.signature.length > 256) return null;
+    if (typeof envelope?.payload !== "string" || envelope.payload.length > 1536 || typeof envelope.signature !== "string" || envelope.signature.length > 256) return null;
     const value = JSON.parse(envelope.payload);
     if (!validId(value.controllerId) || !validId(value.requestId) || !Number.isSafeInteger(value.time) ) return null;
     if (acceptChallenge ? !acceptChallenge(value.challenge) : Math.abs(now - value.time) > 120000) return null;
@@ -21,13 +21,13 @@ function verifyProbe(envelope, authorized, now = Date.now(), acceptChallenge = n
     if (!entry || entry.enabled === false) return null;
     const key = utils.parseKey(entry.publicKey);
     if (key instanceof Error || key.verify(Buffer.from(envelope.payload), Buffer.from(envelope.signature, "base64")) !== true) return null;
-    return { ...value, label: String(entry.label || "Authorized near end").slice(0, 80) };
+    return { ...value, system: require("./os-version.cjs").normalizeSystem(value.system), hostname: typeof value.hostname === "string" ? value.hostname.slice(0,160) : "", label: String(entry.label || "Authorized near end").slice(0, 80) };
   } catch { return null; }
 }
 class Admission {
   constructor({ now = Date.now, onChange = () => {}, ttl = 60000 } = {}) {
     this.now = now; this.onChange = onChange; this.ttl = ttl;
-    this.limit = 5;
+    this.limit = 20;
     this.sessions = new Map(); this.reservations = new Map();
     this.pending = new Map();
     this.denied = new Map();
@@ -57,7 +57,7 @@ class Admission {
     const controllers = this.controllers();
     if (controllers.has(value.controllerId) || controllers.size < this.limit) return true;
     if (this.denied.has(value.requestId)) return false;
-    if (this.pending.size >= 8 || [...this.pending.values()].some(r => r.controllerId === value.controllerId)) return false;
+    if (this.pending.size >= 40 || [...this.pending.values()].some(r => r.controllerId === value.controllerId)) return false;
     this.pending.set(value.requestId,{controllerId:value.controllerId,requestId:value.requestId,
       label:String(value.label || "已授权电脑").slice(0,80),expiresAt:this.now()+this.ttl});
     this.emit(); return false;
@@ -90,7 +90,7 @@ class Admission {
     const controllers = this.controllers();
     if (!controllers.has(controllerId) && controllers.size >= this.limit) return null;
     // Multiple SSH transports for one authenticated controller share one slot.
-    if (this.sessions.size + this.reservations.size >= 64) return null;
+    if (this.sessions.size + this.reservations.size >= 256) return null;
     const token = crypto.randomUUID();
     this.reservations.set(token, { controllerId, label, expiresAt:this.now()+15000 });
     this.emit(); return token;

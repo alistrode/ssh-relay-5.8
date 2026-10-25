@@ -1,91 +1,20 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'"
-    />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SSH Relay Pro</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <header>
-      <span class="mark">›_</span>
-      <div>
-        <h1>SSH Relay Pro <small>5.3</small></h1>
-        <p>一个程序 · 双向连接 · 各自独立</p>
-      </div>
-      <span id="refreshState">正在读取后台状态</span>
-    </header>
-    <main>
-      <section>
-        <div class="section-heading"><h2>连接其他电脑 <span id="nearCount">0 / 5 台</span></h2>
-          <button id="nearToggle" class="secondary">启用连接</button></div>
-        <p id="nearState" class="muted">正在读取状态</p>
-        <div id="nearControls">
-        <form id="pair">
-          <label for="code">输入远端显示的配对码</label>
-          <div class="row">
-            <input
-              id="code"
-              placeholder="XXXXXXXXXX-XXXXXXXXXX"
-              autocomplete="off"
-              spellcheck="false"
-              maxlength="30"
-            /><button id="pairButton">配对并记住</button>
-          </div>
-        </form>
-        <div id="devices" class="devices"></div>
-        <button id="retry" class="secondary">立即重试所有已启用电脑</button>
-        </div>
-      </section>
-      <section>
-        <h2>允许其他电脑连接本机 <span id="farCount">0 / 5 台</span></h2>
-        <div class="row">
-          <span id="farState">正在启动</span
-          ><button id="farToggle" class="secondary">允许连接本机</button>
-        </div>
-        <p class="muted">
-          最多允许五台已授权电脑同时操作，无需切换控制权。断开某台仅影响该连接。
-        </p>
-        <div id="farControls">
-        <button id="offer">生成配对码（24 小时）</button>
-        <div id="pairCode" class="pair-code"></div>
-        <button id="copyCode" class="secondary">复制配对码</button>
-        <div id="authorized"></div>
-        </div>
-      </section>
-      <section>
-        <h2>启动与后台</h2>
-        <div class="row"><button id="installService" disabled>正在读取后台设置</button>
-          <span id="serviceStatus" class="muted">正在检查后台服务</span></div>
-        <p class="muted">Windows 首次安装需确认一次 UAC，之后界面与后台自动复用服务，无需每次确认。服务使用 SYSTEM 账户执行操作；两项功能开关分别保存，关闭功能不会删除配对。</p>
-        <div class="row">
-          <label><input type="checkbox" id="autoStart" disabled /> 自动启动</label
-          ><select id="startMode" disabled>
-            <option value="login">登录后启动界面与后台</option>
-            <option value="boot">管理员后台服务，登录后显示界面</option></select
-          ><button id="saveStartup" class="secondary" disabled>应用设置</button>
-        </div>
-        <p id="startupStatus" class="muted">正在核对系统实际设置</p>
-        <p class="muted">
-          关闭窗口后保持后台连接。可从托盘重新打开，或明确停止本版本后台。
-        </p>
-      </section>
-      <details id="logPanel">
-        <summary>连接日志（点击展开）</summary>
-        <div class="row">
-          <h2>连接日志</h2>
-          <button id="clearLogs" class="secondary">手动清理日志</button>
-          <button id="export" class="secondary">导出脱敏日志</button>
-        </div>
-        <pre id="logs"></pre>
-      </details>
-      <p id="message" role="status"></p>
-    </main>
-    <script src="renderer.js"></script>
-  </body>
-</html>
-
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSH Relay Pro 5.5</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><span class="mark">›_</span><div><h1>SSH Relay Pro <small>5.5</small></h1><p>客户端统一运行 · 双向各 20 台 · 自动恢复</p><p id="localSystem" class="system-version">正在读取本机系统版本</p></div><span id="refreshState">客户端正在启动</span></header>
+<main>
+<section><div class="section-heading"><h2>连接其他电脑 <span id="nearCount">0 / 20 台</span></h2><button id="nearToggle" class="secondary">启用连接</button></div><p id="nearState" class="muted">正在读取状态</p>
+<div id="nearControls"><form id="pair"><label for="code">输入远端显示的配对码</label><div class="row"><input id="code" placeholder="XXXXXXXXXX-XXXXXXXXXX" autocomplete="off" spellcheck="false" maxlength="30"><button id="pairButton">配对并记住</button></div></form>
+<div class="batch-toolbar" data-role="near"><div class="row"><label><input type="checkbox" data-select-all> 全选</label><span data-selection-count>已选 0 台</span><button data-clear class="secondary">取消选择</button><button data-box class="secondary" aria-pressed="false">框选</button></div><div class="row"><button data-batch="connect">连接所选</button><button data-batch="disconnect" class="secondary">断开所选</button><button data-batch="unpair" class="danger">取消所选配对</button></div><div class="row all-actions"><button data-all="connect" class="secondary">一键全部连接</button><button data-all="disconnect" class="secondary">一键全部断开</button><button data-all="unpair" class="danger-quiet">一键取消全部配对</button></div></div>
+<div id="devices" class="devices" data-device-role="near"></div><button id="retry" class="secondary">重新连接所有已启用电脑</button></div></section>
+<section><div class="section-heading"><h2>允许其他电脑连接本机 <span id="farCount">0 / 20 台</span></h2><button id="farToggle" class="secondary">允许连接本机</button></div><p id="farState" class="muted">正在读取状态</p><p class="muted">最多 20 台已授权电脑同时连接，逐台独立断开与授权。</p>
+<div id="farControls"><div class="row"><button id="offer">生成配对码（24 小时）</button><button id="copyCode" class="secondary" disabled>复制配对码</button><button id="cancelCode" class="secondary" disabled>取消有效配对码</button></div><div id="pairCode" class="pair-code" aria-live="polite"></div>
+<div class="batch-toolbar" data-role="far"><div class="row"><label><input type="checkbox" data-select-all> 全选</label><span data-selection-count>已选 0 台</span><button data-clear class="secondary">取消选择</button><button data-box class="secondary" aria-pressed="false">框选</button></div><div class="row"><button data-batch="connect">允许所选连接</button><button data-batch="disconnect" class="secondary">断开所选</button><button data-batch="unpair" class="danger">取消所选授权</button></div><div class="row all-actions"><button data-all="connect" class="secondary">一键允许全部连接</button><button data-all="disconnect" class="secondary">一键全部断开</button><button data-all="unpair" class="danger-quiet">一键取消全部授权</button></div></div>
+<div id="authorized" class="devices" data-device-role="far"></div></div></section>
+<section><h2>客户端启动与退出</h2><div class="row"><label><input type="checkbox" id="autoStart" disabled> 随系统自动启动客户端</label><button id="saveStartup" class="secondary" disabled>保存启动设置</button></div><p id="startupStatus" class="muted">正在读取启动设置</p><p class="muted">后台必须与客户端一起运行，不提供独立后台模式。关闭窗口会收起到托盘；异常退出自动恢复。只有托盘菜单中的“退出”会关闭客户端及全部所属进程。</p></section>
+<section id="admissionPanel" hidden><h2>20 台连接已满</h2><p id="admissionMessage"></p><div class="row"><label for="replaceController">选择要替换的连接</label><select id="replaceController"></select><button id="admissionApprove">替换并连接</button><button id="admissionDecline" class="secondary">保留现有连接</button></div></section>
+<details id="logPanel"><summary>连接日志（点击展开）</summary><div class="row"><h2>连接日志</h2><button id="clearLogs" class="secondary">清理日志</button><button id="export" class="secondary">导出脱敏日志</button></div><pre id="logs"></pre></details>
+<p id="message" role="status" aria-live="polite"></p>
+</main><script src="renderer.js"></script>
+</body></html>

@@ -11,6 +11,7 @@ const fs = require("node:fs"),
     systemBootId,
   } = require("./store.cjs"),
   { createTraceWriter } = require("../diagnostics.cjs");
+const { clientActive } = require("./client-lifecycle.cjs");
 const args = process.argv.slice(2),
   at = args.indexOf("--state-dir");
 if (at < 0) throw Error("Guardian requires a private state directory");
@@ -64,6 +65,7 @@ function finish() {
 }
 function spawn() {
   if (stopping) return;
+  if (!clientActive(dir)) { finish(); return; }
   record({ event: "guardian_agent_start", attempt: failures + 1 });
   const proc = cp.spawn(
     process.execPath,
@@ -71,7 +73,7 @@ function spawn() {
     {
       stdio: ["ignore", "pipe", "pipe", "ipc"],
       windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SSH_RELAY_CLIENT_PROFILE: require("./client-lifecycle.cjs").profileFor(dir) },
     },
   );
   child = proc;
@@ -124,3 +126,4 @@ function spawn() {
 }
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, finish);
 spawn();
+const clientTimer = setInterval(() => { if (!clientActive(dir)) { clearInterval(clientTimer); finish(); } }, 1000);
