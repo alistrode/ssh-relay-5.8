@@ -2,7 +2,7 @@
 // Operate the real desktop application on a GitHub runner. No test suite,
 // fixtures, network fault injection or simulated devices are created.
 const fs=require("node:fs"),path=require("node:path"),cp=require("node:child_process");
-const root=path.resolve(__dirname,".."),profile=path.join(root,"work/github-client"),output=path.join(root,"run-output");
+const repository=path.resolve(__dirname,".."),root=process.env.SSH_RELAY_RUN_APP||repository,profile=path.join(repository,"work/github-client"),output=path.join(repository,"run-output");
 require("../src/pro/release.cjs").requireProfile(profile,{create:true});fs.mkdirSync(output,{recursive:true});
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const record={release:"5.5",platform:process.platform,startedAt:new Date().toISOString(),operations:[]};
@@ -18,7 +18,7 @@ async function connectInspector(port,select){
 }
 let renderer,main;
 (async()=>{
-  const executable=require("electron"),env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
+  const executable=process.env.SSH_RELAY_RUN_EXECUTABLE||require("electron"),env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
   const launcher=cp.spawn(executable,["--inspect=9230","--remote-debugging-port=9222",root,"--profile-dir",profile,"--no-shortcuts"],{env,stdio:["ignore","pipe","pipe"],windowsHide:false});
   const log=fs.createWriteStream(path.join(profile,"launch-private.log"));launcher.stdout.pipe(log);launcher.stderr.pipe(log);
   launcher.on("error",error=>{record.launchError=error.message;save();});

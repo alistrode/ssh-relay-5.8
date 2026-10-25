@@ -52,6 +52,10 @@ jobs:
         run: |
           node scripts/package-windows55.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:SSH_RELAY_RUN_APP = (Resolve-Path run-output/SSHRelayPro-5.5/release/resources/app).Path
+          $env:SSH_RELAY_RUN_EXECUTABLE = (Resolve-Path run-output/SSHRelayPro-5.5/release/SSHRelayPro.exe).Path
+          node scripts/run-github-client.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path run-output/SSHRelayPro-5.5 -DestinationPath run-output/SSHRelayPro-5.5-Windows-x64.zip
       - name: Upload the runnable Windows package and complete source
         if: success() && runner.os == 'Windows'
