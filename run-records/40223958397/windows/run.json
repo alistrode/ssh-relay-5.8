@@ -1,0 +1,45 @@
+{
+  "release": "5.5",
+  "platform": "win32",
+  "startedAt": "2026-10-25T19:01:43.414Z",
+  "operations": [
+    "client_and_both_connection_services_started",
+    "desktop_opened_with_system_version_and_twenty_device_controls",
+    "tray_exit_handler_closed_client_and_owned_backends"
+  ],
+  "devices": [
+    {
+      "role": "near",
+      "system": {
+        "name": "Windows Server 2022 Datacenter",
+        "version": "21H2",
+        "build": "20348.5761",
+        "platform": "win32",
+        "arch": "x64",
+        "displayName": "Windows Server 2022 Datacenter 21H2 · 20348.5761 · x64"
+      },
+      "connectionLimit": 20
+    },
+    {
+      "role": "far",
+      "system": {
+        "name": "Windows Server 2022 Datacenter",
+        "version": "21H2",
+        "build": "20348.5761",
+        "platform": "win32",
+        "arch": "x64",
+        "displayName": "Windows Server 2022 Datacenter 21H2 · 20348.5761 · x64"
+      },
+      "connectionLimit": 20
+    }
+  ],
+  "screen": {
+    "title": "SSH Relay Pro 5.5",
+    "localSystem": "本机 · Windows Server 2022 Datacenter 21H2 · 20348.5761 · x64",
+    "nearCapacity": "0 / 20 台已连接",
+    "farCapacity": "0 / 20 台已连接",
+    "buttonCount": 28
+  },
+  "finishedAt": "2026-10-25T19:01:56.970Z",
+  "completed": true
+}
