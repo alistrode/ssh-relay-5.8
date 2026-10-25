@@ -105,7 +105,7 @@ class Connections {
     } catch (error) {
       task.ok = false;
       task.state = "failed";
-      task.error = { code: error.code || "CONNECTION_FAILED", phase: "connection",
+      task.error = { code: error.code || "CONNECTION_FAILED", phase: error.phase || task.phase,
         message: error.message, retryable: error.retryable === true };
     } finally {
       task.updatedAt = Date.now();

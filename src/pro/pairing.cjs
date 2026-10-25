@@ -238,7 +238,11 @@ async function join({ broker, code, who, accept, timeout = 90000 }) {
         done = true;
         cleanup();
         reject(
-          Error("Pairing timed out; code may have expired or be incorrect"),
+          Object.assign(Error("Pairing handshake timed out"), {
+            code: "PAIRING_TIMEOUT",
+            phase: "pairing",
+            retryable: true,
+          }),
         );
       }, timeout),
       retry = setInterval(send, 1500);

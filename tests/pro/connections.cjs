@@ -74,3 +74,32 @@ test("pending pairing reservations count toward every enable entrance and releas
   slots.release("pairing-request");
   slots.assertCanEnable(devices, "next");
 });
+
+test("remembered device reconnects after Agent restart and invitation expiry without pairing", async t => {
+  const { agent, service } = fixture(t);
+  agent.joinPair = async () => assert.fail("reconnect must never perform a pairing handshake");
+  service.ensureReady = async id => {
+    assert.equal(id, deviceId);
+    return { fingerprint: "pin", hostname: "host", remoteUser: "user", platform: "linux" };
+  };
+  service.disconnect(deviceId, { requestId: crypto.randomUUID() });
+  const restarted = new Connections(agent);
+  restarted.ensureReady = service.ensureReady;
+  agent.bootId = crypto.randomUUID();
+  const originalNow = Date.now;
+  Date.now = () => originalNow() + 2 * 86400000;
+  try {
+    const result = await restarted.connect({ requestId: crypto.randomUUID(), deviceId });
+    assert.equal(result.state, "ready");
+    assert.equal(agent.registry()[deviceId].desiredConnected, true);
+  } finally { Date.now = originalNow; }
+});
+test("pairing failures retain their phase rather than being reported as reconnect failures", async t => {
+  const { agent, service } = fixture(t);
+  agent.joinPair = async () => { throw Object.assign(Error("Pairing handshake timed out"),
+    { code: "PAIRING_TIMEOUT", phase: "pairing", retryable: true }); };
+  const result = await service.connect({ requestId: crypto.randomUUID(), code: "test-code" });
+  assert.equal(result.error.phase, "pairing");
+  assert.equal(result.error.code, "PAIRING_TIMEOUT");
+  assert.equal(result.error.retryable, true);
+});
