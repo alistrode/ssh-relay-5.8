@@ -35,7 +35,7 @@ for role in ['near', 'far']:
     (folder / 'resources/default_app.asar').unlink(missing_ok=True)
     app = folder / 'resources/app'
     app.mkdir(parents=True)
-    for directory in ['src', 'desktop', 'assets', 'profiles', 'launchers']:
+    for directory in ['src', 'desktop', 'assets', 'profiles', 'launchers', 'docs', '.agents']:
         shutil.copytree(ROOT / directory, app / directory)
     for item in ['package.json', 'package-lock.json']:
         shutil.copyfile(ROOT / item, app / item)

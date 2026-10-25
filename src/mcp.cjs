@@ -9,6 +9,6 @@ if (at >= 0) {
   process.env.RELAY_MCP_STATE_DIR = path.resolve(args[at + 1]);
 }
 import("./mcp/server.js").catch((error) => {
-  console.error("MCP startup failed: " + error.message);
+  console.error(JSON.stringify(require("./pro/ai-recovery.cjs").withRecovery({ ok: false, error: { code: error.code, message: "MCP startup failed: " + error.message } }), null, 2));
   process.exitCode = 1;
 });

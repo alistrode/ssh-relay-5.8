@@ -10,7 +10,7 @@ Temporary native hosts: Ubuntu 24.04 and **Windows Server 2022**, leased by [Act
 
 - `dd4c3c4`: `ssh_execute_sudo` stripped the initial sudo token and turned `sudo -u postgres ...` into an invalid shell command. Preserve the original command. The actual MCP call now returns the postgres account; a plain elevated command returns uid 0.
 - `912d073`: PostgreSQL export produced plain SQL although restore promised replacement of existing objects. Importing into the original database failed with an existing-relation error. Export now uses a custom archive; restore detects PGDMP and invokes `pg_restore --clean --if-exists --exit-on-error`. Plain SQL retains its legacy psql path. Actual dump/import and backup/create/restore into the existing database succeeded; SELECT confirmed the original row after each restore. The legacy plain-SQL path was not separately revalidated.
-- Earlier `544cb3a`/`d941131`: native Windows PowerShell module selection uses the invoked PowerShell's own modules rather than incompatible inherited module paths. Earlier native hour evidence is in [the limited hour report](UNATTENDED-HOUR-ACCEPTANCE.md); it is not evidence for the final source.
+- Earlier `544cb3a`/`d941131`: native Windows PowerShell module selection uses the invoked PowerShell's own modules rather than incompatible inherited module paths. Earlier native hour evidence is in a historical hour report (removed in 5.5 at user request); it is not evidence for the final source.
 
 ## Actual coverage
 

@@ -1,3 +1,5 @@
+import recoveryPolicy from "../pro/ai-recovery.cjs";
+const { withRecovery } = recoveryPolicy;
 import { resumeTransfer, cancelTransfer } from "./file-transfers.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -83,7 +85,7 @@ function sanitized(value, args) {
       );
     return v;
   };
-  return JSON.stringify(scrub(value), null, 2);
+  return JSON.stringify(scrub(withRecovery(value, { ...args, agentMode })), null, 2);
 }
 if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_connect")))
   server.registerTool("ssh_connect", {
@@ -113,7 +115,7 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_conne
       });
       return { content: [{ type: "text", text: sanitized(result, args) }], isError: result.ok === false };
     } catch (error) {
-      return { content: [{ type: "text", text: sanitized({ ok: false, error: {
+      return { content: [{ type: "text", text: sanitized({ ok: false, connectionTaskId: error.connectionTaskId, error: {
         code: error.code || "CONNECTION_FAILED", message: error.message,
         retryable: error.retryable === true,
       } }, args) }], isError: true };
@@ -195,7 +197,7 @@ for (const { name, config } of catalog) {
                 { success: false, error: error.message, tool: name,
                   code: error.code, retryable: error.retryable,
                   transferId: error.transferId, connectionTaskId: error.connectionTaskId, operationId: error.operationId,
-                  childOperationId: error.childOperationId, workflowOperationId: error.workflowOperationId, state: error.state, completed: error.completed },
+                  childOperationId: error.childOperationId, workflowOperationId: error.workflowOperationId, sessionId: error.sessionId, requestId: error.requestId, state: error.state, completed: error.completed },
                 args,
               ),
             },

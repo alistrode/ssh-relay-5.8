@@ -26,7 +26,7 @@ def main():
  (folder/('electron.exe' if args.platform=='win32' else 'electron')).rename(binary)
  (folder/'resources/default_app.asar').unlink(missing_ok=True)
  app=folder/'resources/app';app.mkdir(parents=True)
- for directory in ['src','desktop','assets','launchers','profiles']:
+ for directory in ['src','desktop','assets','launchers','profiles','docs','.agents']:
   if (ROOT/directory).exists():shutil.copytree(ROOT/directory,app/directory,ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
  for file in ['package.json','package-lock.json']:shutil.copy2(ROOT/file,app/file)
  listing=subprocess.run(['npm.cmd' if os.name=='nt' else 'npm','ls','--omit=dev','--all','--parseable'],cwd=ROOT,capture_output=True,text=True,check=True,shell=os.name=='nt')

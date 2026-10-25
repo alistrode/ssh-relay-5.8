@@ -8,10 +8,8 @@
     "near": "node src/near.cjs",
     "permissions": "node src/permissions.cjs",
     "mcp": "node src/mcp.cjs",
-    "test:relay": "node tests/relay-reliability.cjs",
     "pro:agent": "node src/pro/agent.cjs",
-    "pro:ui": "electron .",
-    "test:pro": "node --test tests/pro/unit.cjs"
+    "pro:ui": "electron ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

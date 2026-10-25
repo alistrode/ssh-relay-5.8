@@ -21,11 +21,11 @@ def production():
   if relative.parts:paths.add(relative.parts[:2]if relative.parts[0].startswith('@')else relative.parts[:1])
  return sorted({str(Path(*p))for p in paths})
 def appFiles(app):
- # Removed documentation and skills are not runtime requirements.
+ # Ship the AI recovery guide and connection Skill alongside the runtime.
  for name in ['src','desktop','assets','launchers']:
   if not (ROOT/name).is_dir():raise RuntimeError('Required application source directory missing: '+name)
   shutil.copytree(ROOT/name,app/name,ignore=shutil.ignore_patterns('__pycache__','*.pyc'),dirs_exist_ok=True)
- for name in ['profiles','docs','examples']:
+ for name in ['profiles','docs','examples','.agents']:
   if (ROOT/name).is_dir():shutil.copytree(ROOT/name,app/name,ignore=shutil.ignore_patterns('__pycache__','*.pyc'),dirs_exist_ok=True)
  shutil.copyfile(ROOT/'package.json',app/'package.json')
  for name in ['LICENSE.mcp-ssh-manager','README.md','AGENTS.md']:

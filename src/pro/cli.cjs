@@ -1,4 +1,5 @@
 "use strict";
+const { recoveryInstructions, withRecovery } = require("./ai-recovery.cjs");
 const fs = require("node:fs"),
   path = require("node:path"),
   os = require("node:os"),
@@ -41,11 +42,12 @@ if (require.main === module)
         await client.operation(input.operationId, Object.fromEntries(
           Object.entries({ stdoutOffset: input.stdoutOffset, stderrOffset: input.stderrOffset,
             limitBytes: input.limitBytes }).filter(([, value]) => value !== undefined)));
-      console.log(JSON.stringify(value, null, 2));
+      console.log(JSON.stringify(withRecovery(value), null, 2));
       if (value.ok === false) process.exitCode = 1;
       return;
     }
     if (command === "help" || command === "--help") {
+      console.log(recoveryInstructions);
       console.log("Commands: start, status, devices, pair-code, pair --code-file, connect --args-stdin, connection-task --id UUID, disconnect --args-stdin, operations, operation-status --args-stdin, operation-cancel --args-stdin, retry, logs, stop. connect stdin: {requestId?,code|deviceId,waitMs?}; disconnect stdin: {requestId?,deviceId}; operation stdin: {operationId,stdoutOffset?,stderrOffset?,limitBytes?,requestId?}. Pairing codes stay off the command line.");
       return;
     }
@@ -61,7 +63,7 @@ if (require.main === module)
         : command === "connect"
           ? await client.connect({ ...input, requestId: input.requestId || crypto.randomUUID() })
           : await client.disconnect(input.deviceId, input.requestId || crypto.randomUUID());
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(withRecovery(result, input || { connectionTaskId: arg("--id", "") }), null, 2));
       if (result.ok === false) process.exitCode = 1;
       return;
     }
@@ -94,9 +96,9 @@ if (require.main === module)
       throw Error(
         "Commands: start, status, devices, pair-code, pair --code-file, retry, logs, stop",
       );
-    console.log(JSON.stringify(value, null, 2));
+    console.log(JSON.stringify(withRecovery(value), null, 2));
   })().catch((e) => {
-    console.error(e.message);
+    console.error(JSON.stringify(withRecovery({ ok: false, error: { code: e.code, message: e.message, retryable: e.retryable }, connectionTaskId: e.connectionTaskId, recovery: e.recovery }), null, 2));
     process.exitCode = 1;
   });
 

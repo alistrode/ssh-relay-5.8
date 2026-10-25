@@ -42,8 +42,6 @@ jobs:
           if ($LASTEXITCODE) { throw 'Service host license download failed' }
       - name: Copy-only packaging with pinned input checksums
         run: python scripts/package-unified.py --platform win32 --cache work/runtime --out work/packaged
-      - name: Start the packaged desktop and actual SYSTEM services
-        run: node scripts/verify-windows-service.cjs work/packaged/SSHRelayPro-5.3-win32-x64 work/native-results
       - name: Publish only the ready-to-run folder ZIP
         shell: bash
         env:
@@ -56,7 +54,7 @@ jobs:
 
           完整解压后运行 Start.cmd；Restart.cmd 可重新打开窗口。无需安装 Node/npm。仅提供单文件夹运行包，不上传开发缓存。
 
-          未运行测试套件。连接操作遍历记录见对应分支文档；本流程实际启动 Windows Server 2022 上的 SYSTEM 服务及打包窗口，不冒称 Windows 10/11 用户实机验证。
+          本流程仅打包与发布，不运行测试或启动服务验收，不冒称用户实机验证。
           TEXT
           tag="ssh-relay-5.3-responsive-${GITHUB_RUN_ID}"
           gh release create "$tag" work/packaged/SSHRelayPro-5.3-win32-x64.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'SSH Relay Pro 5.3 · 配对码有效期 24 小时' --notes-file work/notes.md

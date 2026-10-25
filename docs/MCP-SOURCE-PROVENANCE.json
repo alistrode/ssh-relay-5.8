@@ -86,7 +86,7 @@
     "base": "recovery/current-public-relay-mcp@7546fa3",
     "relay": "src/relay.cjs: new endpoint-acknowledged reliability layer over the existing public relay protocol; not recovered original source",
     "diagnostics": "src/diagnostics.cjs: new bounded metadata logging",
-    "verification": "tests/ contains verification helpers, separate from src/ application code"
+    "verification": "Historical verification helpers were separate from application code; all project tests were removed in 5.5 at user request."
   },
   "proUpgrade": {
     "base": "recovery/current-public-relay-mcp@4c05038",
@@ -100,7 +100,7 @@
       "desktopAndRuntime": "Electron 44.8.0 with built-in Node 24.22.0; upstream binaries pinned in assets/pro-runtime-inputs.json",
       "windowsServiceHost": "WinSW 2.12.0 .NET Framework 4 variant (included Windows OS framework), bundled only for Windows pre-login services"
     },
-    "verification": "tests/pro/ is separate verification code; private states and raw logs stay outside Git."
+    "verification": "Historical verification code was removed in 5.5; private states and raw logs stay outside Git."
   },
   "endToEndIntegration": {
     "base": "fix/ssh-pro-startup-20261019@7cf931d1bf9b3108668ba9bd270600b04857a2d8",
@@ -172,7 +172,7 @@
       "src/mcp/sessions.js"
     ],
     "dependencies": "No new third-party dependency or replacement of OPAQUE, SSH or MQTT protocols.",
-    "verification": "New regression source is under tests/pro/. Source upload is not evidence that these checks or platform integration have run.",
+    "verification": "Historical regression source was removed in 5.5. Source upload is not evidence of platform acceptance.",
     "legacySessionCopy": {
       "path": "src/mcp/legacy-sessions.js",
       "source": "src/mcp/sessions.js@fab86aa83f3d064426f4533b7efb139d7df85d28",
@@ -187,7 +187,7 @@
     "modification": "CRLF normalized to LF and final newline added; copyright and permission text preserved. Root deleted documentation/skill files are not restored."
   },
   "originalToolSchemaBaseline": {
-    "path": "tests/fixtures/mcp-original-schemas.json",
+    "removedIn5_5": "Original schema test fixture removed at user request",
     "source": "trlstdin/rororororo@b724289:sources/stable/near/mcp-ssh-manager/src/index.js",
     "derivation": "Extract 37 registerToolConditional configuration objects without executing handlers; convert their Zod input shapes using current Zod to JSON Schema, excluding descriptions and schema-version annotations. Tool names, types, constraints, required/optional and defaults are retained."
   },

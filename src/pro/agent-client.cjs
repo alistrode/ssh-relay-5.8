@@ -65,6 +65,8 @@ function request(dir, route, body, options = {}) {
               error.phase = detail?.phase;
               error.retryable = detail?.retryable;
               error.details = detail?.details;
+              error.recovery = value.recovery;
+              error.connectionTaskId = value.connectionTaskId;
               reject(error);
             }
           } catch (e) {

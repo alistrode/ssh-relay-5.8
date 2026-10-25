@@ -6,7 +6,6 @@
     "npm-update": "npm update",
     "npm-build": "npm run build",
     "npm-start": "npm start",
-    "npm-test": "npm test",
     "npm-logs": "npm run logs",
     "pm2-list": "pm2 list",
     "pm2-restart": "pm2 restart all",
@@ -31,13 +30,6 @@
           "remoteCommand": "node --version",
           "server": "{server}",
           "errorMessage": "Node.js is not installed"
-        },
-        {
-          "type": "validation",
-          "name": "test-app",
-          "remoteCommand": "npm test",
-          "server": "{server}",
-          "optional": true
         }
       ]
     },

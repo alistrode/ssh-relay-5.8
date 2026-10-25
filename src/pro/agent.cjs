@@ -1,4 +1,5 @@
 "use strict";
+const { withRecovery } = require("./ai-recovery.cjs");
 const fs = require("node:fs"),
   path = require("node:path"),
   os = require("node:os"),
@@ -849,12 +850,13 @@ class Agent {
     };
   }
   async api(req, res) {
+    let recoveryContext = {};
     const reply = (code, data) => {
       res.writeHead(code, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
       });
-      res.end(JSON.stringify(data));
+      res.end(JSON.stringify(code === 401 ? data : withRecovery(data, recoveryContext)));
     };
     const got = req.headers.authorization || "",
       expected = "Bearer " + this.apiToken;
@@ -883,6 +885,13 @@ class Agent {
       catch { throw fault("INVALID_REQUEST", "Invalid JSON request body"); }
       if (!data || typeof data !== "object" || Array.isArray(data))
         throw fault("INVALID_REQUEST", "Expected a JSON object");
+      recoveryContext = { ...data };
+      const routeParts = route.split("/");
+      if (routeParts[2] === "connections" && routeParts[3]) recoveryContext.connectionTaskId = routeParts[3];
+      if (routeParts[2] === "operations" && routeParts[3]) recoveryContext.operationId = routeParts[3];
+      if (routeParts[2] === "sessions" && routeParts[3]) recoveryContext.sessionId = routeParts[3];
+      if (routeParts[2] === "devices" && routeParts[3]) recoveryContext.deviceId = routeParts[3];
+      if (apiUrl.searchParams.has("requestId")) recoveryContext.requestId = apiUrl.searchParams.get("requestId");
       let value = { ok: true };
       let responseCode = 200;
       const pageParams = () => {

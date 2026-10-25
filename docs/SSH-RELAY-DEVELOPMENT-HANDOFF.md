@@ -1,3 +1,12 @@
+
+
+<!-- ai-recovery-policy:start -->
+## 5.5 AI 断线恢复与任务继续规则
+
+连接断开后不允许停下汇报，不得仅报告断线、等待用户催促或要求用户手动重连。必须自动重连，失败后持续退避重试，不以重试次数耗尽为由结束任务。恢复连接后核验原目标身份，查询原操作结果并继续断线前的任务，直到完成并验证。Connection loss or a connection timeout MUST NOT end the task. Automatically reconnect using the remembered device, keep retrying with bounded backoff, and resume the original task after recovery. Do not report disconnection as the final outcome, wait for user prompting, or ask for manual reconnection. A tool timeout is an observation boundary, not a task deadline. Query an existing connectionTaskId with ssh_connect using that ID alone; otherwise use ssh_connection_status action=status and, in Agent mode, ssh_connect with the remembered server when needed. In legacy mode ssh_connect/ssh_operation_status are unavailable: let the existing transport recover, use a harmless identity probe through the original tool to establish the connection, and inspect actual effects. Never use disconnect/reconnect as the default repair: it closes live sessions and tunnels. Preserve operationId, workflowOperationId, sessionId/requestId and transferId. Query original work before continuing; resume saved transfers rather than starting over. If IDs were lost, discover saved operations/sessions on the same verified target before submitting anything. Never blindly replay a side-effecting command or recreate a lost shell as if its state survived. For legacy targets, reconnect and inspect actual remote effects before deciding how to continue. Do not reset identities, re-pair, change ports or stop services to repair a transient disconnect. Explicit user stop/disconnect and authorization or identity checks remain binding; reconnection does not grant new authority. Keep credentials private.
+
+<!-- ai-recovery-policy:end -->
+
 # SSH Relay 开发交接
 
 日期：2026-10-21（北京时间；保留此前开发记录）
@@ -38,7 +47,7 @@
 
 ## 本轮检查及未覆盖范围
 
-北京时间 23:21:19 在两个上传节点之间执行 `node --test tests/pro/device-slots.cjs tests/pro/agent-client.cjs tests/pro/mcp-agent-provider.cjs`：4 项通过。覆盖槽位满额与释放、重复占位、旧数据溢出与重启一致性、共享 API 令牌轮换与错误拒绝、MCP 在线发现及旧报告路径读取。
+北京时间 23:21:19 在两个上传节点之间执行 （历史测试命令已删除）：4 项通过。覆盖槽位满额与释放、重复占位、旧数据溢出与重启一致性、共享 API 令牌轮换与错误拒绝、MCP 在线发现及旧报告路径读取。
 
 这些是使用临时目录和本机模拟 API 的检查，未连接任何用户电脑，不能代替 Agent 实际多设备连接、端到端 MCP 工具调用或平台验收。未安装依赖、未更改系统环境或权限、未构建新运行包；上传不以这些检查通过为前提。
 
@@ -46,7 +55,7 @@
 
 当时的形式化检查仅覆盖五设备槽位及认证 Agent 异步发现，不代表设计文档中的完整目标或完整业务流程已经证明。
 
-- 可复现检查器：`scripts/formal-relay.mjs`；原说明已按本次清理要求移除，历史结果摘要保留如下。
+- 可复现检查器：（历史检查器已删除）；原说明已按本次清理要求移除，历史结果摘要保留如下。
 - 对生产槽位代码穷举七设备 2187 个状态、45927 个迁移；对生产异步发现代码穷举三请求 15 种交错、失败与内容组合共 960 个场景，所列安全不变量通过。
 - 找到原发现实现的并发反例：较早的响应覆盖较新的停用列表。已在 `agent-provider.js` 增加代次检查并由 `config.js` 接入，过期响应拒绝发布。旧实现的反例检查确认能够检出该缺陷。
 - 修复后重新执行本轮 4 项局部回归检查，通过。检查均在上传节点之外运行。
@@ -104,7 +113,7 @@
 
 ## 2026-10-21 代次竞态检查源码（本提交）
 
-- 新增 tests/pro/agent-generation.cjs，使用生产 Agent 原型及本地临时目录，构造同步销毁回调、旧身份结果晚到、新探测标记保留、无 child 时停止进行中探测四类断言。
+- 新增 （已删除的历史竞态测试），使用生产 Agent 原型及本地临时目录，构造同步销毁回调、旧身份结果晚到、新探测标记保留、无 child 时停止进行中探测四类断言。
 - 这些仅为检查源码，尚未执行；不代表竞态已通过验证。本轮所有新增实现仍需局部检查及 Windows/Linux 实机检查。
 - 上一个成功上传提交：75019175e6c8612996b068f2b8d4e87eaeec7414；本文件所在提交包含本检查源码。每次上传通过 GitHub 插件更新目标分支，不存在已配置的后台五分钟上传服务。
 
@@ -141,7 +150,7 @@
 - CLI 补 connect/disconnect --args-stdin、connection-task --id 与帮助，配对码不要求进入命令行；devices 读取新设备列表。
 - 连接请求内存最多 1024 个活动记录，持久记录最多 10000 条；清理超过七天的终结记录，不清理活动请求。Agent 读取 desiredConnected 时兼容旧 enabled 数据，原配对写入 schemaVersion/desiredConnected/autoConnect。SSH 握手默认最多两台并行。
 - HTTP JSON 接收改为字节上限与完整 UTF-8 解码；新 API 按冲突/权限/不存在/临时不可用返回结构化状态码。
-- 新增 tests/pro/connections.cjs 检查源码，涵盖 requestId 冲突、重启 unknown 不重配对、断开取消和配对预留槽位；本批没有运行这些或其他检查、测试、构建。
+- 新增 （已删除的历史连接测试） 检查源码，涵盖 requestId 冲突、重启 unknown 不重配对、断开取消和配对预留槽位；本批没有运行这些或其他检查、测试、构建。
 - 继续开发配对跨文件 staging/提交恢复；Windows ACL、原模拟 Provider 检查契约更新、多机实测与第二阶段持久业务仍未完成。
 - 上一成功远端提交：608ea2a659f669e5760e4af570a7e594c40e094e。
 
@@ -426,7 +435,7 @@
 
 ## 2026-10-21 15:33（北京时间）facade 隔离检查与近端序号预留
 
-- 新增 mcp-sessions.cjs，以 VM 模块和替代依赖运行真实 facade 源码，三项通过：MCP detach 不调用远端 close、重开列表找回 ID、未决请求阻止再发送、丢失 create 确认保留 ID 且不重试/不回退、legacy 仍按原方式关闭。执行命令需 node --experimental-vm-modules --test tests/pro/mcp-sessions.cjs；这些不是实际 SSH/MCP 集成。
+- 新增 mcp-sessions.cjs，以 VM 模块和替代依赖运行真实 facade 源码，三项通过：MCP detach 不调用远端 close、重开列表找回 ID、未决请求阻止再发送、丢失 create 确认保留 ID 且不重试/不回退、legacy 仍按原方式关闭。执行命令需 （历史测试命令已删除）；这些不是实际 SSH/MCP 集成。
 - NearSessions 增加单序号到单请求的持久预留，近端 API 同步写入；先保存序号预留，再写请求元数据，避免两个适配器同时取得同一 Far nextSequence 后各自派发。旧请求元数据按需建立一次索引，冲突不猜测。
 - 两项近端记录/序号检查通过，包含不同适配器实例只能复用同一请求、不同请求抢相同序号拒绝；注册和状态查询不派发命令。
 - 下一步继续 close 优先级、满命令额度仍可关闭、历史会话清理及整体契约检查。Windows/原生 Linux 进程功能、真实 SSH/MCP 与五机仍未验证；未构建运行包。
@@ -720,3 +729,7 @@
 - 验证范围：Windows/Linux 原生 CI 各 10/10、无跳过；原 37 schema 保留、legacy MCP 实际 SSH 共 46 调用。数据库/sudo/计划任务含能力负例，GUI 安装/系统自启动/五台用户设备及真实用户数据库正向联调仍未完成，不能用实现 100% 声称全部实机验收。
 - 源码归档将按本检查点实际 Git tree 更新至 208 个索引文件，并重新生成校验和；不含私钥、连接报告、原始日志、生产依赖目录或运行时二进制。
 - 本节点仅保存上传最终交接，不启动验证。上一成功提交 627faa656c23f45c3c2c79d4965d464c07ee581e。
+
+## 5.5 当前变更
+
+统一 AI 自动重连及原任务继续提示，覆盖全局 instructions、全部工作流、连接 Skill、指南、API/MCP/CLI 错误与未完成返回；37＋2 个工具描述和参数保持不变。按用户最新要求删除全部项目自有测试、夹具、测试脚本与入口，历史测试叙述仅作来源记录，不代表 5.5 验收，也不再提供这些测试。

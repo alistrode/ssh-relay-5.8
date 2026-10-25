@@ -23,7 +23,7 @@ with zipfile.ZipFile(cache/electron['file']) as archive:
 (stage/'resources/default_app.asar').unlink(missing_ok=True)
 app = stage/'resources/app'
 app.mkdir(parents=True)
-for folder in ['src', 'desktop', 'assets', 'launchers', 'docs', 'profiles', 'examples', 'node_modules']:
+for folder in ['src', 'desktop', 'assets', 'launchers', 'docs', 'profiles', 'examples', '.agents', 'node_modules']:
     shutil.copytree(root/folder, app/folder, symlinks=True)
 for filename in ['package.json', 'package-lock.json']:
     shutil.copy2(root/filename, app/filename)
