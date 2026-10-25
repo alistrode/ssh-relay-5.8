@@ -1,88 +1,13 @@
-import fs from "node:fs";
-import zlib from "node:zlib";
-import { run, sftp, sftpCall, psQuote, powershell } from "./transport.js";
-import { serverConfig } from "./config.js";
-import { shellQuote } from "./shell-quote.js";
-import crypto from "node:crypto";
+import { connect } from "./transport.js";
 import { createRequire } from "node:module";
 import { durableJob } from "./durable-exec.js";
 const { jobHash } = createRequire(import.meta.url)("../pro/task-jobs.cjs");
 export const jobSourceHash = jobHash;
 export async function job(server, name, args, timeout = 30000) {
-  const target = serverConfig(server);
-  if (target.agentDeviceId && target.capabilities.persistentExec &&
-      target.capabilities.taskProtocol === 1 && target.capabilities.taskJobs?.[name]) {
-    const sourceHash = jobHash(name);
-    if (sourceHash !== target.capabilities.taskJobs[name])
-      throw Object.assign(Error("Controlled job versions differ; use matching application packages"),
-        { code: "JOB_VERSION_MISMATCH" });
-    return durableJob(server, name, args, timeout, sourceHash);
-  }
-  const source = fs.readFileSync(
-    new URL("./jobs/" + name + ".cjs", import.meta.url),
-    "utf8",
-  );
-  const script = `(async()=>{const module={exports:null};(function(module){${source}\n})(module);return module.exports(${JSON.stringify(args)});})().then(result=>process.stdout.write(JSON.stringify(result))).catch(error=>{process.stderr.write(error.message);process.exitCode=1;});`;
-  const b64 = zlib.gzipSync(Buffer.from(script)).toString("base64");
-  const config = serverConfig(server),
-    win = config.platform === "windows";
-  const executable = config.capabilities.nodeExecutable || "node";
-  const nodePrefix =
-    config.capabilities.nodeMode === "electron"
-      ? win
-        ? "$env:ELECTRON_RUN_AS_NODE='1'; "
-        : "ELECTRON_RUN_AS_NODE=1 "
-      : "";
-  const nodeCommand =
-    nodePrefix + (win ? "& " + psQuote(executable) : shellQuote(executable));
-  const expression = `eval(require('node:zlib').gunzipSync(Buffer.from('${b64}','base64')).toString())`;
-  const command =
-    nodeCommand + " -e " + (win ? psQuote(expression) : shellQuote(expression));
-  let result;
-  // Encoded command lines are reversible: credentials must travel only via SFTP
-  // into a private temporary job, never even as gzip/base64 process arguments.
-  let needsFile =
-    command.length > 7800 ||
-    args.dbPassword !== undefined ||
-    args.password !== undefined;
-  if (serverConfig(server).platform === "windows" && !needsFile) {
-    try {
-      powershell(command);
-    } catch (error) {
-      if (!error.message.includes("too large")) throw error;
-      needsFile = true;
-    }
-  }
-  if (needsFile) {
-    const s = await sftp(server);
-    const home = await sftpCall(s, "realpath", ".");
-    const file =
-      home + "/.relay-job-" + crypto.randomBytes(12).toString("hex") + ".cjs";
-    try {
-      await sftpCall(s, "writeFile", file, script, { mode: 0o600 });
-      const win = serverConfig(server).platform === "windows";
-      const local = win ? file.replace(/^\/([a-z]:\/)/i, "$1") : file;
-      result = await run(
-        server,
-        nodeCommand + " " + (win ? psQuote(local) : shellQuote(local)),
-        { timeout },
-      );
-    } finally {
-      await sftpCall(s, "unlink", file).catch(() => {});
-    }
-  } else result = await run(server, command, { timeout });
-  if (!result.success) return result;
-  try {
-    return { ...JSON.parse(result.stdout), code: result.code, persistent: false };
-  } catch {
-    throw new Error(
-      "Remote job did not return valid JSON (exit " +
-        result.code +
-        "): " +
-        result.stdout.slice(0, 300) +
-        " stderr: " +
-        result.stderr.slice(0, 300),
-    );
-  }
+  const target = (await connect(server)).config;
+  if (!target.agentDeviceId || !target.capabilities.persistentExec || target.capabilities.taskProtocol !== 55 || !target.capabilities.taskJobs?.[name])
+    throw Object.assign(Error("Only the 5.5 controlled job endpoint is supported"), { code: "RELEASE_MISMATCH" });
+  const sourceHash = jobHash(name);
+  if (sourceHash !== target.capabilities.taskJobs[name]) throw Object.assign(Error("5.5 controlled job versions differ"), { code: "JOB_VERSION_MISMATCH" });
+  return durableJob(server, name, args, timeout, sourceHash);
 }
-

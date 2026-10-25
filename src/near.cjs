@@ -10,6 +10,7 @@ var { createTraceWriter } = require("./diagnostics.cjs");
 var configPath = path.resolve(process.argv[2]);
 var config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 var recordTrace = createTraceWriter(path.dirname(configPath), "near");
+if(config.version!==55||config.applicationRelease!=="5.5"||config.localPort!==0)throw Error("Only a private 5.5 endpoint with an OS-assigned port is supported");
 var relay = createRelay(config, "near");
 var requestId = crypto.randomUUID(), remoteChallenge;
 function announce() {
@@ -28,7 +29,7 @@ server.on("error", (error) => {
   console.error(error.message);
   process.exit(1);
 });
-server.listen(config.localPort, "127.0.0.1", () => {
+server.listen({port:0,host:"127.0.0.1",exclusive:true}, () => {
   const port = server.address().port;
   if (config.runtimePath)
     writePrivate(config.runtimePath, { pid: process.pid, port });

@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import releasePolicy from "../pro/release.cjs";
 export const stateDir = path.resolve(
   process.env.RELAY_MCP_STATE_DIR ||
-    path.join(os.homedir(), ".local", "state", "current-relay-mcp"),
+    path.join(os.homedir(), ".local", "state", "ssh-relay-5.5-mcp"),
 );
-fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+releasePolicy.requireProfile(stateDir, { create: true });
 export const statePath = (name) => path.join(stateDir, name);
 export function readState(name, fallback) {
   try {

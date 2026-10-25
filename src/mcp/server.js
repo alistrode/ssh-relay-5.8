@@ -11,7 +11,7 @@ import { registerPrompts, instructions } from "./prompts.js";
 import { closeAll } from "./transport.js";
 import { closeSessions } from "./sessions.js";
 import { tunnels, closeTunnel, restoreTunnels } from "./tunnels.js";
-import { arg, servers, serverConfig, refreshAgentServers, withServerSnapshot, connectAgent, connectionTask, localAgentClient, agentMode } from "./config.js";
+import { arg, servers, serverConfig, refreshAgentServers, withServerSnapshot, connectAgent, connectionTask, localAgentClient } from "./config.js";
 import { TOOL_GROUPS } from "./tool-registry.js";
 const server = new McpServer(
   { name: "current-public-relay-mcp", version: "1.1.0" },
@@ -33,10 +33,10 @@ const enabled =
           : mode.split(","),
       );
 for (const tool of enabled)
-  if (!handlers[tool] && !(agentMode && ["ssh_connect", "ssh_operation_status"].includes(tool))) throw new Error("Unknown selected tool " + tool);
+  if (!handlers[tool] && !(["ssh_connect", "ssh_operation_status"].includes(tool))) throw new Error("Unknown selected tool " + tool);
 const notes = {
   ssh_execute:
-    " Runs an independent command. Agent targets advertising persistent task protocol return operationId; query ssh_operation_status after disconnection or an uncertain outcome. Legacy targets return persistent=false. Inspect completed/state and real exit code. More than 2 MiB of inline output requires pagination; sudo, jobs and sessions have separate recovery limits.",
+    " Runs an independent command. Agent targets advertising persistent task protocol return operationId; query ssh_operation_status after disconnection or an uncertain outcome. Inspect completed/state and real exit code. More than 2 MiB of inline output requires pagination; sudo, jobs and sessions have separate recovery limits.",
   ssh_sync:
     " Uses portable SFTP with dry-run, exclusion, checksum and delete; no rsync or wire compression. Symlinks are refused.",
   ssh_tail:
@@ -85,9 +85,9 @@ function sanitized(value, args) {
       );
     return v;
   };
-  return JSON.stringify(scrub(withRecovery(value, { ...args, agentMode })), null, 2);
+  return JSON.stringify(scrub(withRecovery(value, { ...args })), null, 2);
 }
-if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_connect")))
+if ((mode === "all" || mode === "minimal" || enabled.has("ssh_connect")))
   server.registerTool("ssh_connect", {
     description: "Pair a device using a code, or connect a remembered server. At most twenty active devices. Pass connectionTaskId alone to query a pending request. Reuse requestId when retrying the same input.",
     inputSchema: {
@@ -121,7 +121,7 @@ if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_conne
       } }, args) }], isError: true };
     }
   });
-if (agentMode && (mode === "all" || mode === "minimal" || enabled.has("ssh_operation_status")))
+if ((mode === "all" || mode === "minimal" || enabled.has("ssh_operation_status")))
   server.registerTool("ssh_operation_status", {
     description: "Query an operation by operationId, or a session command by sessionId and requestId. Session query without requestId lists saved requests. Output uses bounded base64 byte pages. Transfers use transferId/server; resumeTransfer=true continues saved blocks. action=cancel stops further transfer commits and retains temporary files. Use ssh_session_close for sessions.",
     inputSchema: {
@@ -230,8 +230,5 @@ console.error(
   `Current public relay MCP ready: ${enabled.size}/37 tools; private application state; fixed host fingerprints`,
 );
 
-// Managed profiles remain discoverable while the background repairs their connection.
-const { recoverManaged } = await import("./transport.js");
-for (const config of Object.values(servers())) recoverManaged(config);
 restoreTunnels();
 

@@ -1,4 +1,4 @@
-param([string]$ProfileDir = (Join-Path $env:USERPROFILE '.ssh-relay-pro'), [switch]$ExportOnly, [string]$RuntimeRoot = $env:SSH_RELAY_LAUNCH_ROOT)
+param([string]$ProfileDir = (Join-Path $env:USERPROFILE '.ssh-relay-pro-5.5'), [switch]$ExportOnly, [string]$RuntimeRoot = $env:SSH_RELAY_LAUNCH_ROOT)
 $ErrorActionPreference = 'Stop'
 if (!$RuntimeRoot) { $RuntimeRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent }
 $appRoot = Join-Path $RuntimeRoot 'resources\app'

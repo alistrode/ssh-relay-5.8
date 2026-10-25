@@ -39,7 +39,7 @@ class DeviceSlots {
     const others = Object.entries(registry).filter(
       ([key, device]) => key !== deviceId && device.enabled === true,
     );
-    // Reconnecting an admitted device is idempotent, even during legacy overflow.
+    // Reconnecting an admitted device is idempotent, including paused saved devices.
     if (this.snapshot(registry).active.includes(deviceId)) return;
     const reserved = this.reservations.size - (this.reservations.has(reservation) ? 1 : 0);
     if (others.length + reserved >= this.limit) {

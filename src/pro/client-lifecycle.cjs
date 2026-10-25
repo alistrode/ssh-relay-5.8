@@ -14,7 +14,7 @@ function profileFor(dir) {
 }
 function clientActive(dir) {
   try {
-    const profile = profileFor(dir), state = clientState(profile);
+    const profile = require("./release.cjs").requireProfile(profileFor(dir)), state = clientState(profile);
     return !!(state?.desiredRunning && !state.stopping && alive(state.clientPid) && Date.now() - state.heartbeatAt < 15000);
   } catch { return false; }
 }
@@ -33,7 +33,7 @@ function command(profile, action, extra = {}) {
   });
 }
 async function launch(options) {
-  const profile = path.resolve(options.profile); folder(profile);
+  const profile = require("./release.cjs").requireProfile(options.profile,{create:true});
   let state; try { state=clientState(profile); } catch {}
   if (state && alive(state.pid) && state.desiredRunning) {
     if (!options.adoptPid) await command(profile,"show");
@@ -56,7 +56,7 @@ async function launch(options) {
 }
 async function requireClient(dir) {
   if (clientActive(dir)) return;
-  const profile=profileFor(dir), appRoot=path.resolve(__dirname,"../..");
+  const profile=require("./release.cjs").requireProfile(profileFor(dir),{create:true}), appRoot=path.resolve(__dirname,"../..");
   let options=read(path.join(profile,"client-launch.json"),null);
   if(!options) {
     let executable;

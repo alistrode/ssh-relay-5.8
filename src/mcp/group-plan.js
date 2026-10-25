@@ -10,13 +10,13 @@ export async function prepareGroupPlan(targets, command, options, { connect, loc
   const deviceIds = targets.map(target => target.config?.agentDeviceId).filter(Boolean);
   if (new Set(deviceIds).size !== deviceIds.length) throw Error("Group contains duplicate target devices");
   if (targets.some(target => !target.config?.agentDeviceId ||
-      !target.config.capabilities?.persistentExec || target.config.capabilities?.taskProtocol !== 1)) return null;
+      !target.config.capabilities?.persistentExec || target.config.capabilities?.taskProtocol !== 55)) throw Error("Only 5.5 group endpoints are supported");
   const connections = await Promise.all(targets.map(target => connect(target.name)));
   const operationId = crypto.randomUUID(), plan = new Map();
   const children = connections.map((conn, index) => {
     const target = targets[index], config = conn.config;
     if (config.agentDeviceId !== target.config.agentDeviceId || !config.capabilities?.persistentExec ||
-        config.capabilities?.taskProtocol !== 1) throw Error("Group target identity or task capability changed");
+        config.capabilities?.taskProtocol !== 55) throw Error("Group target identity or task capability changed");
     const child = { operationId: crypto.randomUUID(), childOperationId: crypto.randomUUID(),
       deviceId: config.agentDeviceId, requestHash: requestHash(config.agentDeviceId, "exec",
         execSpec(config, command, { cwd: options.cwd || target.config.defaultDir, timeout: options.timeout }), config.platform) };

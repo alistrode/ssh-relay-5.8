@@ -3,7 +3,8 @@ const {app,BrowserWindow,Tray,Menu,nativeImage,ipcMain,dialog,clipboard}=require
 const fs=require("node:fs"),path=require("node:path"),os=require("node:os"),cp=require("node:child_process");
 const {folder,read,write}=require("../src/pro/store.cjs"),lifecycle=require("../src/pro/client-lifecycle.cjs"),startup=require("../src/pro/autostart.cjs");
 const args=process.argv.slice(1),arg=(name,fallback)=>args.includes(name)?args[args.indexOf(name)+1]:fallback;
-const root=path.resolve(__dirname,".."),profile=path.resolve(arg("--profile-dir",path.join(os.homedir(),".ssh-relay-pro")));
+const root=path.resolve(__dirname,".."),profile=path.resolve(arg("--profile-dir",path.join(os.homedir(),".ssh-relay-pro-5.5")));
+require("../src/pro/release.cjs").requireProfile(profile,{create:true});
 const diagnostics=require("../src/pro/gui-diagnostics.cjs"),diagnosticDirectory=path.join(profile,"logs"),diagnostic=diagnostics.create(diagnosticDirectory);
 diagnostics.installPipeGuards(diagnostic.record);
 const forwarded=[...new Set([...args,...process.execArgv,...(app.commandLine.hasSwitch("inspect")?["--inspect="+app.commandLine.getSwitchValue("inspect")]:[])])].filter(value=>/^--(?:no-shortcuts|allow-cloud-self-test|disable-gpu|remote-debugging-port=\d+|inspect=\d+)$/.test(value));
@@ -76,7 +77,7 @@ else{
     }));return {results,succeeded:results.filter(r=>r.ok).length,failed:results.filter(r=>!r.ok).length};
   });
   ipcMain.handle("pair-copy",async(event,code)=>{
-    if(!validSender(event)||!/^\w{10}-\w{10}$/.test(code))throw Error("请先生成配对码");
+    if(!validSender(event)||!/^55-\w{10}-\w{10}$/.test(code))throw Error("请先生成配对码");
     clipboard.writeText(code);if(clipboard.readText()!==code)throw Error("复制失败，请重试");return true;
   });
   ipcMain.handle("startup-status",event=>{if(!validSender(event))throw Error("Invalid sender");return startup.statusAsync(options());});
@@ -113,7 +114,7 @@ else{
       catch{try{await lifecycle.launch({...options(),adoptPid:process.pid,sessionToken:process.env.SSH_RELAY_CLIENT_SESSION});}catch(error){diagnostic.record("client_guardian_recovery_failed",{reason:error.message});}}
     };
     await beat();heartbeat=setInterval(()=>void beat(),2000);
-    try{await startup.migrateLegacy(options());backendReady=true;await Promise.all(["near","far"].map(ensure));}
+    try{await startup.prepareClientProfile(options());backendReady=true;await Promise.all(["near","far"].map(ensure));}
     catch(error){notice("启动尚未完成："+error.message);diagnostic.record("client_backend_start_failed",{reason:error.message});}
     if(!args.includes("--no-shortcuts"))try{await require("./shortcuts.cjs").install(options());}catch(error){diagnostic.record("shortcut_failed",{reason:error.message});}
     pollTimer=setInterval(()=>{if(!quitting&&!exiting&&window&&!window.isVisible())void statusRequest("far").then(checkAdmission).catch(()=>{});},3000);

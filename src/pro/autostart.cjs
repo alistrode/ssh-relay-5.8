@@ -17,30 +17,10 @@ async function statusAsync({profile}){
   }
   return {...settings,supported:false,clientOnly:true,mode:"client"};
 }
-async function migrateLegacy(options){
-  const marker=path.join(options.profile,"client-only-5.5.json");
-  if(read(marker,null)?.completed)return;
-  if(process.platform==="win32"){
-    const found=JSON.parse(await powershell("@(Get-CimInstance Win32_Service -Filter \"Name='SSHRelayPro-near' OR Name='SSHRelayPro-far'\"|Select-Object Name,PathName)|ConvertTo-Json -Compress")||"[]");
-    const prefix=path.join(options.profile,"services").replace(/\\/g,"/").toLowerCase()+"/";
-    const services=[found].flat().filter(service=>service&&String(service.PathName).replace(/\\/g,"/").toLowerCase().includes(prefix));
-    if(services.length){
-      const body="$ErrorActionPreference='Stop';"+services.map(service=>"Stop-Service -Name "+ps(service.Name)+" -Force -ErrorAction SilentlyContinue;Set-Service -Name "+ps(service.Name)+" -StartupType Disabled;& sc.exe delete "+ps(service.Name)+";if($LASTEXITCODE){throw '旧服务删除失败'};").join("");
-      await powershell(windowsElevationCommand(body));
-    }
-  }else if(process.platform==="linux"){
-    const names=["near","far"].map(role=>"ssh-relay-pro-"+role+"-"+process.getuid()+".service").filter(name=>{const file=path.join("/etc/systemd/system",name);return fs.existsSync(file)&&["near","far"].some(role=>fs.readFileSync(file,"utf8").includes(quote(path.join(options.profile,role))));});
-    if(names.length){
-      const script="#!/bin/sh\nset -eu\n"+names.map(name=>"systemctl disable --now "+name+"\nrm -f /etc/systemd/system/"+name).join("\n")+"\nsystemctl daemon-reload\n";
-      const file=path.join(folder(options.profile),"remove-legacy-services.sh");text(file,script);await run("pkexec",["/bin/sh",file]);
-    }
-  }
-  await require("./client-lifecycle.cjs").stopBackends(options.profile,process.pid);
-  write(marker,{completed:true,at:Date.now()});
-}
+async function prepareClientProfile(options){require("./release.cjs").requireProfile(options.profile);}
 async function apply(options,{enabled}){
   if(typeof enabled!=="boolean")throw Error("Invalid client startup setting");
-  folder(options.profile);await migrateLegacy(options);
+  folder(options.profile);await prepareClientProfile(options);
   if(process.platform==="linux"){
     if(enabled)text(linuxFile(),linuxLogin(options));else fs.rmSync(linuxFile(),{force:true});
   }else if(process.platform==="win32"){
@@ -50,4 +30,4 @@ async function apply(options,{enabled}){
   }else throw Error("Unsupported startup platform");
   write(path.join(options.profile,"startup.json"),{enabled,mode:"client",changedAt:Date.now()});return statusAsync(options);
 }
-module.exports={linuxLogin,windowsElevationCommand,statusAsync,apply,migrateLegacy};
+module.exports={linuxLogin,windowsElevationCommand,statusAsync,apply,prepareClientProfile};

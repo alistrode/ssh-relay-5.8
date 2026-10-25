@@ -15,7 +15,7 @@ export async function uploadSnapshot(server, localPath, remotePath) {
 }
 export async function resumeUpload(server, transferId, { statusOnly = false } = {}) {
   const store = snapshots(), r = store.validate(transferId), conn = await connect(server);
-  if (conn.config.agentDeviceId !== r.deviceId || conn.config.capabilities.fileProtocol !== 1)
+  if (conn.config.agentDeviceId !== r.deviceId || conn.config.capabilities.fileProtocol !== 55)
     throw Object.assign(Error("Transfer target differs or does not support recovery"), { transferId });
   const control = await openControl(conn.client, r.deviceId);
   try {
@@ -72,7 +72,7 @@ export async function resumeDownload(server, transferId, { statusOnly = false } 
   const store = downloads(), intent = store.intent(transferId);
   if (!intent) throw Object.assign(Error("Unknown download intent"), { transferId });
   const conn = await connect(server);
-  if (conn.config.agentDeviceId !== intent.deviceId || conn.config.capabilities.fileProtocol !== 1)
+  if (conn.config.agentDeviceId !== intent.deviceId || conn.config.capabilities.fileProtocol !== 55)
     throw Object.assign(Error("Download target differs or lacks recovery"), { transferId });
   const control = await openControl(conn.client, intent.deviceId);
   try {

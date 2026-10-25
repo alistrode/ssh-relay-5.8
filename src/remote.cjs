@@ -21,15 +21,10 @@ var root = path.resolve(process.argv[2] || path.join(__dirname, "config"));
 var config = JSON.parse(
   fs.readFileSync(path.join(root, "remote.json"), "utf8"),
 );
-var allowed = utils.parseKey(
-  fs.readFileSync(path.join(root, "client_key.pub")),
-);
-if (allowed instanceof Error) throw allowed;
+if(config.version!==55||config.applicationRelease!=="5.5"||!config.clientKeysFile||config.connectionAdmission!==true)throw Error("Only the 5.5 authorized endpoint is supported");
 function authorizedController(ctx) {
   try {
-    const keys = config.clientKeysFile
-      ? Object.entries(JSON.parse(fs.readFileSync(config.clientKeysFile, "utf8"))).filter(([,v]) => v.enabled !== false).map(([id,v]) => ({ id, label:v.label, key:utils.parseKey(v.publicKey) }))
-      : [{ id:null, key:allowed }];
+    const keys = Object.entries(JSON.parse(fs.readFileSync(config.clientKeysFile,"utf8"))).filter(([,v])=>v.enabled!==false).map(([id,v])=>({id,label:v.label,key:utils.parseKey(v.publicKey)}));
     return keys.find(
       ({ key }) =>
         !(key instanceof Error) &&
@@ -243,7 +238,7 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
       session.on("shell", (accept2, reject) => canStart() ? start(accept2) : reject());
       session.on("sftp", (accept2, reject) => canStart() ? serveSftp(trackChannel(accept2()), canStart) : reject());
       session.on("subsystem", (accept2, reject2, subsystem) => {
-        if (subsystem.name !== "relay-control-v1" || config.controlSubsystem !== 1 ||
+        if (subsystem.name !== "relay-control-5.5" || config.controlSubsystem !== 55 ||
             !process.connected || !controllerId || !canStart()) return reject2();
         const stream = trackChannel(accept2());
         const control = serveControl(stream,
@@ -260,7 +255,7 @@ server.on("error", (error) => {
   process.exit(1);
 });
 var heartbeat;
-server.listen(config.sshPort, "127.0.0.1", () => {
+server.listen({port:0,host:"127.0.0.1",exclusive:true}, () => {
   config.sshPort = server.address().port;
   console.log(
     "SSH service ready on loopback. Host fingerprint: " + fingerprint,
@@ -276,16 +271,17 @@ server.listen(config.sshPort, "127.0.0.1", () => {
       pty: false,
       forwarding: "loopback-only",
       reliableRelay: true,
-      controlSubsystem: config.controlSubsystem === 1 && process.connected ? 1 : 0,
-      persistentExec: config.taskProtocol === 1 && config.persistentTasks === true && process.connected,
-      taskProtocol: config.taskProtocol === 1 && process.connected ? 1 : 0,
+      controlSubsystem: config.controlSubsystem === 55 && process.connected ? 55 : 0,
+      persistentExec: config.taskProtocol === 55 && config.persistentTasks === true && process.connected,
+      taskProtocol: config.taskProtocol === 55 && process.connected ? 55 : 0,
       taskJobs: config.taskJobs || {},
-      fileProtocol: config.fileProtocol === 1 && process.connected ? 1 : 0,
-      sessionProtocol: config.sessionProtocol === 1 && process.connected ? 1 : 0,
-      sessionResume: config.sessionProtocol === 1 && config.persistentSessions === true && process.connected,
-      version: 3,
+      fileProtocol: config.fileProtocol === 55 && process.connected ? 55 : 0,
+      sessionProtocol: config.sessionProtocol === 55 && process.connected ? 55 : 0,
+      sessionResume: config.sessionProtocol === 55 && config.persistentSessions === true && process.connected,
+      version: 55,
     },
     fingerprint,
+    applicationRelease: "5.5",
     platform: process.platform,
     system: require("./pro/os-version.cjs").systemVersion(),
     user: config.user,

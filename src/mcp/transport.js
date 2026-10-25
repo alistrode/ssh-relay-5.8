@@ -8,51 +8,7 @@ import { shellQuote } from "./shell-quote.js";
 import { withCommandSlot } from "./command-queue.js";
 export const pool = new Map();
 const pending = new Map();
-const recovery = new Map();
 let shuttingDown = false;
-export function recoverManaged(config) {
-  // Device recovery belongs to the Agent in the descriptor mode.
-  if (config.agentDeviceId) return;
-  if (!config.agentManaged || shuttingDown || recovery.has(config.name)) return;
-  const controller = { cancelled: false };
-  recovery.set(config.name, controller);
-  (async () => {
-    let failures = 0;
-    while (!controller.cancelled && !shuttingDown) {
-      try {
-        await connect(config.name, 0);
-        break;
-      } catch (error) {
-        if (
-          /revoked|host key|verification|differs|authentication methods failed/i.test(
-            error.message,
-          )
-        )
-          break;
-        failures++;
-        const delay =
-          failures < 3
-            ? 0
-            : [2000, 4000, 8000, 16000, 30000, 60000][
-                Math.min(failures - 3, 5)
-              ];
-        console.error(
-          JSON.stringify({
-            event: "mcp_reconnect",
-            server: config.name,
-            attempt: failures,
-            delayMs: delay,
-          }),
-        );
-        await new Promise((resolve) => {
-          const timer = setTimeout(resolve, delay);
-          timer.unref();
-        });
-      }
-    }
-    if (recovery.get(config.name) === controller) recovery.delete(config.name);
-  })().catch(() => recovery.delete(config.name));
-}
 export const psQuote = (s) => "'" + String(s).replace(/'/g, "''") + "'";
 export function powershell(script) {
   const prelude =
@@ -109,8 +65,6 @@ export async function connect(name, retries = 2) {
       sftp: null,
       close() {
         this.manualClose = true;
-        const task = recovery.get(key);
-        if (task) task.cancelled = true;
         this.connected = false;
         client.end();
         if (pool.get(key) === this) pool.delete(key);
@@ -139,8 +93,6 @@ export async function connect(name, retries = 2) {
       conn.connected = false;
       if (!conn.verified) reject(new Error("SSH closed before identity verification"));
       if (pool.get(key) === conn) pool.delete(key);
-      if (conn.verified && !conn.manualClose)
-        setImmediate(() => recoverManaged(config));
     });
     client.once("ready", async () => {
       if (cancelled || shuttingDown) return;
@@ -348,7 +300,6 @@ export function closeAll() {
   shuttingDown = true;
   for (const task of pending.values()) task.cancel();
   pending.clear();
-  for (const task of recovery.values()) task.cancelled = true;
   for (const conn of [...pool.values()]) conn.close();
 }
 

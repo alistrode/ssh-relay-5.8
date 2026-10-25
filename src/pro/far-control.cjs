@@ -10,10 +10,10 @@ function dispatchFarControl(agent, owner, method, params) {
   if (typeof method !== "string" || method.length > 64 || !params || typeof params !== "object" || Array.isArray(params))
     throw failure("CONTROL_INVALID_REQUEST", "Invalid authenticated control request");
   if (method === "hello") {
-    if (params.protocol !== 1) throw failure("CONTROL_UNSUPPORTED_PROTOCOL", "Unsupported control protocol");
-    return { protocol: 1, deviceId: agent.identity.deviceId,
-      capabilities: { persistentExec: agent.taskManager?.identityAvailable === true, taskProtocol: 1,
-        taskJobs: jobCatalog(), fileProtocol: agent.remoteFiles ? 1 : undefined, sessionProtocol: 1, sessionResume: agent.sessionManager?.identityAvailable === true,
+    if (params.protocol !== 55) throw failure("CONTROL_UNSUPPORTED_PROTOCOL", "Unsupported control protocol");
+    return { applicationRelease: "5.5", protocol: 55, deviceId: agent.identity.deviceId,
+      capabilities: { persistentExec: agent.taskManager?.identityAvailable === true, taskProtocol: 55,
+        taskJobs: jobCatalog(), fileProtocol: agent.remoteFiles ? 55 : undefined, sessionProtocol: 55, sessionResume: agent.sessionManager?.identityAvailable === true,
         recovery: "verified-live-runner", maxFrameBytes: 1048576, maxConcurrent: 4,
         maxOutputBytesPerStream: 67108864, maxPageBytesPerStream: 65536 } };
   }

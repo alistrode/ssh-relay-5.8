@@ -63,12 +63,12 @@ function open(key, value, aad) {
 }
 async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, reusable = false, invitation }) {
   await opaque.ready;
-  const code = invitation?.code || random(10) + "-" + random(10);
-  if (!new RegExp("^[" + ALPHABET + "]{10}-[" + ALPHABET + "]{10}$").test(code) ||
+  const code = invitation?.code || "55-" + random(10) + "-" + random(10);
+  if (!new RegExp("^55-[" + ALPHABET + "]{10}-[" + ALPHABET + "]{10}$").test(code) ||
       (invitation && (!Number.isSafeInteger(invitation.expiresAt) || invitation.expiresAt <= Date.now())))
     throw Error("Invalid or expired pairing invitation");
-  const [room, password] = code.split("-"),
-    topic = "ssh-public-relay/pro-pair/v1/" + room,
+  const [, room, password] = code.split("-"),
+    topic = "ssh-relay/5.5/pair/" + room,
     setup = opaque.server.createSetup();
   const reg = opaque.client.startRegistration({ password });
   const response = opaque.server.createRegistrationResponse({
@@ -156,7 +156,7 @@ async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, 
             "near:" + room + ":" + p.sid,
           );
           if (
-            !/^[a-f0-9-]{36}$/.test(who.deviceId) ||
+            who.applicationRelease !== "5.5" || !/^[a-f0-9-]{36}$/.test(who.deviceId) ||
             typeof who.publicKey !== "string"
           )
             throw Error("Invalid device identity");
@@ -206,10 +206,10 @@ async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, 
 async function join({ broker, code, who, accept, timeout = 90000 }) {
   await opaque.ready;
   code = String(code).toUpperCase().replace(/\s/g, "");
-  if (!new RegExp("^[" + ALPHABET + "]{10}-[" + ALPHABET + "]{10}$").test(code))
+  if (!new RegExp("^55-[" + ALPHABET + "]{10}-[" + ALPHABET + "]{10}$").test(code))
     throw Error("Invalid pairing code format");
-  const [room, password] = code.split("-"),
-    topic = "ssh-public-relay/pro-pair/v1/" + room,
+  const [, room, password] = code.split("-"),
+    topic = "ssh-relay/5.5/pair/" + room,
     sid = crypto.randomBytes(16).toString("hex");
   const start = opaque.client.startLogin({ password }),
     client = connect(broker);

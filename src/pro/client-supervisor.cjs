@@ -4,6 +4,7 @@ const {read,write,folder}=require("./store.cjs"), lifecycle=require("./client-li
 const args=process.argv.slice(2),arg=name=>args[args.indexOf(name)+1];
 const profile=path.resolve(arg("--profile-dir")),config=read(arg("--config-file"));
 if(path.resolve(config.profile)!==profile)throw Error("Invalid client profile");
+require("./release.cjs").requireProfile(profile);
 const lock=path.join(folder(profile),"client-supervisor.lock"),runtime=path.join(profile,lifecycle.runtimeName);
 try{fs.mkdirSync(lock,{mode:0o700});}catch(error){
   if(error.code!=="EEXIST")throw error;
@@ -63,7 +64,7 @@ async function loop(){
   }catch(error){console.error("Client recovery:",error.message);}
   finally{busy=false;}
 }
-server.listen(0,"127.0.0.1",async()=>{
+server.listen({port:0,host:"127.0.0.1",exclusive:true},async()=>{
   state.port=server.address().port;
   if(config.adoptPid&&lifecycle.alive(config.adoptPid)){state.clientPid=config.adoptPid;state.heartbeatAt=Date.now();}
   save();

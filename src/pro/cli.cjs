@@ -27,7 +27,7 @@ if (require.main === module)
       arg = (n, d) => (args.includes(n) ? args[args.indexOf(n) + 1] : d),
       role = arg("--role", "near"),
       dir = path.resolve(
-        arg("--state-dir", path.join(os.homedir(), ".ssh-relay-pro", role)),
+        arg("--state-dir", path.join(os.homedir(), ".ssh-relay-pro-5.5", role)),
       ),
       command = args[0];
     if (!["near", "far"].includes(role)) throw Error("Invalid role");
@@ -75,7 +75,7 @@ if (require.main === module)
       });
     let value;
     if (command === "devices" && role === "near")
-      value = await request(dir, "/v1/devices");
+      value = await request(dir, "/v55/devices");
     else if (command === "start" || command === "status" || command === "devices")
       value = await request(dir, "/status");
     else if (command === "pair-code")

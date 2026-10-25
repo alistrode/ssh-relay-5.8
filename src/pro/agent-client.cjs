@@ -89,13 +89,13 @@ const readiness = new Map();
 function stateDirectory({ dir, profileDir, role = "near" } = {}) {
   if (!["near", "far"].includes(role)) throw Error("Invalid role");
   if (dir && profileDir) throw Error("Use state dir or profile dir, not both");
-  return path.resolve(dir || path.join(profileDir || path.join(os.homedir(), ".ssh-relay-pro"), role));
+  return path.resolve(dir || path.join(profileDir || path.join(os.homedir(), ".ssh-relay-pro-5.5"), role));
 }
 async function health(dir, role) {
-  const value = await request(dir, "/v1/health", undefined, { timeoutMs: 2000 });
+  const value = await request(dir, "/v55/health", undefined, { timeoutMs: 2000 });
   const runtime = read(path.join(dir, "agent-runtime.json"));
   const identity = read(path.join(dir, "identity.json"));
-  if (value.apiVersion !== 1 || value.role !== role ||
+  if (value.apiVersion !== 55 || value.role !== role ||
       value.profileId !== identity?.deviceId ||
       value.profileId !== runtime?.profileId ||
       value.bootId !== runtime?.bootId || runtime?.role !== role) {
@@ -159,26 +159,26 @@ async function ensureAgent(options = {}) {
       return request(dir, route, body, requestOptions);
     },
   };
-  client.devices = () => client.request("GET", "/v1/devices");
-  client.connect = (input) => client.request("POST", "/v1/connections", input, { timeoutMs: 25000 });
-  client.connectionTask = (key) => client.request("GET", "/v1/connections/" + encodeURIComponent(key));
-  client.getConnection = (deviceId) => client.request("GET", "/v1/devices/" + encodeURIComponent(deviceId) + "/connection");
+  client.devices = () => client.request("GET", "/v55/devices");
+  client.connect = (input) => client.request("POST", "/v55/connections", input, { timeoutMs: 25000 });
+  client.connectionTask = (key) => client.request("GET", "/v55/connections/" + encodeURIComponent(key));
+  client.getConnection = (deviceId) => client.request("GET", "/v55/devices/" + encodeURIComponent(deviceId) + "/connection");
   client.disconnect = (deviceId, requestId) => client.request("POST",
-    "/v1/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });
-  client.workflowStage = (key, input) => client.request("POST", "/v1/operations/" + encodeURIComponent(key) + "/stage", input);
-  client.registerOperation = (input) => client.request("POST", "/v1/operations", input);
-  client.registerSession = input => client.request("POST", "/v1/sessions", input);
-  client.sessions = () => client.request("GET", "/v1/sessions");
-  client.session = (id, params = {}) => client.request("GET", "/v1/sessions/" + encodeURIComponent(id) + "?" + new URLSearchParams(params));
-  client.registerSessionRequest = (id, input) => client.request("POST", "/v1/sessions/" + encodeURIComponent(id) + "/requests", input);
-  client.sessionRequests = id => client.request("GET", "/v1/sessions/" + encodeURIComponent(id) + "/requests");
-  client.markOperationDispatch = (key) => client.request("POST", "/v1/operations/" + encodeURIComponent(key) + "/dispatch", {});
-  client.operationNotStarted = (key) => client.request("POST", "/v1/operations/" + encodeURIComponent(key) + "/not-started", {});
-  client.operations = (params = {}) => client.request("GET", "/v1/operations?" + new URLSearchParams(params));
+    "/v55/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });
+  client.workflowStage = (key, input) => client.request("POST", "/v55/operations/" + encodeURIComponent(key) + "/stage", input);
+  client.registerOperation = (input) => client.request("POST", "/v55/operations", input);
+  client.registerSession = input => client.request("POST", "/v55/sessions", input);
+  client.sessions = () => client.request("GET", "/v55/sessions");
+  client.session = (id, params = {}) => client.request("GET", "/v55/sessions/" + encodeURIComponent(id) + "?" + new URLSearchParams(params));
+  client.registerSessionRequest = (id, input) => client.request("POST", "/v55/sessions/" + encodeURIComponent(id) + "/requests", input);
+  client.sessionRequests = id => client.request("GET", "/v55/sessions/" + encodeURIComponent(id) + "/requests");
+  client.markOperationDispatch = (key) => client.request("POST", "/v55/operations/" + encodeURIComponent(key) + "/dispatch", {});
+  client.operationNotStarted = (key) => client.request("POST", "/v55/operations/" + encodeURIComponent(key) + "/not-started", {});
+  client.operations = (params = {}) => client.request("GET", "/v55/operations?" + new URLSearchParams(params));
   client.operation = (key, params = {}) => client.request("GET",
-    "/v1/operations/" + encodeURIComponent(key) + "?" + new URLSearchParams(params));
+    "/v55/operations/" + encodeURIComponent(key) + "?" + new URLSearchParams(params));
   client.cancelOperation = (key, requestId) => client.request("POST",
-    "/v1/operations/" + encodeURIComponent(key) + "/cancel", { requestId });
+    "/v55/operations/" + encodeURIComponent(key) + "/cancel", { requestId });
   client.ensureReady = async (deviceId) => {
     const key = dir + ":" + deviceId;
     if (readiness.has(key)) return readiness.get(key);
@@ -203,7 +203,7 @@ async function ensureAgent(options = {}) {
   };
   return client;
 }
-// Backward compatible CLI API.
+// Current 5.5 CLI API.
 async function ensure(options) { await ensureAgent(options); }
 module.exports = { request, ensure, ensureAgent, stateDirectory };
 

@@ -220,7 +220,7 @@ export const tunnelInfo = (t) => ({
   connections: t.sockets.size,
   scope: "loopback-only",
   persistent: !!t.deviceId,
-  recovery: t.deviceId ? "recreate-listener-only" : "legacy-ssh-channel",
+  recovery: "recreate-listener-only",
 });
 export async function closeTunnel(id, { remember = false } = {}) {
   const t = tunnels.get(id);

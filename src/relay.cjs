@@ -22,7 +22,7 @@ function createRelay(config, role) {
     throw new Error("Invalid session configuration");
   const events = new EventEmitter();
   const opposite = role === "near" ? "far" : "near";
-  const prefix = `ssh-public-relay/v1/${config.session}/`;
+  const prefix = `ssh-relay/5.5/${config.session}/`;
   const proxy = proxyForWebSocket(config.broker);
   const client = mqtt.connect(config.broker, {
     clientId: `ssh-${role}-${crypto.randomBytes(10).toString("hex")}`,
@@ -49,7 +49,7 @@ function createRelay(config, role) {
     lastPeerStatus = 0;
   let ready = false,
     stopping = false,
-    peerProtocol = 1,
+    peerProtocol = 55,
     peerInstance;
   const stats = {
     opened: 0,
@@ -68,7 +68,7 @@ function createRelay(config, role) {
       ...(state
         ? {
             cid: state.cid,
-            protocol: state.reliable ? 2 : 1,
+            protocol: 55,
             opened: state.opened,
             sent: state.out,
             received: state.incoming,
@@ -140,6 +140,8 @@ function createRelay(config, role) {
       ...frame,
       time: Date.now(),
       role,
+      applicationRelease: "5.5",
+      protocol: 55,
       relayEpoch: instance + ":" + epoch,
     });
     const packet = JSON.stringify({ body, mac: sign(body).toString("base64") });
@@ -254,10 +256,7 @@ function createRelay(config, role) {
         while (pendingResets.size > 256)
           pendingResets.delete(pendingResets.keys().next().value);
         control({ type: "reset", cid: state.cid, reason });
-      } else
-        publish({ type: "abort", cid: state.cid, seq: state.out++ }).catch(
-          () => {},
-        );
+      }
     }
     forget(state);
     state.socket.destroy();
@@ -266,7 +265,7 @@ function createRelay(config, role) {
     if (
       state.opened &&
       !state.socket.destroyed &&
-      (!state.reliable || state.tx.size < WINDOW)
+      state.tx.size < WINDOW
     )
       state.socket.resume();
   }
@@ -295,7 +294,7 @@ function createRelay(config, role) {
   }
   function enqueue(state, type, data) {
     const frame = { cid: state.cid, seq: state.out++, type };
-    if (type === "open" && state.reliable) frame.protocol = 2;
+    if (type === "open" && state.reliable) frame.protocol = 55;
     if (data) frame.data = data.toString("base64");
     if (config.traceFrames)
       trace("frame_send", state, {
@@ -307,9 +306,6 @@ function createRelay(config, role) {
       const item = { frame, createdAt: Date.now(), lastSent: 0, attempts: 0 };
       state.tx.set(frame.seq, item);
       transmit(state, item);
-    } else {
-      state.queue = state.queue.then(() => publish(frame));
-      state.queue.catch(() => reset(state, "publish_failed", false));
     }
   }
   function attach(cid, socket, reliable, incoming = 0) {
@@ -340,8 +336,7 @@ function createRelay(config, role) {
       state.txBytes += chunk.length;
       for (let offset = 0; offset < chunk.length; offset += CHUNK)
         enqueue(state, "data", chunk.subarray(offset, offset + CHUNK));
-      if (state.reliable) flow(state);
-      else state.queue.then(() => flow(state)).catch(() => {});
+      flow(state);
     });
     socket.on("end", () => {
       state.localEnded = true;
@@ -362,19 +357,8 @@ function createRelay(config, role) {
         if (!state.localEnded || !state.remoteEnded)
           return reset(state, "local_socket_closed");
         if (!state.tx.size) forget(state);
-      } else {
-        if (!socket.readableEnded || !socket.writableFinished)
-          enqueue(state, "abort");
-        forget(state);
       }
     });
-    // Version 2 uses delivery deadlines and SSH liveness, not a TCP inactivity
-    // timer that can terminate a legitimate quiet connection.
-    if (!reliable)
-      socket.setTimeout(120000, () => {
-        trace("socket_idle_timeout", state);
-        reset(state, "legacy_idle_timeout");
-      });
     return state;
   }
   function deliver(state) {
@@ -507,6 +491,7 @@ function createRelay(config, role) {
       )
         return reject("authentication");
       const frame = JSON.parse(envelope.body);
+      if (frame.applicationRelease !== "5.5" || frame.protocol !== 55) return reject("release_mismatch");
       if (frame.role !== opposite || !Number.isSafeInteger(frame.time)) return reject("role_or_time");
       const origin = frame.relayEpoch || frame.status?.relayEpoch || frame.status?.relayInstance;
       if (clock && frame.type === "clock_probe") {
@@ -548,7 +533,8 @@ function createRelay(config, role) {
       if (frame.type === "status") {
         const peer = frame.status;
         if (!peer || typeof peer !== "object") return reject("status_shape");
-        peerProtocol = peer.relayProtocol === 2 ? 2 : 1;
+        if (peer.applicationRelease !== "5.5" || peer.relayProtocol !== 55) return reject("release_mismatch");
+        peerProtocol = 55;
         events.emit("peer", peer);
         return;
       }
@@ -601,17 +587,15 @@ function createRelay(config, role) {
           });
           return;
         }
-        const reliable = frame.protocol === 2;
+        const reliable = true;
         if (
           [...connections.values()].filter((s) => !s.socket.destroyed).length >=
-          (config.connectionAdmission ? 16 : 8)
+          256
         ) {
           stats.rejected++;
           trace("open_rejected", null, { cid: frame.cid, reason: "capacity" });
           control(
-            reliable
-              ? { type: "reset", cid: frame.cid, reason: "capacity" }
-              : { type: "abort", cid: frame.cid, seq: 0 },
+            { type: "reset", cid: frame.cid, reason: "capacity" },
           );
           return;
         }
@@ -621,7 +605,7 @@ function createRelay(config, role) {
           allowHalfOpen: true,
         });
         socket.pause();
-        state = attach(frame.cid, socket, reliable, reliable ? 0 : 1);
+        state = attach(frame.cid, socket, reliable, 0);
         socket.pause();
         socket.once("connect", () => {
           if (state.reset) return;
@@ -630,8 +614,7 @@ function createRelay(config, role) {
           trace("far_tcp_connected", state);
           acknowledge(state);
           enqueue(state, "opened");
-          if (reliable) flow(state);
-          else state.queue.then(() => flow(state)).catch(() => {});
+          flow(state);
         });
         socket.once("error", () => reset(state, "local_ssh_unavailable"));
         return;
@@ -643,35 +626,7 @@ function createRelay(config, role) {
       }
       if (config.traceFrames)
         trace("frame_receive", state, { type: frame.type, seq: frame.seq });
-      if (state.reliable) return receive(state, frame);
-      if (frame.seq < state.incoming) return;
-      if (frame.seq !== state.incoming) {
-        trace("sequence_gap", state, {
-          actual: frame.seq,
-          expected: state.incoming,
-        });
-        return reset(state, "legacy_sequence_gap");
-      }
-      state.incoming++;
-      if (frame.type === "opened" && role === "near") {
-        state.opened = true;
-        clearTimeout(state.openTimer);
-        flow(state);
-      } else if (
-        frame.type === "data" &&
-        typeof frame.data === "string" &&
-        state.opened
-      ) {
-        if (state.socket.writableLength > 2097152)
-          return reset(state, "legacy_receive_overflow");
-        const data = Buffer.from(frame.data, "base64");
-        state.rxBytes += data.length;
-        state.socket.write(data);
-      } else if (frame.type === "end") {
-        state.remoteEnded = true;
-        state.socket.end();
-      } else if (frame.type === "abort")
-        reset(state, "legacy_peer_abort", false);
+      return receive(state, frame);
     } catch (error) {
       trace("packet_exception", null, { message: error.message });
     }
@@ -715,14 +670,14 @@ function createRelay(config, role) {
     if (!ready || stopping) return socket.destroy();
     socket.pause();
     const cid = crypto.randomBytes(16).toString("hex");
-    const state = attach(cid, socket, peerProtocol === 2);
+    const state = attach(cid, socket, peerProtocol === 55);
     socket.pause();
     enqueue(state, "open");
     state.openTimer = setTimeout(
       () => {
         if (!state.opened) reset(state, "open_timeout");
       },
-      state.reliable ? DELIVERY_TIMEOUT + 1000 : 20000,
+      DELIVERY_TIMEOUT + 1000,
     );
     state.openTimer.unref();
   };
@@ -736,7 +691,8 @@ function createRelay(config, role) {
       type: "status",
       status: {
         ...status,
-        relayProtocol: 2,
+        applicationRelease: "5.5",
+        relayProtocol: 55,
         relayInstance: instance,
         relayEpoch: instance + ":" + epoch,
       },

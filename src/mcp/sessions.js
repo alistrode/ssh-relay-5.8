@@ -1,13 +1,12 @@
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import { connect } from "./transport.js";
-import { agentMode, localAgentClient, serverConfig } from "./config.js";
-import * as legacy from "./legacy-sessions.js";
+import { localAgentClient, serverConfig } from "./config.js";
 const require = createRequire(import.meta.url);
 const { openControl } = require("../pro/agent-control.cjs");
 const { executeSessionCommand } = require("../pro/session-call.cjs");
 const { normalizeSessionRequest } = require("../pro/session-spec.cjs");
-export const sessions = legacy.sessions;
+export const sessions = new Map();
 const controls = new WeakMap();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function controlFor(session) {
@@ -17,7 +16,7 @@ async function controlFor(session) {
   if (conn.config.agentDeviceId !== session.deviceId) throw Object.assign(Error("Session connection target identity changed"), { code: "SESSION_TARGET_CHANGED" });
   let control = controls.get(conn);
   if (!control || control.channel.closed()) { control = await openControl(conn.client, session.deviceId); controls.set(conn, control); }
-  if (control.capabilities.sessionProtocol !== 1 || !control.capabilities.sessionResume)
+  if (control.capabilities.sessionProtocol !== 55 || !control.capabilities.sessionResume)
     throw Object.assign(Error("Original target does not support recoverable sessions"), { code: "SESSION_UNSUPPORTED" });
   return control;
 }
@@ -33,13 +32,12 @@ function applyStatus(session, value) {
   session.errorCode = value.error?.code || value.errorCode; session.lastActivity = Date.now();
 }
 export function sessionInfo(session) {
-  if (!session.persistent) return { ...legacy.sessionInfo(session), persistent: false, recovery: "legacy-ssh-channel" };
   return { id: session.id, server: session.server, name: session.name, state: session.state, cwd: session.cwd,
     createdAt: session.createdAt, lastActivity: session.lastActivity, historyCount: session.history?.length || 0,
     platform: session.platform, persistent: true, lastRequestId: session.lastRequestId, errorCode: session.errorCode };
 }
 export async function listSessions() {
-  if (agentMode) {
+  {
     const records = await (await localAgentClient()).sessions();
     for (const record of records.sessions) if (!sessions.has(record.id)) sessions.set(record.id, {
       ...record, persistent: true, state: "unknown", lastKnownState: record.state,
@@ -49,13 +47,13 @@ export async function listSessions() {
   return [...sessions.values()].map(sessionInfo);
 }
 export async function getSession(id) {
-  if (!sessions.has(id) && agentMode) await listSessions();
+  if (!sessions.has(id)) await listSessions();
   const session = sessions.get(id); if (!session) throw Error("Unknown session"); return session;
 }
 export async function startSession(name, label) {
   const conn = await connect(name), config = conn.config;
-  if (!config.agentDeviceId || config.capabilities?.sessionProtocol !== 1 || !config.capabilities?.sessionResume)
-    return { ...(await legacy.startSession(name, label)), persistent: false, recovery: "legacy-ssh-channel" };
+  if (!config.agentDeviceId || config.capabilities?.sessionProtocol !== 55 || !config.capabilities?.sessionResume)
+    throw Object.assign(Error("5.5 recoverable sessions are required"), { code: "RELEASE_MISMATCH" });
   const remoteSessionId = crypto.randomUUID(), id = "ssh_" + remoteSessionId, agent = await localAgentClient();
   await agent.registerSession({ id, deviceId: config.agentDeviceId, server: config.name, name: label || name, platform: config.platform });
   const session = { id, remoteSessionId, deviceId: config.agentDeviceId, server: config.name, name: label || name,
@@ -76,7 +74,6 @@ export async function startSession(name, label) {
 }
 export async function sendSession(id, command, timeout = 30000, record = true) {
   const session = await getSession(id);
-  if (!session.persistent) return { ...(await legacy.sendSession(id, command, timeout, record)), persistent: false, recovery: "legacy-ssh-channel" };
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 300000) throw Error("Timeout must be 1..300000 ms");
   const agent = await localAgentClient(), status = await agent.session(id); applyStatus(session, status);
   if (session.state !== "ready") return { success: false, session: id, state: session.state, persistent: true,
@@ -100,7 +97,6 @@ export async function sendSession(id, command, timeout = 30000, record = true) {
 }
 export async function closeSession(id) {
   const session = await getSession(id);
-  if (!session.persistent) return legacy.closeSession(id);
   const agent = await localAgentClient(), status = await agent.session(id);
   if (["lost", "closed"].includes(status.state)) { sessions.delete(id); return { id, closed: true, state: "lost", persistent: true }; }
   const previous = (await agent.sessionRequests(id)).requests.find(value => value.kind === "close");
@@ -126,7 +122,6 @@ export async function closeSession(id) {
 }
 export function closeSessions() {
   for (const [id, session] of sessions) {
-    if (session.persistent) sessions.delete(id);
-    else legacy.closeSession(id);
+    sessions.delete(id);
   }
 }

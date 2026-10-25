@@ -217,11 +217,11 @@ class Connections {
     if (!runtime || runtime.port !== t.port || !Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 ||
         !peer || peer.fingerprint !== info.fingerprint || Date.now() - peer.receivedAt >= 45000)
       throw fault("DEVICE_NOT_READY", "Relay descriptor is stale", true);
-    return { deviceId: key, generation: t.generation, agentBootId: a.bootId, host: "127.0.0.1", port: runtime.port,
+    return { applicationRelease: "5.5", deviceId: key, generation: t.generation, agentBootId: a.bootId, host: "127.0.0.1", port: runtime.port,
       keyPath: path.join(t.dir, "client_key"), knownHosts: path.join(t.dir, "known_hosts"),
       fingerprint: info.fingerprint, platform: info.target === "win10" ? "windows" : "linux",
       remoteUser: t.remoteUser, hostname: info.hostname, capabilities: peer.capabilities || {},
-      permissions: peer.permissions || null, relayProtocol: peer.relayProtocol || 1,
+      permissions: peer.permissions || null, relayProtocol: peer.relayProtocol,
       peerReceivedAt: peer.receivedAt, folder: t.dir };
   }
 }

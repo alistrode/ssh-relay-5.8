@@ -3,7 +3,7 @@
 // fixtures, network fault injection or simulated devices are created.
 const fs=require("node:fs"),path=require("node:path"),cp=require("node:child_process");
 const root=path.resolve(__dirname,".."),profile=path.join(root,"work/github-client"),output=path.join(root,"run-output");
-fs.mkdirSync(profile,{recursive:true});fs.mkdirSync(output,{recursive:true});
+require("../src/pro/release.cjs").requireProfile(profile,{create:true});fs.mkdirSync(output,{recursive:true});
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const record={release:"5.5",platform:process.platform,startedAt:new Date().toISOString(),operations:[]};
 function save(){fs.writeFileSync(path.join(output,"run.json"),JSON.stringify(record,null,2)+"\n");}

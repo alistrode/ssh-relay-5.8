@@ -674,7 +674,7 @@ export const handlers = {
       }
     }
     return { success: results.every((r) => r.success), strategy, results,
-      ...(plan ? { operationId: plan.operationId, persistent: true, children: plan.children.map(({ requestHash, ...child }) => child) } : { persistent: false }) };
+      ...(plan ? { operationId: plan.operationId, persistent: true, children: plan.children.map(({ requestHash, ...child }) => child) } : (() => { throw Error("5.5 operation plan is required"); })()) };
   },
   ssh_history: async (a) => ({
     success: true,

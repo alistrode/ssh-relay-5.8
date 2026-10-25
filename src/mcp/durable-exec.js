@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
-import { connect, run, psQuote } from "./transport.js";
+import { connect, psQuote } from "./transport.js";
 import { localAgentClient } from "./config.js";
 import { shellQuote } from "./shell-quote.js";
 import { currentWorkflowStage } from "./workflows.js";
@@ -57,10 +57,10 @@ export async function durableExec(name, command, { cwd, timeout }) {
   if (hasOperationPlan() && !plannedOperation(config.agentDeviceId))
     throw Object.assign(Error("Target differs from the saved group plan"), { code: "REQUEST_CONFLICT" });
   if (plannedOperation(config.agentDeviceId) &&
-      (!config.capabilities.persistentExec || config.capabilities.taskProtocol !== 1))
+      (!config.capabilities.persistentExec || config.capabilities.taskProtocol !== 55))
     throw Object.assign(Error("Saved group target no longer supports persistent tasks"), { code: "TASK_UNSUPPORTED" });
-  if (!config.agentDeviceId || !config.capabilities.persistentExec || config.capabilities.taskProtocol !== 1)
-    return { ...(await run(name, command, { cwd, timeout })), persistent: false, recovery: "legacy-ssh-channel" };
+  if (!config.agentDeviceId || !config.capabilities.persistentExec || config.capabilities.taskProtocol !== 55)
+    throw Object.assign(Error("5.5 persistent execution is required; older endpoints are refused"), { code: "RELEASE_MISMATCH" });
   return submitTask(conn, "exec", execSpec(config, command, { cwd, timeout }), timeout);
 }
 export function execSpec(config, command, { cwd, timeout }) {

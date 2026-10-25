@@ -42,7 +42,7 @@ function bindings(dir) {
   return result;
 }
 export function descriptorConfig(descriptor, base, allowCloudSelfTest = false) {
-  if (descriptor.deviceId !== base.deviceId || descriptor.host !== "127.0.0.1" ||
+  if (descriptor.applicationRelease !== "5.5" || descriptor.relayProtocol !== 55 || descriptor.deviceId !== base.deviceId || descriptor.host !== "127.0.0.1" ||
       !Number.isInteger(descriptor.port) || descriptor.port < 1 || descriptor.port > 65535 ||
       !Number.isSafeInteger(descriptor.generation) || descriptor.generation < 0 ||
       typeof descriptor.agentBootId !== "string" || !descriptor.agentBootId || descriptor.agentBootId.length > 128 ||

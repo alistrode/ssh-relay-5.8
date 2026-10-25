@@ -5,7 +5,7 @@ export const instructions = recoveryInstructions + "\n\n" + `Use the configured 
 const workflows = {
   "remote-connect": {
     description: "Verify the target and discover tools before remote work",
-    text: "Call ssh_list_servers, select the requested server and check hostname, actual account, OS, permission context and capabilities. Call ssh_execute with a harmless identity/workdir probe (PowerShell on Windows, sh on Linux). Compare the actual output to the expected target. Check relayProtocol: both endpoints must run the updated source and negotiate 2 for endpoint delivery acknowledgements and retransmission. Protocol 1 is legacy compatibility without this fix. A stale relay status is not proof of connectivity. Then report verified target and available capabilities; never output credentials.",
+    text: "Call ssh_list_servers, select the requested server and check hostname, actual account, OS, permission context and capabilities. Call ssh_execute with a harmless identity/workdir probe (PowerShell on Windows, sh on Linux). Compare the actual output to the expected target. Check relayProtocol: both endpoints must run the updated source and negotiate 55 for endpoint delivery acknowledgements and retransmission. Both endpoints must advertise applicationRelease=5.5; every other branch is refused. A stale relay status is not proof of connectivity. Then report verified target and available capabilities; never output credentials.",
   },
   "remote-operate": {
     description: "Use command, file and persistent-session tools correctly",

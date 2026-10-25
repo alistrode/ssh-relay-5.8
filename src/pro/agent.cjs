@@ -135,7 +135,7 @@ class Agent {
     this.server = http.createServer((req, res) => this.api(req, res));
     await new Promise((resolve, reject) => {
       this.server.once("error", reject);
-      this.server.listen(0, "127.0.0.1", resolve);
+      this.server.listen({port:0,host:"127.0.0.1",exclusive:true}, resolve);
     });
     write(this.file("agent-runtime.json"), {
       pid: process.pid,
@@ -143,7 +143,7 @@ class Agent {
       token: this.apiToken,
       role: this.role,
       bootId: this.bootId,
-      apiVersion: 1,
+      apiVersion: 55,
       profileId: this.identity.deviceId,
     });
     if (this.role === "far") {
@@ -159,10 +159,10 @@ class Agent {
     const dir = folder(this.file("far"));
     let info = read(path.join(dir, "connection-private.json"), null);
     if (!info) {
-      const host = keyPair("relay-pro-host"),
-        unused = keyPair("relay-pro-unused");
+      const host = keyPair("relay-pro-host");
       info = {
-        version: 2,
+        version: 55,
+        applicationRelease: "5.5",
         target: process.platform === "win32" ? "win10" : "linux",
         broker: this.broker,
         session: crypto.randomBytes(16).toString("hex"),
@@ -174,9 +174,9 @@ class Agent {
         hostname: os.hostname(),
       };
       text(path.join(dir, "host_key"), host.privateKey);
-      text(path.join(dir, "client_key.pub"), unused.publicKey + "\n");
       write(path.join(dir, "connection-private.json"), info);
     }
+    if (info.version !== 55 || info.applicationRelease !== "5.5") throw Error("Only 5.5 far identities are supported");
     if (info.deviceId !== this.identity.deviceId)
       throw Error("Far device identity mismatch");
     info.system = systemVersion();
@@ -189,12 +189,12 @@ class Agent {
       reconnectPolicy: true,
       clientKeysFile: clients,
       connectionAdmission: true,
-      controlSubsystem: 1,
-      taskProtocol: 1,
+      controlSubsystem: 55,
+      taskProtocol: 55,
       persistentTasks: this.taskManager?.identityAvailable === true,
       taskJobs: jobCatalog(),
-      fileProtocol: this.remoteFiles ? 1 : undefined,
-      sessionProtocol: 1,
+      fileProtocol: this.remoteFiles ? 55 : undefined,
+      sessionProtocol: 55,
       persistentSessions: this.sessionManager?.identityAvailable === true,
       clockSkewCorrection: true,
     });
@@ -215,7 +215,7 @@ class Agent {
   }
   safeInfo(info) {
     if (
-      !info ||
+      !info || info.version !== 55 || info.applicationRelease !== "5.5" ||
       !/^SHA256:[A-Za-z0-9+/]{43}$/.test(info.fingerprint) ||
       !/^[a-f0-9]{32}$/.test(info.session) ||
       !/^[a-f0-9]{64}$/.test(info.secret) ||
@@ -301,6 +301,7 @@ class Agent {
         who: {
           deviceId: this.identity.deviceId,
           publicKey: keys.publicKey,
+          applicationRelease: "5.5",
           label: this.settings.label,
           hostname: os.hostname(),
           system: systemVersion(),
@@ -600,10 +601,10 @@ class Agent {
       const peer = read(path.join(t.dir, "peer.json"), null);
       if (
         !peer ||
-        peer.relayProtocol !== 2 ||
+        peer.relayProtocol !== 55 || peer.applicationRelease !== "5.5" ||
         Date.now() - peer.receivedAt > 45000
       )
-        throw Error("Waiting for current authenticated protocol-2 peer");
+        throw Error("Waiting for the authenticated 5.5 peer");
       if (!peer.admission) {
         t.state = "unsupported_remote"; t.connecting = false; t.nextAt = Date.now() + 2000; return;
       }
@@ -909,64 +910,64 @@ class Agent {
         }
         return value;
       };
-      if (this.role === "near" && route === "/v1/sessions" && req.method === "POST") {
+      if (this.role === "near" && route === "/v55/sessions" && req.method === "POST") {
         reply(200, this.sessions.register(data)); return;
       }
-      if (this.role === "near" && route === "/v1/sessions" && req.method === "GET") {
+      if (this.role === "near" && route === "/v55/sessions" && req.method === "GET") {
         reply(200, this.sessions.list()); return;
       }
-      if (this.role === "near" && /^\/v1\/sessions\/ssh_[a-f0-9-]+\/requests$/.test(route)) {
+      if (this.role === "near" && /^\/v55\/sessions\/ssh_[a-f0-9-]+\/requests$/.test(route)) {
         const key = route.split("/")[3];
         if (req.method === "POST") { reply(200, this.sessions.registerRequest(key, data)); return; }
         if (req.method === "GET") { reply(200, this.sessions.requests(key)); return; }
       }
-      if (this.role === "near" && req.method === "GET" && /^\/v1\/sessions\/ssh_[a-f0-9-]+$/.test(route)) {
+      if (this.role === "near" && req.method === "GET" && /^\/v55\/sessions\/ssh_[a-f0-9-]+$/.test(route)) {
         reply(200, await this.sessions.get(route.split("/")[3], { ...pageParams(),
           ...(apiUrl.searchParams.has("requestId") ? { requestId: apiUrl.searchParams.get("requestId") } : {}) })); return;
       }
-      if (this.role === "near" && req.method === "POST" && route === "/v1/operations") {
+      if (this.role === "near" && req.method === "POST" && route === "/v55/operations") {
         value = this.operations.register(data);
         reply(200, value); return;
       }
-      if (this.role === "near" && req.method === "GET" && route === "/v1/operations") {
+      if (this.role === "near" && req.method === "GET" && route === "/v55/operations") {
         value = this.operations.list({
           limit: apiUrl.searchParams.has("limit") ? Number(apiUrl.searchParams.get("limit")) : 20,
           deviceId: apiUrl.searchParams.get("deviceId") || undefined });
         reply(200, value); return;
       }
-      if (this.role === "near" && req.method === "GET" && /^\/v1\/operations\/[a-f0-9-]+$/.test(route)) {
+      if (this.role === "near" && req.method === "GET" && /^\/v55\/operations\/[a-f0-9-]+$/.test(route)) {
         value = await this.operations.get(route.split("/")[3], pageParams());
         reply(200, value); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/cancel$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/cancel$/.test(route)) {
         value = await this.operations.cancel(route.split("/")[3], data);
         reply(value.state === "cancel_requested" ? 202 : 200, value); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/stage$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/stage$/.test(route)) {
         reply(200, this.operations.workflows.stage(route.split("/")[3], data)); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/dispatch$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/dispatch$/.test(route)) {
         reply(200, this.operations.markDispatch(route.split("/")[3])); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v1\/operations\/[a-f0-9-]+\/not-started$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/not-started$/.test(route)) {
         reply(200, this.operations.notStarted(route.split("/")[3])); return;
       }
-      if (req.url.startsWith("/v1/") && req.url !== "/v1/health" && this.role !== "near")
+      if (req.url.startsWith("/v55/") && req.url !== "/v55/health" && this.role !== "near")
         throw fault("ROLE_MISMATCH", "Device connection API requires a near Agent");
-      if (req.method === "GET" && req.url === "/v1/health")
-        value = { apiVersion: 1, profileId: this.identity.deviceId, bootId: this.bootId, role: this.role };
-      else if (req.method === "GET" && req.url === "/v1/devices") {
+      if (req.method === "GET" && req.url === "/v55/health")
+        value = { apiVersion: 55, profileId: this.identity.deviceId, bootId: this.bootId, role: this.role };
+      else if (req.method === "GET" && req.url === "/v55/devices") {
         const status = this.status();
         value = { ok: true, devices: status.devices.map(({ connectionReport, workerPid, ...device }) => device),
           slots: status.deviceSlots };
-      } else if (req.method === "POST" && req.url === "/v1/connections") {
+      } else if (req.method === "POST" && req.url === "/v55/connections") {
         value = await this.connections.connect(data);
         responseCode = ["ready", "failed", "unknown"].includes(value.state) ? 200 : 202;
-      } else if (req.method === "GET" && /^\/v1\/connections\/[a-f0-9-]+$/.test(req.url)) {
+      } else if (req.method === "GET" && /^\/v55\/connections\/[a-f0-9-]+$/.test(req.url)) {
         value = this.connections.result(this.connections.get(req.url.split("/")[3]));
-      } else if (req.method === "GET" && /^\/v1\/devices\/[a-f0-9-]+\/connection$/.test(req.url)) {
+      } else if (req.method === "GET" && /^\/v55\/devices\/[a-f0-9-]+\/connection$/.test(req.url)) {
         value = this.connections.descriptor(req.url.split("/")[3]);
-      } else if (req.method === "POST" && /^\/v1\/devices\/[a-f0-9-]+\/disconnect$/.test(req.url)) {
+      } else if (req.method === "POST" && /^\/v55\/devices\/[a-f0-9-]+\/disconnect$/.test(req.url)) {
         value = this.connections.disconnect(req.url.split("/")[3], data);
       }
       else if (req.method === "GET" && req.url === "/status") value = this.status();
@@ -1114,7 +1115,7 @@ class Agent {
           ? "pairing failed"
           : e.message.slice(0, 200),
       });
-      if (req.url.startsWith("/v1/")) {
+      if (req.url.startsWith("/v55/")) {
         const safe = publicFailure(e);
         const code = safe.code;
         const status = code === "DEVICE_LIMIT_REACHED" || code === "REQUEST_CONFLICT" ? 409 :
@@ -1154,7 +1155,7 @@ if (require.main === module) {
     role: arg("--role", "near"),
     dir: arg(
       "--state-dir",
-      path.join(os.homedir(), ".ssh-relay-pro", arg("--role", "near")),
+      path.join(os.homedir(), ".ssh-relay-pro-5.5", arg("--role", "near")),
     ),
     brokerUrl: arg("--broker", DEFAULT_BROKER),
     allowCloudSelfTest: args.includes("--allow-cloud-self-test"),
