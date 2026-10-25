@@ -23,7 +23,7 @@ let renderer,main;
   const log=fs.createWriteStream(path.join(profile,"launch-private.log"));launcher.stdout.pipe(log);launcher.stderr.pipe(log);
   launcher.on("error",error=>{record.launchError=error.message;save();});
   renderer=await connectInspector(9222,page=>page.type==="page"&&page.url.endsWith("desktop/index.html"));
-  const evaluate=async expression=>{const value=await renderer.call("Runtime.evaluate",{expression,awaitPromise:false,returnByValue:true});if(value.exceptionDetails)throw Error(value.exceptionDetails.text+": "+JSON.stringify(value.exceptionDetails.exception?.description));return value.result?.value;};
+  const evaluate=async expression=>{const value=await renderer.call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});if(value.exceptionDetails)throw Error(value.exceptionDetails.text+": "+JSON.stringify(value.exceptionDetails.exception?.description));return value.result?.value;};
   await waitFor(()=>evaluate('Promise.all([window.relay.call("near","/status"),window.relay.call("far","/status")]).then(s=>s.map(v=>({role:v.role,system:v.system,connectionLimit:v.connectionLimit})))'));
   record.devices=await evaluate('Promise.all([window.relay.call("near","/status"),window.relay.call("far","/status")]).then(s=>s.map(v=>({role:v.role,system:v.system,connectionLimit:v.connectionLimit})))');record.operations.push("client_and_both_connection_services_started");save();console.log("Client and both connection services are running.");
   await evaluate('Promise.all([window.relay.call("near","/settings",{enabled:true}),window.relay.call("far","/settings",{enabled:true})])');
