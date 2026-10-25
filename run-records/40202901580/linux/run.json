@@ -1,0 +1,45 @@
+{
+  "release": "5.5",
+  "platform": "linux",
+  "startedAt": "2026-10-25T14:35:12.533Z",
+  "operations": [
+    "client_and_both_connection_services_started",
+    "desktop_opened_with_system_version_and_twenty_device_controls",
+    "tray_exit_handler_closed_client_and_owned_backends"
+  ],
+  "devices": [
+    {
+      "role": "near",
+      "system": {
+        "name": "Ubuntu",
+        "version": "24.04",
+        "build": "6.17.0-1022-azure",
+        "platform": "linux",
+        "arch": "x64",
+        "displayName": "Ubuntu 24.04 · 6.17.0-1022-azure · x64"
+      },
+      "connectionLimit": 20
+    },
+    {
+      "role": "far",
+      "system": {
+        "name": "Ubuntu",
+        "version": "24.04",
+        "build": "6.17.0-1022-azure",
+        "platform": "linux",
+        "arch": "x64",
+        "displayName": "Ubuntu 24.04 · 6.17.0-1022-azure · x64"
+      },
+      "connectionLimit": 20
+    }
+  ],
+  "screen": {
+    "title": "SSH Relay Pro 5.5",
+    "localSystem": "本机 · Ubuntu 24.04 · 6.17.0-1022-azure · x64",
+    "nearCapacity": "0 / 20 台已连接",
+    "farCapacity": "0 / 20 台已连接",
+    "buttonCount": 28
+  },
+  "finishedAt": "2026-10-25T14:35:22.193Z",
+  "completed": true
+}
