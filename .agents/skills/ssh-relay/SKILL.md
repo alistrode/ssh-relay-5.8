@@ -17,7 +17,7 @@ description: 使用 SSH Relay MCP/CLI 连接和操作远端 Windows/Linux。用�
 收到用户远程操作要求后，主动使用已配置的 SSH Relay MCP 完成操作。
 
 1. 先调用 `ssh_list_servers` 查看设备，不猜测目标主机。
-2. 首次配对调用 `ssh_connect`，传入用户提供的配对码；后续使用已记住的设备。主动连接和被连接各支持最多二十台。
+2. 首次配对调用 `ssh_connect`，仅传入以 `55-` 开头的本版配对码；后续使用已记住的设备。主动连接和被连接各支持最多二十台。
 3. 使用原 MCP 工具执行用户要求，通过原 `server` 参数指定目标；参数以工具 schema 为准。
 4. 持久操作返回 `operationId` 时，使用 `ssh_operation_status` 查询结果，不因等待超时重复提交。连接仍在进行时，使用连接状态工具查询，不重复配对。
 5. MCP 工具不可见时，连接和状态查询使用包内 CLI 的同等入口；先查看 `--help`，支持的参数从 stdin 传入。完整包入口为 Windows `CLI.cmd`、Linux `CLI.sh`，源码入口为 `node src/pro/cli.cjs`。CLI 没有对应业务命令时，接入包内 MCP 后使用原工具，不虚构 CLI 命令。
@@ -27,3 +27,5 @@ description: 使用 SSH Relay MCP/CLI 连接和操作远端 Windows/Linux。用�
 CLI 路径同样必须继续：用 `connection-task --id` 查询原连接；已记住设备用 `connect --args-stdin` 的 deviceId，不重复配对；用 `operation-status --args-stdin` 查询原 operationId。CLI 缺少会话/传输业务入口时恢复包内 MCP 后查询，不虚构命令。用户明确停止或主动断开必须遵守，普通网络断开不能当作主动断开。
 
 5.5 运行方式：必须完整客户端与连接服务同时运行。MCP/CLI 自动复用或打开客户端，不提供独立后台模式。只有客户端托盘退出会停止本应用所有进程。设备系统版本读取状态返回中的 system.displayName，未知版本不得根据旧 target 字段猜测。
+
+本 Skill 仅适用于 5.5。旧连接块、旧配对码和旧配置均拒绝；旧分支必须切到对应旧分支使用其原程序连接。不得在 5.5 中实现任何旧协议回退。5.5 默认配置为 .ssh-relay-pro-5.5，只用系统分配的独占空闲监听端口，不读取或占用 5.4 的运行目录与端口。
