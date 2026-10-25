@@ -2,15 +2,27 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import { statePath } from "./state.js";
-import { connect, sftp, sftpCall } from "./transport.js";
+import { connect, sftp, sftpCall, transportStopping } from "./transport.js";
 const require = createRequire(import.meta.url);
 const { TransferSnapshots } = require("../pro/file-transfer.cjs");
 const { openControl } = require("../pro/agent-control.cjs");
 function snapshots() { return new TransferSnapshots(statePath("transfers")); }
+async function recoverTransfer(work){
+  let failures=0;
+  for(;;){
+    try{return await work();}catch(error){
+      const code=String(error.code||""),message=String(error.message||"");
+      const transient=["ECONNRESET","ECONNREFUSED","ETIMEDOUT","EPIPE","ENOTCONN","CONTROL_TIMEOUT","CONTROL_CLOSED","TRANSFER_CONNECTION_LOST","6","7"].includes(code)||
+        (!code&&/connection (?:closed|lost)|channel (?:closed|not open)|socket closed|not connected|no response from server|ssh closed before identity verification|ssh connection\/identity check timeout/i.test(message));
+      if(transportStopping()||!transient)throw error;
+      await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1000*2**Math.min(failures++,4))));
+    }
+  }
+}
 export async function uploadSnapshot(server, localPath, remotePath) {
-  const conn = await connect(server), transferId = crypto.randomUUID();
+  const conn = await recoverTransfer(()=>connect(server)), transferId = crypto.randomUUID();
   const r = snapshots().create({ transferId, deviceId: conn.config.agentDeviceId, localPath, remotePath, policy: "overwrite" });
-  try { return await resumeUpload(server, r.transferId); }
+  try { return await recoverTransfer(()=>resumeUpload(server, r.transferId)); }
   catch (error) { throw Object.assign(error, { transferId: r.transferId, deviceId: r.deviceId }); }
 }
 export async function resumeUpload(server, transferId, { statusOnly = false } = {}) {
@@ -63,9 +75,9 @@ export async function resumeUpload(server, transferId, { statusOnly = false } = 
 const { DownloadStore } = require("../pro/download-store.cjs");
 function downloads() { return new DownloadStore(statePath("downloads")); }
 export async function downloadSnapshot(server, remotePath, localPath) {
-  const conn = await connect(server), transferId = crypto.randomUUID();
+  const conn = await recoverTransfer(()=>connect(server)), transferId = crypto.randomUUID();
   downloads().intent(transferId, { deviceId: conn.config.agentDeviceId, source: remotePath, localPath });
-  try { return await resumeDownload(server, transferId); }
+  try { return await recoverTransfer(()=>resumeDownload(server, transferId)); }
   catch (error) { throw Object.assign(error, { transferId, deviceId: conn.config.agentDeviceId }); }
 }
 export async function resumeDownload(server, transferId, { statusOnly = false } = {}) {
@@ -118,7 +130,8 @@ export async function resumeDownload(server, transferId, { statusOnly = false } 
   finally { control.close(); }
 }
 export function resumeTransfer(server, transferId, options) {
-  return downloads().intent(transferId) ? resumeDownload(server, transferId, options) : resumeUpload(server, transferId, options);
+  const resume=()=>downloads().intent(transferId)?resumeDownload(server,transferId,options):resumeUpload(server,transferId,options);
+  return options?.statusOnly?resume():recoverTransfer(resume);
 }
 
 export async function cancelTransfer(server, transferId) {

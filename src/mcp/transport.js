@@ -285,17 +285,31 @@ export async function run(
   });
 }
 export async function sftp(name) {
-  const conn = await connect(name);
-  if (conn.sftp) return conn.sftp;
-  conn.sftp = await new Promise((res, rej) =>
-    conn.client.sftp((e, s) => (e ? rej(e) : res(s))),
-  );
-  return conn.sftp;
+  const conn=await connect(name);
+  if(conn.sftp)return conn.sftp;
+  if(conn.sftpPending)return conn.sftpPending;
+  const opening=new Promise((resolve,reject)=>conn.client.sftp((error,stream)=>{
+    if(error){reject(error);return;}
+    const invalidate=()=>{if(conn.sftp===stream)conn.sftp=null;};
+    stream.once("close",invalidate);stream.once("error",invalidate);
+    conn.sftp=stream;resolve(stream);
+  }));
+  conn.sftpPending=opening;
+  try{return await opening;}finally{if(conn.sftpPending===opening)delete conn.sftpPending;}
 }
-export const sftpCall = (s, method, ...args) =>
-  new Promise((resolve, reject) =>
-    s[method](...args, (e, value) => (e ? reject(e) : resolve(value))),
-  );
+export const sftpCall=(stream,method,...args)=>new Promise((resolve,reject)=>{
+  let settled=false;
+  const closed=()=>finish(Object.assign(Error("SFTP channel closed during transfer"),{code:"TRANSFER_CONNECTION_LOST",retryable:true}));
+  const failed=error=>finish(error);
+  const finish=(error,value)=>{
+    if(settled)return;settled=true;
+    stream.removeListener("close",closed);stream.removeListener("error",failed);
+    error?reject(error):resolve(value);
+  };
+  stream.once("close",closed);stream.once("error",failed);
+  try{stream[method](...args,(error,value)=>finish(error,value));}catch(error){finish(error);}
+});
+export const transportStopping=()=>shuttingDown;
 export function closeAll() {
   shuttingDown = true;
   for (const task of pending.values()) task.cancel();
