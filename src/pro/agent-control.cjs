@@ -4,7 +4,7 @@ function failure(code, message) { return Object.assign(Error(message), { code, r
 async function openControl(ssh, deviceId) {
   const stream = await new Promise((resolve, reject) => {
     let done = false;
-    const timer = setTimeout(() => { done = true; reject(failure("CONTROL_TIMEOUT", "Control subsystem did not open")); }, 5000);
+    const timer = setTimeout(() => { done = true; reject(failure("CONTROL_TIMEOUT", "Control subsystem did not open")); }, 30000);
     try {
       ssh.subsys("relay-control-5.5", (error, stream) => {
         clearTimeout(timer);
@@ -16,7 +16,7 @@ async function openControl(ssh, deviceId) {
   });
   const client = new ControlClient(stream);
   try {
-    const hello = await client.request("hello", { protocol: 55 }, { timeoutMs: 5000 });
+    const hello = await client.request("hello", { protocol: 55 }, { timeoutMs: 20000 });
     if (hello.applicationRelease !== "5.5" || hello.protocol !== 55 || hello.deviceId !== deviceId || hello.capabilities?.taskProtocol !== 55)
       throw failure("CONTROL_PROTOCOL_MISMATCH", "Verified target does not support this task protocol");
     client.capabilities = hello.capabilities;

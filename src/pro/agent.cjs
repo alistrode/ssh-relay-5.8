@@ -572,7 +572,11 @@ class Agent {
       ) {
         const current = t.client, generation = t.generation;
         this.identityProbe(t, device, current).catch((e) => {
-          if (t.client === current && t.generation === generation) this.failed(t, e);
+          if (t.client === current && t.generation === generation) {
+            if(e.code==="IDENTITY_PROBE_TIMEOUT"){
+              t.lastProbe=Date.now();this.log("identity_probe_deferred",{deviceId:t.id,reason:"transport_busy"});
+            }else this.failed(t,e);
+          }
         });
       }
     }
@@ -707,29 +711,23 @@ class Agent {
     const info = read(path.join(t.dir, "identity.json"));
     try {
       const result = await new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(Error("Read-only identity probe timeout")),
-          20000,
-        );
-        client.exec(
-          info.target === "win10" ? "whoami & hostname" : "whoami; hostname",
-          (e, stream) => {
-            if (e) {
-              clearTimeout(timer);
-              reject(e);
-              return;
-            }
-            let stdout = "",
-              stderr = "";
-            stream.on("data", (d) => (stdout += d));
-            stream.stderr.on("data", (d) => (stderr += d));
-            stream.on("error", reject);
-            stream.on("close", (code) => {
-              clearTimeout(timer);
-              resolve({ stdout, stderr, code });
-            });
-          },
-        );
+        let channel,finished=false;
+        const finish=(error,value)=>{
+          if(finished)return;finished=true;clearTimeout(timer);
+          error?reject(error):resolve(value);
+        };
+        const timer=setTimeout(()=>{
+          finish(Object.assign(Error("Read-only identity probe timeout"),{code:"IDENTITY_PROBE_TIMEOUT",retryable:true}));
+          channel?.close();
+        },20000);
+        client.exec(info.target === "win10" ? "whoami & hostname" : "whoami; hostname",(e,stream)=>{
+          if(finished){stream?.close();return;}
+          if(e){finish(e);return;}channel=stream;
+          let stdout="",stderr="";
+          stream.on("data",d=>stdout+=d);stream.stderr.on("data",d=>stderr+=d);
+          stream.on("error",error=>finish(error));
+          stream.on("close",code=>finish(null,{stdout,stderr,code}));
+        });
       });
       if (this.stopping || t.client !== client || t.generation !== generation ||
           this.targets.get(t.id) !== t) throw Error("Stale identity probe discarded");
