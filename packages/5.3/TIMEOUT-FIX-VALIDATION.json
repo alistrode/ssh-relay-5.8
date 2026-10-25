@@ -1,0 +1,27 @@
+{
+  "sourceCommit": "38a38079e845c1a31d57366eae3afde8bd284977",
+  "tests": {
+    "passed": 11,
+    "pairingTimeoutOnly": true,
+    "rememberedDeviceDoesNotPair": true,
+    "linuxBundledRuntimeTestsPassed": 11,
+    "linuxExtractedCliHelp": true
+  },
+  "archives": {
+    "SSHRelayPro-5.3-win32-x64.zip": {
+      "bytes": 179835097,
+      "sha256": "cc357e6bbba5b9c91f02ddc8716b55cdd2c9a562ee76b7df58e01cec12572828",
+      "archiveIntegrity": true,
+      "patchedSourceMatches": true
+    },
+    "SSHRelayPro-5.3-linux-x64.tar.gz": {
+      "bytes": 187716249,
+      "sha256": "cf7e186578e5d1aaa68f229a38f09002a42081444c522ac7d8d791696961442b",
+      "archiveIntegrity": true,
+      "patchedSourceMatches": true
+    }
+  },
+  "limitations": [
+    "Windows native runtime and GUI not rerun for this patch."
+  ]
+}

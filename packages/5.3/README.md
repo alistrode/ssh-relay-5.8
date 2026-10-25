@@ -3,9 +3,9 @@
 当前 Windows 10 / 11 x64 修复包；不代表已更新正在运行的远端。
 
 - 源码分支：`5.3`
-- 配对修复源码提交：`2565f9426255380ede6596c769b37ffa7cc31abb`
-- 文件：`SSHRelayPro-5.3-win32-x64.zip`（179834906 字节）
-- SHA256：`3afe022aec09de4eb26e3bfcc78b9089aa9713d128005dcf10d644c80a82cb02`
+- 配对修复源码提交：`38a38079e845c1a31d57366eae3afde8bd284977`
+- 文件：`SSHRelayPro-5.3-win32-x64.zip`（179835097 字节）
+- SHA256：`cc357e6bbba5b9c91f02ddc8716b55cdd2c9a562ee76b7df58e01cec12572828`
 - 保留原 Windows 运行时，更新配对实现及界面；具体文件校验见包内 `PAIRING-FIX.json`。
 
 完整解压后双击 `Start.cmd` 或 `SSHRelayPro.exe`。保留整个文件夹。
@@ -46,3 +46,7 @@ python3 scripts/package-linux-5.3.py /path/to/runtime-cache /path/to/empty-stagi
 有效码保存在远端私有状态目录 `pair-invitations-private.json`，不要删除授权目录或把它打进运行包。旧版已消费并丢弃的码无法从新程序还原；升级后生成的码遵守以上规则。
 
 Windows 命令任务以进程级脚本策略启动任务执行器，不修改系统全局执行策略；已在实际 Windows SYSTEM 后台验证命令执行成功。
+
+## 握手超时报错修复
+
+配对握手无响应只返回 `PAIRING_TIMEOUT`（配对握手超时），不据此判断远端离线、配对码过期或错误。已保存设备使用原授权重连，不需要配对码。连接任务保留错误所属阶段。两个运行包均已更新，当前校验见 `TIMEOUT-FIX-VALIDATION.json`；此前验收文件属于历史记录。
