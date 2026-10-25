@@ -1,0 +1,40 @@
+name: Run and upload 5.5 cloud-only distribution
+on:
+  push:
+    branches: ['5.5']
+    paths: ['src/**', 'cloud/**', 'scripts/package-cloud55.cjs', 'scripts/run-cloud-client.cjs', '.github/workflows/cloud-5.5.yml', 'package*.json']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  cloud:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.0'
+      - name: Install production dependencies without Electron
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Package the cloud-only distribution
+        run: node scripts/package-cloud55.cjs
+      - name: Run the actual cloud distribution without a graphical display
+        run: node scripts/run-cloud-client.cjs
+      - name: Archive the clean runnable bundle and complete source
+        run: |
+          tar -czf run-output/SSHRelayPro-5.5-Cloud-Linux-x64.tar.gz -C run-output SSHRelayPro-5.5-Cloud-Linux-x64
+          python - <<'PYCODE'
+          from pathlib import Path
+          import subprocess,zipfile
+          with zipfile.ZipFile('run-output/SSHRelayPro-5.5-source.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for entry in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
+                  if entry and not entry.startswith(('packages/','run-records/')) and Path(entry).is_file():
+                      archive.write(entry,'SSHRelayPro-5.5/'+entry)
+          PYCODE
+      - name: Upload cloud-only runtime and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="ssh-relay-5.5-cloud-${GITHUB_SHA:0:8}"
+          gh release create "$tag" run-output/SSHRelayPro-5.5-Cloud-Linux-x64.tar.gz run-output/SSHRelayPro-5.5-source.zip --target "$GITHUB_SHA" --prerelease --title 'SSH Relay Pro 5.5 Cloud · 仅限云端下载使用' --notes '仅限云端下载使用。Linux x64 纯云端专用版，内置 Node 24.22.0，无需 Electron、图形桌面或 Xvfb。完整解压后运行 ./Start-Cloud.sh；Ctrl+C 或 ./Stop-Cloud.sh 停止。独立配置，仅连接 5.5。Windows 桌面规则不变。包内不含私钥、配对码或本机配置。'
