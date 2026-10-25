@@ -188,7 +188,7 @@ function createRelay(config, role) {
   }
   function publish(frame, onSent, valid) {
     if (!ready) return Promise.reject(new Error("Public relay is offline"));
-    const priority = ["ack", "reset", "reset_ack", "status"].includes(
+    const priority = ["ack", "reset", "reset_ack", "status", "clock_probe", "clock_reply"].includes(
       frame.type,
     );
     const key = frame.type + ":" + (frame.cid || "") + ":" + (frame.seq ?? "");
@@ -262,11 +262,14 @@ function createRelay(config, role) {
     state.socket.destroy();
   }
   function flow(state) {
-    if (
-      state.opened &&
-      !state.socket.destroyed &&
-      state.tx.size < WINDOW
-    )
+    if(state.reset||!state.opened||!ready)return;
+    while(state.unsent.length&&state.tx.size<WINDOW){
+      const data=state.unsent.shift();enqueue(state,"data",data);
+    }
+    if(state.endPending&&!state.unsent.length&&state.tx.size<WINDOW){
+      state.endPending=false;enqueue(state,"end");
+    }
+    if(!state.socket.destroyed&&!state.localEnded&&!state.unsent.length&&state.tx.size<WINDOW)
       state.socket.resume();
   }
   function transmit(state, item) {
@@ -277,7 +280,8 @@ function createRelay(config, role) {
       () => {
         item.queued = false;
         item.attempts++;
-        item.lastSent = Date.now();
+        item.lastSent = performance.now();
+        item.firstSentAt ??= item.lastSent;
         if (item.attempts > 1) {
           stats.retransmitted++;
           trace("retransmit", state, {
@@ -316,6 +320,10 @@ function createRelay(config, role) {
       incoming,
       out: 0,
       tx: new Map(),
+      unsent: [],
+      endPending: false,
+      lastAckAt: performance.now(),
+      deliveryRtt: 1000,
       rx: new Map(),
       queue: Promise.resolve(),
       createdAt: Date.now(),
@@ -333,15 +341,16 @@ function createRelay(config, role) {
     trace("socket_attached", state);
     socket.on("data", (chunk) => {
       socket.pause();
-      state.txBytes += chunk.length;
+      const previousBytes=state.txBytes;state.txBytes += chunk.length;
+      if(Math.floor(previousBytes/1048576)!==Math.floor(state.txBytes/1048576))trace("stream_progress",state,{direction:"send",queuedFrames:wireData.length});
       for (let offset = 0; offset < chunk.length; offset += CHUNK)
-        enqueue(state, "data", chunk.subarray(offset, offset + CHUNK));
+        state.unsent.push(chunk.subarray(offset, offset + CHUNK));
       flow(state);
     });
     socket.on("end", () => {
       state.localEnded = true;
       trace("socket_end", state);
-      if (!state.reset) enqueue(state, "end");
+      if (!state.reset) { state.endPending=true;flow(state); }
     });
     socket.on("error", (error) => {
       trace("socket_error", state, { code: error.code, error: error.message });
@@ -387,7 +396,8 @@ function createRelay(config, role) {
       const data = Buffer.from(frame.data, "base64");
       if (data.length > CHUNK || state.remoteEnded || state.socket.destroyed)
         return reset(state, "invalid_data_state");
-      state.rxBytes += data.length;
+      const previousBytes=state.rxBytes;state.rxBytes += data.length;
+      if(Math.floor(previousBytes/1048576)!==Math.floor(state.rxBytes/1048576))trace("stream_progress",state,{direction:"receive",bufferedFrames:state.rx.size});
       state.socket.write(data, (error) =>
         error ? reset(state, "local_write_failed") : consumed(),
       );
@@ -447,7 +457,7 @@ function createRelay(config, role) {
       const delay =
         attempt <= 3
           ? 0
-          : [2000, 4000, 8000, 16000, 30000, 60000][Math.min(attempt - 4, 5)];
+          : [1000, 2000, 4000, 8000, 10000][Math.min(attempt - 4, 4)];
       trace("mqtt_retry_scheduled", null, { attempt, delayMs: delay });
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
@@ -548,8 +558,14 @@ function createRelay(config, role) {
           frame.next > state.out
         )
           return;
-        for (const seq of state.tx.keys())
-          if (seq < frame.next) state.tx.delete(seq);
+        let progressed=false;
+        for (const [seq,item] of state.tx)
+          if (seq < frame.next) {
+            if(item.attempts===1&&item.firstSentAt!==undefined)
+              state.deliveryRtt=Math.max(100,0.75*state.deliveryRtt+0.25*(performance.now()-item.firstSentAt));
+            state.tx.delete(seq);progressed=true;
+          }
+        if(progressed)state.lastAckAt=performance.now();
         if (config.traceFrames)
           trace("delivery_ack", state, { next: frame.next });
         flow(state);
@@ -650,18 +666,16 @@ function createRelay(config, role) {
       if (entry.expires < now) closed.delete(cid);
     for (const state of [...connections.values()])
       if (state.reliable && !state.reset) {
-        for (const item of state.tx.values()) {
-          if (now - item.createdAt > DELIVERY_TIMEOUT) {
-            stats.deliveryTimeouts++;
-            reset(state, "delivery_ack_timeout");
-            break;
-          }
-          const delay = Math.min(
-            1500 * 2 ** Math.max(0, item.attempts - 1),
-            3000,
-          );
-          if (!item.queued && now - item.lastSent >= delay)
-            transmit(state, item);
+        const items=[...state.tx.values()],oldest=items[0],monotonic=performance.now();
+        const queueWait=(wireData.length+wireControl.length)*wireInterval*2;
+        // Queueing and a long transfer are not delivery failures. Only a sent
+        // stream with no cumulative ACK progress can reach this deadline.
+        if(oldest?.firstSentAt!==undefined&&monotonic-Math.max(state.lastAckAt,oldest.firstSentAt)>DELIVERY_TIMEOUT+Math.min(queueWait,15000)){
+          stats.deliveryTimeouts++;reset(state,"delivery_ack_timeout");continue;
+        }
+        for(const item of items){
+          const delay=Math.min(15000,Math.max(3000,state.deliveryRtt*3+queueWait)*2**Math.min(Math.max(0,item.attempts-1),2));
+          if(!item.queued&&(item.firstSentAt===undefined||monotonic-item.lastSent>=delay))transmit(state,item);
         }
       }
   }, 100);

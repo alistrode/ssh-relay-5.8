@@ -391,6 +391,10 @@ class Agent {
                 this.farState = "waiting";
                 this.farFailures = 0;
               }
+              if(key!=="far"&&entry.event==="mqtt_subscribed"){
+                const target=this.targets.get(key);
+                if(target&&target.state!=="identity_error"&&!target.client&&!target.connecting)target.nextAt=0;
+              }
               if (key === "far" && entry.event === "mqtt_offline")
                 this.farState = "retrying";
               if (key === "far" && entry.event === "ssh_ready")
@@ -586,7 +590,7 @@ class Agent {
         error.message,
       );
     t.state = fatal ? "identity_error" : "retrying";
-    const delay = retryDelay(t.failures);
+    const delay = Math.min(retryDelay(t.failures),10000);
     t.nextAt = Date.now() + delay;
     this.log("connection_failed", {
       deviceId: t.id,
