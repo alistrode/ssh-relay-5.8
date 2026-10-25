@@ -46,6 +46,21 @@ jobs:
               for entry in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
                   if entry and not entry.startswith(('packages/','run-records/')) and Path(entry).is_file():
                       archive.write(entry,'SSHRelayPro-5.5/'+entry)
+      - name: Package the existing Windows desktop distribution
+        if: success() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node scripts/package-windows55.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path run-output/SSHRelayPro-5.5 -DestinationPath run-output/SSHRelayPro-5.5-Windows-x64.zip
+      - name: Upload the runnable Windows package and complete source
+        if: success() && runner.os == 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="ssh-relay-5.5-${GITHUB_SHA:0:8}"
+          gh release create "$tag" run-output/SSHRelayPro-5.5-Windows-x64.zip run-output/SSHRelayPro-5.5-source.zip --target "$GITHUB_SHA" --prerelease --title 'SSH Relay Pro 5.5 · Windows x64' --notes '完整解压后双击 Start-5.5.cmd。内置 Electron 运行环境，无需安装 Node/npm。包含简化启动设置和直接复制配对码修复；仅连接 5.5。包内不含私钥、配对信息或本机配置。源码和第三方许可随附。'
       - name: Save source, screenshot and run record to the 5.5 branch
         if: always()
         shell: python
