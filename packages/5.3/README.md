@@ -50,3 +50,9 @@ Windows 命令任务以进程级脚本策略启动任务执行器，不修改系
 ## 握手超时报错修复
 
 配对握手无响应只返回 `PAIRING_TIMEOUT`（配对握手超时），不据此判断远端离线、配对码过期或错误。已保存设备使用原授权重连，不需要配对码。连接任务保留错误所属阶段。两个运行包均已更新，当前校验见 `TIMEOUT-FIX-VALIDATION.json`；此前验收文件属于历史记录。
+
+## 完整源码及 Linux 命令行可运行压缩包
+
+`SSHRelayPro-5.3-source-linux-x64.tar.gz` 包含当前完整源码、package-lock.json、生产依赖、Node.js 24.19.0 和 CLI/MCP 启动入口。Linux x64、glibc 2.28+，系统需要 OpenSSH 客户端。解压后运行 `./Start.sh`，帮助使用 `./CLI.sh --help`。桌面界面使用上面的完整桌面包。
+
+云端已对最终压缩包重新解压，实际运行 CLI 帮助、启动近端后台并正常停止；未将自测计为真实远端连接验收。不包含配对码、私钥、授权或用户状态。SHA-256 见同名 `.sha256`。源码基线为 `78ca9abdbe95788a001bc9e25cabfb33a4b0ea04`。
