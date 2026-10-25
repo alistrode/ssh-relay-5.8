@@ -5,7 +5,7 @@ on:
     paths: ['src/**', 'desktop/**', 'scripts/run-github-client.cjs', '.github/workflows/run-5.5.yml', 'package*.json']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   run-client:
     strategy:
@@ -42,11 +42,36 @@ jobs:
           Path('run-output').mkdir(exist_ok=True)
           with zipfile.ZipFile('run-output/SSHRelayPro-5.5-source.zip','w',zipfile.ZIP_DEFLATED) as archive:
               for entry in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
-                  if entry and not entry.startswith('packages/') and Path(entry).is_file():
+                  if entry and not entry.startswith(('packages/','run-records/')) and Path(entry).is_file():
                       archive.write(entry,'SSHRelayPro-5.5/'+entry)
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - name: Save source, screenshot and run record to the 5.5 branch
         if: always()
-        with:
-          name: ssh-relay-5.5-run-${{ matrix.os }}
-          path: run-output/
-          retention-days: 7
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          from pathlib import Path
+          import os,json,base64,urllib.request,urllib.error,time
+          base='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/contents/'
+          prefix='run-records/'+os.environ['GITHUB_RUN_ID']+'/'+os.environ['RUNNER_OS'].lower()+'/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+          for file in Path('run-output').iterdir():
+              if file.name not in ['run.json','client.png','SSHRelayPro-5.5-source.zip']:
+                  continue
+              payload={'message':'docs: save 5.5 '+os.environ['RUNNER_OS']+' application run','branch':'5.5','content':base64.b64encode(file.read_bytes()).decode()}
+              url=base+prefix+file.name
+              for attempt in range(6):
+                  try:
+                      try:
+                          old=json.load(urllib.request.urlopen(urllib.request.Request(url+'?ref=5.5',headers=headers)))
+                          payload['sha']=old['sha']
+                      except urllib.error.HTTPError as error:
+                          if error.code!=404: raise
+                      request=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={**headers,'Content-Type':'application/json'},method='PUT')
+                      with urllib.request.urlopen(request) as response:
+                          saved=json.load(response)
+                      print('Saved '+prefix+file.name)
+                      break
+                  except urllib.error.HTTPError as error:
+                      if error.code!=409 or attempt==5: raise
+                      time.sleep(attempt+1)

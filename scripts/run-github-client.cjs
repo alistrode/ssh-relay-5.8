@@ -23,17 +23,18 @@ let renderer,main;
   const log=fs.createWriteStream(path.join(profile,"launch-private.log"));launcher.stdout.pipe(log);launcher.stderr.pipe(log);
   launcher.on("error",error=>{record.launchError=error.message;save();});
   renderer=await connectInspector(9222,page=>page.type==="page"&&page.url.endsWith("desktop/index.html"));
-  const evaluate=async expression=>{const value=await renderer.call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});if(value.exceptionDetails)throw Error(value.exceptionDetails.text+": "+JSON.stringify(value.exceptionDetails.exception?.description));return value.result?.value;};
+  const evaluate=async expression=>{const value=await renderer.call("Runtime.evaluate",{expression,awaitPromise:false,returnByValue:true});if(value.exceptionDetails)throw Error(value.exceptionDetails.text+": "+JSON.stringify(value.exceptionDetails.exception?.description));return value.result?.value;};
   await waitFor(()=>evaluate('Promise.all([window.relay.call("near","/status"),window.relay.call("far","/status")]).then(s=>s.map(v=>({role:v.role,system:v.system,connectionLimit:v.connectionLimit})))'));
-  record.devices=await evaluate('Promise.all([window.relay.call("near","/status"),window.relay.call("far","/status")]).then(s=>s.map(v=>({role:v.role,system:v.system,connectionLimit:v.connectionLimit})))');record.operations.push("client_and_both_connection_services_started");save();
+  record.devices=await evaluate('Promise.all([window.relay.call("near","/status"),window.relay.call("far","/status")]).then(s=>s.map(v=>({role:v.role,system:v.system,connectionLimit:v.connectionLimit})))');record.operations.push("client_and_both_connection_services_started");save();console.log("Client and both connection services are running.");
   await evaluate('Promise.all([window.relay.call("near","/settings",{enabled:true}),window.relay.call("far","/settings",{enabled:true})])');
   await sleep(4000);
   record.screen=await evaluate('({title:document.title,localSystem:document.getElementById("localSystem").textContent,nearCapacity:document.getElementById("nearCount").textContent,farCapacity:document.getElementById("farCount").textContent,buttonCount:document.querySelectorAll("button").length})');
-  const capture=await renderer.call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});fs.writeFileSync(path.join(output,"client.png"),Buffer.from(capture.data,"base64"));record.operations.push("desktop_opened_with_system_version_and_twenty_device_controls");save();
+  const capture=await renderer.call("Page.captureScreenshot",{format:"png",captureBeyondViewport:true});fs.writeFileSync(path.join(output,"client.png"),Buffer.from(capture.data,"base64"));record.operations.push("desktop_opened_with_system_version_and_twenty_device_controls");save();console.log("Desktop screenshot saved; closing through the tray exit handler.");
   main=await connectInspector(9230,()=>true);
   // Invoke the exact internal handler installed on the tray's sole Exit item.
-  const expression="process.mainModule.require("+JSON.stringify(path.join(root,"desktop/main.cjs"))+").trayExit()";
-  try{await main.call("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true});}catch(error){if(!/inspector closed/.test(error.message))throw error;}
+  const expression="void process.getBuiltinModule(\"module\").createRequire("+JSON.stringify(path.join(root,"package.json"))+")("+JSON.stringify(path.join(root,"desktop/main.cjs"))+").trayExit()";
+  try{const value=await main.call("Runtime.evaluate",{expression,awaitPromise:false,returnByValue:true});if(value.exceptionDetails)throw Error(value.exceptionDetails.exception?.description||value.exceptionDetails.text);}catch(error){if(!/inspector closed/.test(error.message))throw error;}
+  main.socket.close();renderer.socket.close();
   await waitFor(()=>!fs.existsSync(path.join(profile,"client-runtime.json")),45000);
   record.operations.push("tray_exit_handler_closed_client_and_owned_backends");record.finishedAt=new Date().toISOString();record.completed=true;save();
   renderer.socket.close();main.socket.close();console.log(JSON.stringify(record,null,2));

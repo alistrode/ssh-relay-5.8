@@ -88,13 +88,14 @@ async function processList() {
 async function stopBackends(profile, clientPid) {
   const normalize=s=>process.platform==="win32"?s.replace(/\\/g,"/").toLowerCase():s;
   const prefix=normalize(path.resolve(profile));
+  const includeUi = !alive(clientPid);
   const known = /\/(?:guardian|agent|worker|task-runner|session-runner|file-worker)\.cjs(?:["\s]|$)/;
   let last=[];
   for(let round=0;round<8;round++) {
     const rows=await processList(), selected=new Set();
     for(const p of rows) {
       const command=normalize(p.command);
-      if(p.pid!==process.pid && p.pid!==clientPid && command.includes(prefix) && known.test(command))selected.add(p.pid);
+      if(p.pid!==process.pid && p.pid!==clientPid && command.includes(prefix) && (known.test(command) || (includeUi && /--type=|crashpad.handler/.test(command))))selected.add(p.pid);
     }
     // Include the Electron-owned backend tree while preserving Chromium/UI children.
     let changed=true;
