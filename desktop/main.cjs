@@ -78,7 +78,7 @@ else{
   });
   ipcMain.handle("pair-copy",async(event,code)=>{
     if(!validSender(event)||!/^55-\w{10}-\w{10}$/.test(code))throw Error("请先生成配对码");
-    clipboard.writeText(code);if(clipboard.readText()!==code)throw Error("复制失败，请重试");return true;
+    clipboard.writeText(code);return true;
   });
   ipcMain.handle("startup-status",event=>{if(!validSender(event))throw Error("Invalid sender");return startup.statusAsync(options());});
   ipcMain.handle("startup-set",async(event,value)=>{

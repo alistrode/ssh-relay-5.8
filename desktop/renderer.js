@@ -91,8 +91,8 @@ $("farToggle").onclick=()=>action($("farToggle"),()=>window.relay.call("far","/s
 $("retry").onclick=()=>action($("retry"),()=>window.relay.call("near","/retry",{}),"所有已启用电脑的重连请求已提交");
 $("clearLogs").onclick=()=>action($("clearLogs"),async()=>{await window.relay.call("near","/logs/clear",{});await window.relay.call("far","/logs/clear",{});await refreshLogs();return "连接日志已清理，任务记录保留";});
 $("export").onclick=()=>action($("export"),async()=>(await window.relay.exportLogs())?"脱敏日志已导出":"已取消导出");
-function showStartup(value){lastStartup=value;$("autoStart").checked=value.enabled;$("autoStart").disabled=!!value.effectiveUnknown;$("saveStartup").disabled=!!value.effectiveUnknown||!!$("saveStartup").dataset.busy;text($("startupStatus"),value.effectiveUnknown?"暂时无法读取系统启动设置":value.enabled?"已启用：随系统启动完整客户端":"未启用自动启动；可手动打开客户端");}
-$("saveStartup").onclick=()=>action($("saveStartup"),async()=>{try{showStartup(await window.relay.setStartup({enabled:$("autoStart").checked,mode:"client"}));return "客户端启动设置已保存";}catch(error){if(lastStartup)showStartup(lastStartup);throw error;}});
+function showStartup(value){lastStartup=value;$("autoStart").checked=value.enabled;$("autoStart").disabled=!!value.effectiveUnknown;$("saveStartup").disabled=!!value.effectiveUnknown||!!$("saveStartup").dataset.busy;}
+$("saveStartup").onclick=()=>action($("saveStartup"),async()=>{try{showStartup(await window.relay.setStartup({enabled:$("autoStart").checked,mode:"client"}));return "已保存";}catch(error){if(lastStartup)showStartup(lastStartup);throw error;}});
 window.relay.startup().then(showStartup).catch(error=>message(error.message,"error"));
 for(const toolbar of document.querySelectorAll(".batch-toolbar")){
   const role=toolbar.dataset.role;
