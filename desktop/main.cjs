@@ -17,8 +17,8 @@ else{
   let window,tray,quitting=false,exiting=false,heartbeat,pollTimer,startupChanging=false,backendReady=false;
   const agentClient=require("../src/pro/agent-client.cjs"),statusPending=new Map(),seenAdmission=new Set();
   let prompting=false;
-  if(process.platform==="win32")app.setAppUserModelId("rororo.ssh-relay.pro");
-  if(process.platform==="linux"){app.setDesktopName("ssh-relay-pro.desktop");app.commandLine.appendSwitch("class","ssh-relay-pro");}
+  if(process.platform==="win32")app.setAppUserModelId("rororo.ssh-relay.pro.5.5");
+  if(process.platform==="linux"){app.setDesktopName("ssh-relay-pro-5.5.desktop");app.commandLine.appendSwitch("class","ssh-relay-pro");}
   app.on("second-instance",()=>show());
   function roleDirectory(role){return path.join(profile,role);}
   async function ensure(role){return agentClient.ensureAgent({dir:roleDirectory(role),role,allowCloudSelfTest:args.includes("--allow-cloud-self-test")});}

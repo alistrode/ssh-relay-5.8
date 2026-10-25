@@ -9,7 +9,7 @@ async function install({ executable, appRoot, profile, development }) {
   if (process.platform === "win32") {
     const q = (s) => "'" + s.replace(/'/g, "''") + "'";
     const script =
-      "$w=New-Object -ComObject WScript.Shell;$s=$w.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'SSH Relay Pro.lnk'));$s.TargetPath=" +
+      "$w=New-Object -ComObject WScript.Shell;$s=$w.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'SSH Relay Pro 5.5.lnk'));$s.TargetPath=" +
       q(executable) +
       ";$s.Arguments=" +
       q(
@@ -46,13 +46,13 @@ async function install({ executable, appRoot, profile, development }) {
         "X-GNOME-Autostart-enabled=true",
         "StartupWMClass=ssh-relay-pro",
       );
-    fs.writeFileSync(path.join(menu, "ssh-relay-pro.desktop"), entry, {
+    fs.writeFileSync(path.join(menu, "ssh-relay-pro-5.5.desktop"), entry, {
       mode: 0o755,
     });
     const xdg = await execFile("xdg-user-dir", ["DESKTOP"], { encoding: "utf8", timeout: 5000 }).catch(() => ({ stdout: "" }));
     const desktop = xdg.stdout.trim() || path.join(os.homedir(), "Desktop");
     fs.mkdirSync(desktop, { recursive: true });
-    const link = path.join(desktop, "SSH-Relay-Pro");
+    const link = path.join(desktop, "SSH-Relay-Pro-5.5");
     try {
       if (
         fs.lstatSync(link).isSymbolicLink() &&
