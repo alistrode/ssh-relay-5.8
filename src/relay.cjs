@@ -749,17 +749,8 @@ function createRelay(config, role) {
     protocol: peerProtocol,
     pendingResets: pendingResets.size,
   });
-  const testDrop = (message) => {
-    if (config.testHooks && message?.type === "test-drop-network") {
-      trace("test_network_drop");
-      client.stream?.destroy();
-    }
-  };
-  if (config.testHooks && typeof process.send === "function")
-    process.on("message", testDrop);
   events.close = () => {
     stopping = true;
-    if (config.testHooks) process.removeListener("message", testDrop);
     ready = false;
     clearInterval(retransmitter);
     if(clockTimer)clearInterval(clockTimer);

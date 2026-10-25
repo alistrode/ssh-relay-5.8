@@ -42,14 +42,12 @@ class Agent {
     dir,
     brokerUrl = DEFAULT_BROKER,
     allowCloudSelfTest = false,
-    testHooks = false,
   }) {
     if (!["near", "far"].includes(role)) throw Error("Invalid role");
     this.role = role;
     this.dir = path.resolve(folder(dir));
     this.broker = broker(brokerUrl);
     this.allowCloudSelfTest = allowCloudSelfTest;
-    this.testHooks = testHooks;
     this.targets = new Map();
     this.deviceSlots = new DeviceSlots();
     this.children = new Map();
@@ -189,7 +187,6 @@ class Agent {
       ...info,
       sshPort: 0,
       reconnectPolicy: true,
-      testHooks: this.testHooks,
       clientKeysFile: clients,
       connectionAdmission: true,
       controlSubsystem: 1,
@@ -533,8 +530,7 @@ class Agent {
           localPort: 0,
           clockSkewCorrection: true,
           reconnectPolicy: true,
-          testHooks: this.testHooks,
-          statusPath: path.join(t.dir, "peer.json"),
+              statusPath: path.join(t.dir, "peer.json"),
           runtimePath: path.join(t.dir, "runtime.json"),
           controllerId: this.identity.deviceId,
           controllerKeyPath: path.join(t.dir, "client_key"),
@@ -1104,14 +1100,6 @@ class Agent {
           t.nextAt = 0;
         }
         this.tick();
-      } else if (
-        req.method === "POST" &&
-        req.url === "/test/drop-network" &&
-        this.testHooks
-      ) {
-        for (const item of this.children.values())
-          item.child.send({ type: "test-drop-network" });
-        this.log("test_network_drop");
       } else if (req.method === "POST" && req.url === "/shutdown") {
         throw Error("仅允许通过客户端托盘退出，禁止单独停止客户端所属后台");
       } else {
@@ -1170,7 +1158,6 @@ if (require.main === module) {
     ),
     brokerUrl: arg("--broker", DEFAULT_BROKER),
     allowCloudSelfTest: args.includes("--allow-cloud-self-test"),
-    testHooks: args.includes("--test-hooks"),
   });
   if (typeof process.send === "function")
     process.once("disconnect", () => agent.close().then(() => process.exit(0)));

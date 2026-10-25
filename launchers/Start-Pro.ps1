@@ -1,4 +1,4 @@
-param([string]$ProfileDir = (Join-Path $env:USERPROFILE '.ssh-relay-pro'), [switch]$ExportOnly, [string]$RuntimeRoot = $env:SSH_RELAY_LAUNCH_ROOT, [switch]$DiagnosticCheck)
+param([string]$ProfileDir = (Join-Path $env:USERPROFILE '.ssh-relay-pro'), [switch]$ExportOnly, [string]$RuntimeRoot = $env:SSH_RELAY_LAUNCH_ROOT)
 $ErrorActionPreference = 'Stop'
 if (!$RuntimeRoot) { $RuntimeRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent }
 $appRoot = Join-Path $RuntimeRoot 'resources\app'
@@ -50,7 +50,6 @@ if ($ExportOnly) {
   $nativeLog = Join-Path $logs 'chromium.log'
   if (Test-Path $nativeLog) { Move-Item -LiteralPath $nativeLog -Destination ($nativeLog+'.previous') -Force }
   $start.Arguments = '--enable-logging=file --log-file="' + $nativeLog + '" --profile-dir "' + $ProfileDir + '"'
-  if ($DiagnosticCheck) { $start.Arguments += ' --observe-only --no-shortcuts --diagnostic-check' }
 }
 try {
   $child = [Diagnostics.Process]::Start($start)

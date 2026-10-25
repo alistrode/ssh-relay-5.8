@@ -125,7 +125,6 @@ async function startAgent(options, dir) {
     const child = cp.spawn(process.execPath, [
       path.join(__dirname, "guardian.cjs"), "--state-dir", dir, "--role", role,
       ...(options.allowCloudSelfTest ? ["--allow-cloud-self-test"] : []),
-      ...(options.testHooks ? ["--test-hooks"] : []),
     ], {
       stdio: ["ignore", fd, fd], detached: true, windowsHide: true,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SSH_RELAY_CLIENT_PROFILE: require("./client-lifecycle.cjs").profileFor(dir) },
