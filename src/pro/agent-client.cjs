@@ -160,8 +160,13 @@ async function ensureAgent(options = {}) {
     },
   };
   client.devices = () => client.request("GET", "/v55/devices");
-  client.connect = (input) => client.request("POST", "/v55/connections", input, { timeoutMs: 25000 });
-  client.connectionTask = (key) => client.request("GET", "/v55/connections/" + encodeURIComponent(key));
+  const { observeConnectionRequest } = require("./connection-status.cjs");
+  const currentDevices = () => client.request("GET", "/v55/devices", undefined, { timeoutMs: 2000 });
+  client.connect = async (input) => observeConnectionRequest(
+    await client.request("POST", "/v55/connections", input, { timeoutMs: 25000 }), currentDevices);
+  client.connectionTask = async (key) => observeConnectionRequest(
+    await client.request("GET", "/v55/connections/" + encodeURIComponent(key)), currentDevices,
+    { statusQuery: true });
   client.getConnection = (deviceId) => client.request("GET", "/v55/devices/" + encodeURIComponent(deviceId) + "/connection");
   client.disconnect = (deviceId, requestId) => client.request("POST",
     "/v55/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });

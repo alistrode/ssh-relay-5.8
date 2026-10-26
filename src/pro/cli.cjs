@@ -64,7 +64,9 @@ if (require.main === module)
           ? await client.connect({ ...input, requestId: input.requestId || crypto.randomUUID() })
           : await client.disconnect(input.deviceId, input.requestId || crypto.randomUUID());
       console.log(JSON.stringify(withRecovery(result, input || { connectionTaskId: arg("--id", "") }), null, 2));
-      if (result.ok === false) process.exitCode = 1;
+      // Reading a failed historical request succeeded. Its outcome remains in
+      // result.ok/requestStatus; it is not a failed status query or live probe.
+      if (command !== "connection-task" && result.ok === false) process.exitCode = 1;
       return;
     }
     if (["start", "pair-code", "pair", "retry"].includes(command))

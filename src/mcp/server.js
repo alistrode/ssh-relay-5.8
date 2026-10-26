@@ -89,7 +89,7 @@ function sanitized(value, args) {
 }
 if ((mode === "all" || mode === "minimal" || enabled.has("ssh_connect")))
   server.registerTool("ssh_connect", {
-    description: "Pair a device using a code, or connect a remembered server. At most twenty active devices. Pass connectionTaskId alone to query a pending request. Reuse requestId when retrying the same input.",
+    description: "Pair a device using a code, or connect a remembered server. At most twenty active devices. Pass connectionTaskId alone to read a request. requestStatus is historical; connectionStatus is a fresh device snapshot. A completed pairing timeout does not establish current disconnection. Poll only pending requests; use live device status after a request ends. Reuse requestId when retrying the same input.",
     inputSchema: {
       code: z.string().optional(),
       server: z.string().optional(),
@@ -113,7 +113,9 @@ if ((mode === "all" || mode === "minimal" || enabled.has("ssh_connect")))
           waitMs: args.waitMs,
         });
       });
-      return { content: [{ type: "text", text: sanitized(result, args) }], isError: result.ok === false };
+      // Successfully reading a failed request is not a tool execution error.
+      return { content: [{ type: "text", text: sanitized(result, args) }],
+        isError: args.connectionTaskId ? false : result.ok === false };
     } catch (error) {
       return { content: [{ type: "text", text: sanitized({ ok: false, connectionTaskId: error.connectionTaskId, error: {
         code: error.code || "CONNECTION_FAILED", message: error.message,
