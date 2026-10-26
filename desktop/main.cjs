@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('../src/pro/runtime-log.cjs').install('gui');
 const {app,BrowserWindow,Tray,Menu,nativeImage,ipcMain,dialog,clipboard}=require("electron");
 const fs=require("node:fs"),path=require("node:path"),os=require("node:os"),cp=require("node:child_process");
 const {folder,read,write}=require("../src/pro/store.cjs"),lifecycle=require("../src/pro/client-lifecycle.cjs"),startup=require("../src/pro/autostart.cjs");
@@ -7,12 +8,22 @@ const root=path.resolve(__dirname,".."),profile=path.resolve(arg("--profile-dir"
 require("../src/pro/release.cjs").requireProfile(profile,{create:true});
 const diagnostics=require("../src/pro/gui-diagnostics.cjs"),diagnosticDirectory=path.join(profile,"logs"),diagnostic=diagnostics.create(diagnosticDirectory);
 diagnostics.installPipeGuards(diagnostic.record);
+const originalHandle=ipcMain.handle.bind(ipcMain);
+ipcMain.handle=(channel,handler)=>originalHandle(channel,async(event,...parameters)=>{try{return await handler(event,...parameters);}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:12});diagnostic.record("ipc_handler_error",{channel,error});throw error;}});
+app.on("child-process-gone",(_event,details)=>diagnostic.record("child_process_gone",{type:details.type,reason:details.reason,exitCode:details.exitCode}));
+app.on("web-contents-created",(_event,contents)=>{
+ contents.on("console-message",(_event,details,message,line)=>{const level=typeof details==="object"?details.level:details;if(level==="error"||typeof level==="number"&&level>=2)diagnostic.record("renderer_console_error",{message:typeof details==="object"?details.message:message,line:typeof details==="object"?details.lineNumber:line});});
+ contents.on("did-fail-load",(_event,errorCode,errorDescription)=>diagnostic.record("window_load_failed",{errorCode,message:errorDescription}));
+ contents.on("preload-error",(_event,_preload,error)=>diagnostic.record("preload_error",{error}));
+ contents.on("unresponsive",()=>diagnostic.record("window_unresponsive",{}));
+ contents.on("responsive",()=>diagnostic.record("window_responsive",{}));
+});
 const forwarded=[...new Set([...args,...process.execArgv,...(app.commandLine.hasSwitch("inspect")?["--inspect="+app.commandLine.getSwitchValue("inspect")]:[])])].filter(value=>/^--(?:no-shortcuts|allow-cloud-self-test|disable-gpu|remote-debugging-port=\d+|inspect=\d+)$/.test(value));
 function options(){return {executable:process.execPath,appRoot:root,profile,development:!app.isPackaged,args:forwarded};}
 app.setName("SSH Relay Pro");app.setPath("userData",path.join(profile,"ui"));
 if(!args.includes("--managed-client")){
   // The launcher has no backend. A separate parent owns and restores the client.
-  lifecycle.launch({...options(),bootstrapPid:process.pid}).then(()=>app.exit(0)).catch(error=>{diagnostic.record("client_launch_failed",{reason:error.message});console.error(error.message);app.exit(1);});
+  lifecycle.launch({...options(),bootstrapPid:process.pid}).then(()=>app.exit(0)).catch(error=>{diagnostic.record("client_launch_failed",{error});console.error(error.message);app.exit(1);});
 }else if(!app.requestSingleInstanceLock())app.exit(0);
 else{
   let window,tray,quitting=false,exiting=false,heartbeat,pollTimer,startupChanging=false,backendReady=false;
@@ -27,7 +38,7 @@ else{
   function statusRequest(role){
     if(!backendReady)return Promise.reject(Error("客户端正在迁移并启动连接服务"));
     if(!statusPending.has(role))statusPending.set(role,(async()=>{
-      try{return await request(role,"/status");}catch(error){await ensure(role);return request(role,"/status");}
+      try{return await request(role,"/status");}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:39});await ensure(role);return request(role,"/status");}
     })().finally(()=>statusPending.delete(role)));
     return statusPending.get(role);
   }
@@ -38,11 +49,17 @@ else{
     window=new BrowserWindow({width:1180,height:850,minWidth:860,minHeight:650,title:"SSH Relay Pro 5.5",icon:path.join(root,"assets/relay.ico"),
       webPreferences:{preload:path.join(__dirname,"preload.cjs"),contextIsolation:true,nodeIntegration:false,sandbox:true}});
     window.webContents.on("did-finish-load",()=>diagnostic.record("window_loaded"));
-    window.webContents.on("render-process-gone",()=>{if(!quitting)setTimeout(()=>{if(window&&!window.isDestroyed())window.reload();},500);});
-    window.loadFile(path.join(__dirname,"index.html")).catch(error=>diagnostic.record("window_load_failed",{reason:error.message}));
+    let renderFailures=0,lastRenderFailure=0;
+    window.webContents.on("render-process-gone",(_event,details)=>{const now=Date.now();if(now-lastRenderFailure>60000)renderFailures=0;lastRenderFailure=now;renderFailures++;
+      diagnostic.record("render_process_gone",{reason:details.reason,exitCode:details.exitCode,attempt:renderFailures});
+      if(!quitting&&renderFailures<=6)setTimeout(()=>{if(window&&!window.isDestroyed()){diagnostic.record("renderer_recovery",{attempt:renderFailures});window.reload();}},Math.min(30000,500*2**(renderFailures-1)));
+      else if(!quitting)void dialog.showMessageBox(window,{type:"error",message:"界面连续崩溃，已暂停自动刷新。诊断日志已保存。"}).catch(error=>diagnostic.record("crash_notice_failed",{error}));
+    });
+    diagnostic.record("window_create",{});
+    window.loadFile(path.join(__dirname,"index.html")).catch(error=>diagnostic.record("window_load_failed",{error}));
     window.on("close",event=>{if(!quitting){event.preventDefault();window.hide();}});
     window.on("closed",()=>{window=null;if(!quitting)setTimeout(createWindow,500);});
-    window.on("show",()=>window.webContents.send("relay-visible"));
+    window.on("show",()=>{diagnostic.record("window_shown",{});window.webContents.send("relay-visible");});
     window.webContents.setWindowOpenHandler(()=>({action:"deny"}));window.webContents.on("will-navigate",event=>event.preventDefault());
   }
   async function trayExit(){
@@ -50,14 +67,15 @@ else{
     try{
       await lifecycle.command(profile,"tray-exit",{pid:process.pid});
       quitting=true;clearInterval(heartbeat);clearInterval(pollTimer);tray?.destroy();tray=null;app.quit();
-    }catch(error){exiting=false;show();notice("退出未完成："+error.message);await dialog.showMessageBox(window,{type:"error",message:"部分进程尚未退出，正在保留客户端以便继续清理",detail:error.message});}
+    }catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:68});exiting=false;show();notice("退出未完成："+error.message);await dialog.showMessageBox(window,{type:"error",message:"部分进程尚未退出，正在保留客户端以便继续清理",detail:error.message});}
   }
   module.exports={trayExit};
   function createTray(){
     tray=new Tray(nativeImage.createFromPath(path.join(root,"assets/relay-tray.png")));tray.setToolTip("SSH Relay Pro 5.5");
-    tray.setContextMenu(Menu.buildFromTemplate([{label:"打开客户端",click:show},{label:"重连已启用电脑",click:async()=>{notice("正在重新连接…");try{await request("near","/retry",{});notice("重连请求已提交");}catch(error){notice(error.message);}}},{type:"separator"},{id:"tray-exit",label:"退出（关闭全部连接和进程）",click:()=>void trayExit()}]));tray.on("click",show);
+    tray.setContextMenu(Menu.buildFromTemplate([{label:"打开客户端",click:show},{label:"重连已启用电脑",click:async()=>{notice("正在重新连接…");try{await request("near","/retry",{});notice("重连请求已提交");}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:73});notice(error.message);}}},{type:"separator"},{id:"tray-exit",label:"退出（关闭全部连接和进程）",click:()=>void trayExit()}]));tray.on("click",show);
   }
   const validSender=event=>event.sender===window?.webContents;
+  ipcMain.on("renderer-diagnostic",(event,value)=>{if(!validSender(event))return;if(!value||!["renderer_error","renderer_rejection","renderer_resource_error"].includes(value.event))return;diagnostic.record(value.event,{message:String(value.message||"").slice(0,3072),stack:String(value.stack||"").slice(0,6144),line:Number(value.line)||0,column:Number(value.column)||0});});
   const routes=new Set(["/status","/logs","/logs/clear","/pair/create","/pair/current","/pair/cancel","/pair/connect","/settings","/device","/controller","/unpair","/retry","/connection/decision"]);
   ipcMain.handle("relay",async(event,role,route,body)=>{
     if(!validSender(event)||!["near","far"].includes(role)||!routes.has(route)||exiting)throw Error("Invalid UI request");
@@ -73,7 +91,7 @@ else{
         if(action==="unpair")await request(role,"/unpair",{id});
         else await request(role,role==="near"?"/device":"/controller",{id,...(action==="retry"?{retry:true}:{enabled:action==="connect"})});
         results.push({id,ok:true});
-      }catch(error){results.push({id,ok:false,error:error.message});}}
+      }catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:92});results.push({id,ok:false,error:error.message});}}
     }));return {results,succeeded:results.filter(r=>r.ok).length,failed:results.filter(r=>!r.ok).length};
   });
   ipcMain.handle("pair-copy",async(event,code)=>{
@@ -111,12 +129,12 @@ else{
     const beat=async()=>{
       if(quitting||exiting)return;
       try{await lifecycle.command(profile,"heartbeat",{pid:process.pid});}
-      catch{try{await lifecycle.launch({...options(),adoptPid:process.pid,sessionToken:process.env.SSH_RELAY_CLIENT_SESSION});}catch(error){diagnostic.record("client_guardian_recovery_failed",{reason:error.message});}}
+      catch (caughtFailure) { require('../src/pro/runtime-log.cjs').captureCaught(caughtFailure,{component:'main.cjs',line:130});try{await lifecycle.launch({...options(),adoptPid:process.pid,sessionToken:process.env.SSH_RELAY_CLIENT_SESSION});}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:130});diagnostic.record("client_guardian_recovery_failed",{error});}}
     };
     await beat();heartbeat=setInterval(()=>void beat(),2000);
-    try{await startup.prepareClientProfile(options());backendReady=true;await Promise.all(["near","far"].map(ensure));}
-    catch(error){notice("启动尚未完成："+error.message);diagnostic.record("client_backend_start_failed",{reason:error.message});}
-    if(!args.includes("--no-shortcuts"))try{await require("./shortcuts.cjs").install(options());}catch(error){diagnostic.record("shortcut_failed",{reason:error.message});}
-    pollTimer=setInterval(()=>{if(!quitting&&!exiting&&window&&!window.isVisible())void statusRequest("far").then(checkAdmission).catch(()=>{});},3000);
-  }).catch(error=>{diagnostic.record("client_start_failed",{reason:error.message});app.exit(1);});
+    try{diagnostic.record("backend_prepare_begin",{});await startup.prepareClientProfile(options());diagnostic.record("backend_prepare_end",{});backendReady=true;await Promise.all(["near","far"].map(ensure));}
+    catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:134});notice("启动尚未完成："+error.message);diagnostic.record("client_backend_start_failed",{error});}
+    if(!args.includes("--no-shortcuts"))try{await require("./shortcuts.cjs").install(options());}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:135});diagnostic.record("shortcut_failed",{error});}
+    pollTimer=setInterval(()=>{if(!quitting&&!exiting&&window&&!window.isVisible())void statusRequest("far").then(checkAdmission).catch(error=>diagnostic.record("background_status_failed",{error}));},3000);
+  }).catch(error=>{diagnostic.record("client_start_failed",{error});app.exit(1);});
 }

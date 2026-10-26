@@ -52,16 +52,16 @@ class SessionManager {
     }
     if (!this.identityAvailable || !this.osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session process identity cannot be verified");
     if (fs.readdirSync(this.dir).length >= 64) throw failure("SESSION_CAPACITY", "Session record capacity reached");
-    try { fs.mkdirSync(dir, { mode: 0o700 }); } catch { throw failure("SESSION_CORRUPT", "Existing session directory cannot be replaced"); }
+    try { fs.mkdirSync(dir, { mode: 0o700 }); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-manager.cjs',line:55}); throw failure("SESSION_CORRUPT", "Existing session directory cannot be replaced"); }
     durableWrite(file, { schemaVersion: 1, executionBudgetVersion: 1, sessionId, owner, deviceId: this.deviceId, platform: this.platform,
       osBoot: this.osBoot, cwd: normalized.cwd, requestHash, createdAt: Date.now() });
     folder(path.join(dir, "inbox")); folder(path.join(dir, "requests"));
-    const spawnFailed = () => { try { durableWrite(path.join(dir, "runner-error.json"), { errorCode: "SESSION_RUNNER_SPAWN_FAILED", finishedAt: Date.now() }); } catch {} };
+    const spawnFailed = () => { try { durableWrite(path.join(dir, "runner-error.json"), { errorCode: "SESSION_RUNNER_SPAWN_FAILED", finishedAt: Date.now() }); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-manager.cjs',line:59}); } };
     try {
       const child = this.spawn(process.execPath, [path.join(__dirname, "session-runner.cjs"), dir],
         { detached: true, stdio: "ignore", windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
       child.once("error", spawnFailed); child.unref();
-    } catch { spawnFailed(); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-manager.cjs',line:64}); spawnFailed(); }
     return this.status(owner, sessionId);
   }
   status(owner, sessionId) {
@@ -137,7 +137,7 @@ class SessionManager {
         operationId(record.requestId);
         if (!existing) durableWrite(file, record);
         results.push({ sessionId, requestId: record.requestId, state: "close_requested" });
-      } catch { if (owned) results.push({ sessionId, state: "unknown", errorCode: "SESSION_REVOCATION_FAILED" }); }
+      } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-manager.cjs',line:140}); if (owned) results.push({ sessionId, state: "unknown", errorCode: "SESSION_REVOCATION_FAILED" }); }
     }
     return results;
   }
@@ -148,7 +148,7 @@ class SessionManager {
       try {
         const config = privateJSON(path.join(this.dir, name, "session.json"), null);
         if (config?.deviceId === this.deviceId) owners.add(operationId(config.owner));
-      } catch {}
+      } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-manager.cjs',line:151}); }
     }
     const results = [];
     for (const owner of owners) if (typeof this.authorized !== "function" || !this.authorized(owner))

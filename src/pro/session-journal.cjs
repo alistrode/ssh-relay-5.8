@@ -128,7 +128,7 @@ class SessionJournal {
       throw failure("SESSION_CORRUPT", "Session command input differs from its saved request");
     let fd;
     try { fd = fs.openSync(this.file(requestId, "execution.lock"), "wx", 0o600); fs.fsyncSync(fd); }
-    catch { throw failure("SESSION_COMMAND_UNKNOWN", "Session command may already have started"); }
+    catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-journal.cjs',line:131}); throw failure("SESSION_COMMAND_UNKNOWN", "Session command may already have started"); }
     finally { if (fd !== undefined) fs.closeSync(fd); }
     syncDirectory(this.directory(requestId));
     record.state = "running"; durableWrite(this.file(requestId, "manifest.json"), record);

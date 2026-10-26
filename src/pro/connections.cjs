@@ -102,7 +102,7 @@ class Connections {
       task.verifiedIdentity = { deviceId: task.deviceId, fingerprint: descriptor.fingerprint,
         hostname: descriptor.hostname, remoteUser: descriptor.remoteUser,
         platform: descriptor.platform, capabilities: descriptor.capabilities };
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'connections.cjs',line:105});
       task.ok = false;
       task.state = "failed";
       task.error = { code: error.code || "CONNECTION_FAILED", phase: error.phase || task.phase,
@@ -121,7 +121,7 @@ class Connections {
     const directory = this.agent.file("connection-tasks");
     let names;
     try { names = fs.readdirSync(directory); }
-    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'connections.cjs',line:124}); if (error.code === "ENOENT") return; throw error; }
     let count = 0;
     for (const name of names) {
       if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;

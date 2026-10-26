@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./pro/runtime-log.cjs').install('relay-far');
 if (require.main === module) throw Error("5.5 不支持独立后台入口，请启动 SSH Relay Pro 客户端");
 
 var fs = require("node:fs");

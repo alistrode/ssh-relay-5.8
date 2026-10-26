@@ -14,9 +14,9 @@ class SessionLog {
       for (const name of ["stdout", "stderr"]) this.streams[name] = {
         fd: fs.openSync(path.join(this.dir, name + ".bin"), "wx", 0o600), bytes: 0, totalBytes: 0, truncated: false };
       this.directoryFsync = syncDirectory(this.dir);
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-log.cjs',line:17});
       this.failed = true;
-      for (const stream of Object.values(this.streams)) try { fs.closeSync(stream.fd); } catch {}
+      for (const stream of Object.values(this.streams)) try { fs.closeSync(stream.fd); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-log.cjs',line:19}); }
       throw failure("SESSION_OUTPUT_STORAGE_FAILED", "Session output storage could not be created");
     }
   }
@@ -34,14 +34,14 @@ class SessionLog {
         if (count < 1) throw Error();
         offset += count; stream.bytes += count;
       }
-    } catch { this.failed = true; throw failure("SESSION_OUTPUT_STORAGE_FAILED", "Session output write failed"); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-log.cjs',line:37}); this.failed = true; throw failure("SESSION_OUTPUT_STORAGE_FAILED", "Session output write failed"); }
   }
   finish() {
     if (this.closed) throw failure("SESSION_OUTPUT_STORAGE_FAILED", "Session output storage is already closed");
     this.closed = true;
     for (const stream of Object.values(this.streams)) {
-      try { fs.fsyncSync(stream.fd); } catch { this.failed = true; }
-      try { fs.closeSync(stream.fd); } catch { this.failed = true; }
+      try { fs.fsyncSync(stream.fd); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-log.cjs',line:43}); this.failed = true; }
+      try { fs.closeSync(stream.fd); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-log.cjs',line:44}); this.failed = true; }
     }
     if (this.failed) throw failure("SESSION_OUTPUT_STORAGE_FAILED", "Session output could not be durably closed");
     return { directoryFsync: this.directoryFsync,
@@ -62,7 +62,7 @@ class SessionLog {
       const count = fs.readSync(fd, bytes, 0, bytes.length, offset);
       return { data: bytes.subarray(0, count).toString("base64"), nextOffset: offset + count,
         storedBytes: stat.size, outputEncoding: "base64" };
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-log.cjs',line:65});
       if (error.code === "INVALID_SESSION_CURSOR") throw error;
       throw failure("SESSION_OUTPUT_STORAGE_FAILED", "Session output page could not be read");
     } finally { if (fd !== undefined) fs.closeSync(fd); }

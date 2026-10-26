@@ -1,3 +1,4 @@
+const diagnostic=require("./runtime-log.cjs").createLogger({name:"agent-client"});
 "use strict";
 const http = require("node:http"),
   path = require("node:path"),
@@ -24,7 +25,7 @@ function request(dir, route, body, options = {}) {
       if (!Number.isInteger(runtime.port) || runtime.port < 1 || runtime.port > 65535 ||
           !/^[a-f0-9]{64}$/.test(runtime.token))
         throw Error("Invalid local Agent endpoint");
-    } catch (e) {
+    } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'agent-client.cjs',line:28});
       reject(e instanceof SyntaxError
         ? Object.assign(Error("Invalid local Agent runtime"), { code: "LOCAL_STATE_INVALID" }) : e);
       return;
@@ -69,7 +70,7 @@ function request(dir, route, body, options = {}) {
               error.connectionTaskId = value.connectionTaskId;
               reject(error);
             }
-          } catch (e) {
+          } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'agent-client.cjs',line:73});
             reject(e instanceof SyntaxError ? Error("Agent returned invalid JSON") : e);
           }
         });
@@ -109,7 +110,8 @@ async function startAgent(options, dir) {
   const role = options.role || "near";
   const check = async () => {
     try { await health(dir, role); return true; }
-    catch (error) {
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent-client.cjs',line:113});
+      diagnostic.record("agent_health_failed",{role,error,phase:"health"});
       // Never start another service over a responding, incompatible endpoint.
       if (error.statusCode || error.code === "AGENT_IDENTITY_MISMATCH") throw error;
       if (!["ECONNREFUSED", "ECONNRESET", "ENOENT"].includes(error.code) &&
@@ -140,6 +142,7 @@ async function startAgent(options, dir) {
     await new Promise(resolve => setTimeout(resolve, 200));
     if (await check()) return;
   }
+  diagnostic.record("agent_start_timeout",{role,waitMs:20000});
   throw Error("Agent could not start; inspect the private bootstrap.log");
 }
 async function ensureAgent(options = {}) {
@@ -189,7 +192,7 @@ async function ensureAgent(options = {}) {
     if (readiness.has(key)) return readiness.get(key);
     const pending = (async () => {
     try { return await client.getConnection(deviceId); }
-    catch (error) {
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent-client.cjs',line:195});
       if (!["DEVICE_NOT_READY", "WAITING_APPROVAL"].includes(error.code)) throw error;
     }
     let task = await client.connect({ requestId: require("node:crypto").randomUUID(), deviceId, waitMs: 20000 });

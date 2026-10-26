@@ -11,7 +11,7 @@ function folder(dir) {
 function read(file, fallback) {
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (e) {
+  } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'store.cjs',line:14});
     if (e.code === "ENOENT") return fallback;
     throw e;
   }
@@ -36,7 +36,7 @@ function write(file, value) {
   } finally {
     try {
       fs.unlinkSync(temp);
-    } catch {}
+    } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'store.cjs',line:39}); }
   }
 }
 function text(file, value) {
@@ -84,7 +84,7 @@ function systemBootId() {
       );
       return (cachedBoot = r.status === 0 ? r.stdout.trim() : null);
     }
-  } catch {}
+  } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'store.cjs',line:87}); }
   return (cachedBoot = null);
 }
 function ownedProcess(pid, dir, moduleName, bootId) {
@@ -93,7 +93,7 @@ function ownedProcess(pid, dir, moduleName, bootId) {
   if (pid === process.pid) return true;
   try {
     process.kill(pid, 0);
-  } catch (e) {
+  } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'store.cjs',line:96});
     return e.code === "EPERM";
   }
   try {
@@ -133,7 +133,7 @@ function ownedProcess(pid, dir, moduleName, bootId) {
       );
     }
     return true;
-  } catch {
+  } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'store.cjs',line:136});
     return false;
   }
 }

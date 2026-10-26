@@ -17,7 +17,7 @@ function jobCatalog() {
   const catalog = {};
   for (const name of NAMES) {
     try { catalog[name] = jobHash(name); }
-    catch (error) { if (error.code !== "ENOENT") throw error; }
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-jobs.cjs',line:20}); if (error.code !== "ENOENT") throw error; }
   }
   return catalog;
 }

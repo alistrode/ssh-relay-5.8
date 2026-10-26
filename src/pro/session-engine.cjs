@@ -19,7 +19,7 @@ class SessionEngine {
     this.dir = folder(path.resolve(options.dir)); this.active = null; this.closed = false;
     // Never take over an old engine lock or recreate an uncertain shell.
     try { fs.mkdirSync(path.join(this.dir, "engine.lock"), { mode: 0o700 }); }
-    catch { throw failure("SESSION_ENGINE_EXISTS", "Session engine already exists or its previous state is uncertain"); }
+    catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-engine.cjs',line:22}); throw failure("SESSION_ENGINE_EXISTS", "Session engine already exists or its previous state is uncertain"); }
     this.journal = new SessionJournal(options);
     if (this.journal.record.state !== "open") throw failure("SESSION_LOST", "Original session shell cannot be recreated");
     this.signal = signal || (child => {
@@ -40,13 +40,13 @@ class SessionEngine {
     for (const name of ["stdout", "stderr"]) this.child[name].on("data", bytes => {
       if (!this.active || this.closed) return;
       try { this.active.parser.feed(name, bytes); }
-      catch (error) { this.fail(error.code === "SESSION_OUTPUT_STORAGE_FAILED" ? error.code : "SESSION_OUTPUT_INVALID"); }
+      catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-engine.cjs',line:43}); this.fail(error.code === "SESSION_OUTPUT_STORAGE_FAILED" ? error.code : "SESSION_OUTPUT_INVALID"); }
     });
     this.childIdentity = this.identity(this.child.pid);
     if (!this.childIdentity) { this.fail("PROCESS_IDENTITY_UNAVAILABLE"); throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session shell identity cannot be verified"); }
     try { durableWrite(path.join(this.dir, "shell.json"), { ...this.childIdentity,
       owner: this.owner, sessionId: options.sessionId, sessionDir: this.dir }); }
-    catch { this.fail("SESSION_STORAGE_FAILED"); throw failure("SESSION_STORAGE_FAILED", "Session shell identity could not be saved"); }
+    catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-engine.cjs',line:49}); this.fail("SESSION_STORAGE_FAILED"); throw failure("SESSION_STORAGE_FAILED", "Session shell identity could not be saved"); }
     if (windows) this.child.stdin.write("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n");
   }
   matchesChild() {
@@ -60,11 +60,11 @@ class SessionEngine {
     const active = this.active; this.active = null;
     if (active) {
       clearTimeout(active.timer);
-      try { active.log.finish(); } catch {}
+      try { active.log.finish(); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-engine.cjs',line:63}); }
     }
-    try { this.journal.lose(this.owner, code); } catch {}
-    try { this.child.stdin.destroy(); } catch {}
-    try { if (this.matchesChild()) this.signal(this.child); } catch {}
+    try { this.journal.lose(this.owner, code); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-engine.cjs',line:65}); }
+    try { this.child.stdin.destroy(); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-engine.cjs',line:66}); }
+    try { if (this.matchesChild()) this.signal(this.child); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-engine.cjs',line:67}); }
     if (active) active.resolve({ sessionId: this.journal.sessionId, requestId: active.requestId,
       state: "unknown", completed: false, errorCode: code });
   }
@@ -79,7 +79,7 @@ class SessionEngine {
     try {
       input = this.journal.claim(owner, params.requestId);
       log = new SessionLog(this.journal.directory(params.requestId));
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-engine.cjs',line:82});
       const code = ["SESSION_OUTPUT_STORAGE_FAILED", "SESSION_DISK_CAPACITY"].includes(error.code) ? error.code : "SESSION_COMMAND_UNKNOWN";
       this.fail(code); return Promise.resolve({ ...accepted, state: "unknown", completed: false, errorCode: code });
     }
@@ -99,11 +99,11 @@ class SessionEngine {
             const final = this.journal.get(owner, params.requestId);
             clearTimeout(active.timer); this.active = null;
             resolve(final);
-          } catch { this.fail("SESSION_OUTPUT_STORAGE_FAILED"); }
+          } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-engine.cjs',line:102}); this.fail("SESSION_OUTPUT_STORAGE_FAILED"); }
         } });
       active.timer = setTimeout(() => this.fail("SESSION_COMMAND_TIMEOUT"), input.spec.timeoutMs);
       try { this.child.stdin.write(sessionCommand(this.platform, marker, input.spec.command)); }
-      catch { this.fail("SESSION_INPUT_FAILED"); }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-engine.cjs',line:106}); this.fail("SESSION_INPUT_FAILED"); }
     });
   }
   close(owner) {

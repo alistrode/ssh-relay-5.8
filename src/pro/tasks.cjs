@@ -76,7 +76,7 @@ class TaskManager {
             record.reserveSlot = true;
           } else this.unknown(record, "RUNNER_IDENTITY_UNCONFIRMED", true);
         } else if (record.state === "unknown" && record.reserveSlot) this.active.add(name);
-      } catch { this.corrupt.add(name); this.active.add(name); }
+      } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:79}); this.corrupt.add(name); this.active.add(name); }
     }
   }
   result(record) {
@@ -124,7 +124,7 @@ class TaskManager {
     if (kind === "job") {
       let actual;
       try { actual = jobHash(spec.name); }
-      catch (error) {
+      catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'tasks.cjs',line:127});
         if (error.code === "ENOENT") throw failure("JOB_MODULE_MISSING", "Controlled job module is not installed on the target");
         throw error;
       }
@@ -137,7 +137,7 @@ class TaskManager {
       throw failure("TASK_CAPACITY", "Task queue or retained record capacity reached", true);
     const directory = this.directory(key);
     try { fs.mkdirSync(directory, { mode: 0o700 }); }
-    catch (error) {
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'tasks.cjs',line:140});
       if (error.code === "EEXIST") throw failure("OPERATION_CORRUPT", "Existing operation directory has no valid manifest");
       throw error;
     }
@@ -147,7 +147,7 @@ class TaskManager {
     this.save(record);
     this.records.set(key, record);
     try { durableWrite(this.file(key, "input.json"), { spec }); }
-    catch (error) { this.unknown(record, "INPUT_STORAGE_FAILED", false); throw error; }
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'tasks.cjs',line:150}); this.unknown(record, "INPUT_STORAGE_FAILED", false); throw error; }
     this.tick();
     return this.get(owner, { operationId: key });
   }
@@ -165,15 +165,15 @@ class TaskManager {
         try {
           if (!spawned) this.finishBeforeStart(record, "failed", "RUNNER_SPAWN_FAILED");
           else this.unknown(record, "RUNNER_PROCESS_ERROR", true);
-        } catch { this.corrupt.add(key); }
+        } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:168}); this.corrupt.add(key); }
       });
       child.once("close", () => {
         try {
           if (!this.result(record) && !FINAL.has(record.state))
             this.unknown(record, "RUNNER_EXIT_WITHOUT_RESULT", true);
-        } catch { this.corrupt.add(key); }
+        } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:174}); this.corrupt.add(key); }
       });
-    } catch { this.finishBeforeStart(record, "failed", "RUNNER_SPAWN_FAILED"); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:176}); this.finishBeforeStart(record, "failed", "RUNNER_SPAWN_FAILED"); }
   }
   executionSnapshot() {
     return { active: this.active.size, queued: !this.identityAvailable || this.stopping ? [] :
@@ -184,9 +184,9 @@ class TaskManager {
     if (!record || record.state !== "accepted" || !this.identityAvailable || this.stopping) return false;
     if (!this.authorized(record.owner)) { this.finishBeforeStart(record, "cancelled", "AUTH_REVOKED"); return false; }
     try { this.start(record); return this.active.has(key); }
-    catch (error) {
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'tasks.cjs',line:187});
       if (error.code !== "TASK_DISK_CAPACITY") {
-        try { this.unknown(record, "TASK_START_FAILED", false); } catch { this.corrupt.add(key); }
+        try { this.unknown(record, "TASK_START_FAILED", false); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:189}); this.corrupt.add(key); }
       }
       return false;
     }
@@ -210,7 +210,7 @@ class TaskManager {
           record.state = "running";
         if (!FINAL.has(record.state) && Date.now() - (runner?.heartbeatAt || record.launchAt || 0) > 30000)
           this.unknown(record, "RUNNER_HEARTBEAT_LOST", true);
-      } catch { this.corrupt.add(key); }
+      } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:213}); this.corrupt.add(key); }
     }
     if (this.scheduler) { this.scheduler.tick(); return; }
     if (this.active.size >= 2 || !this.identityAvailable) return;
@@ -220,9 +220,9 @@ class TaskManager {
       if (this.active.size >= 2) break;
       if (!this.authorized(record.owner)) { this.finishBeforeStart(record, "cancelled", "AUTH_REVOKED"); continue; }
       try { this.start(record); }
-      catch (error) {
+      catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'tasks.cjs',line:223});
         if (error.code === "TASK_DISK_CAPACITY") break;
-        try { this.unknown(record, "TASK_START_FAILED", false); } catch { this.corrupt.add(record.operationId); }
+        try { this.unknown(record, "TASK_START_FAILED", false); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:225}); this.corrupt.add(record.operationId); }
       }
     }
   }
@@ -238,7 +238,7 @@ class TaskManager {
       const bytes = Buffer.alloc(Math.min(limit, stat.size - offset));
       const count = fs.readSync(fd, bytes, 0, bytes.length, offset);
       return { data: bytes.subarray(0, count).toString("base64"), nextOffset: offset + count, storedBytes: stat.size };
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'tasks.cjs',line:241});
       if (error.code === "ENOENT" && offset === 0) return { data: "", nextOffset: 0, storedBytes: 0 };
       throw error;
     } finally { if (fd !== undefined) fs.closeSync(fd); }
@@ -267,7 +267,7 @@ class TaskManager {
       stdout: { bytes: 0, totalBytes: 0, truncated: false }, stderr: { bytes: 0, totalBytes: 0, truncated: false },
     });
     record.state = state; record.updatedAt = finishedAt; this.save(record); this.active.delete(record.operationId);
-    try { fs.unlinkSync(this.file(record.operationId, "input.json")); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    try { fs.unlinkSync(this.file(record.operationId, "input.json")); } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'tasks.cjs',line:270}); if (error.code !== "ENOENT") throw error; }
   }
   cancel(owner, params, allowRevoked = false) {
     operationId(owner); operationId(params.operationId); operationId(params.requestId);
@@ -277,7 +277,7 @@ class TaskManager {
         throw failure("TASK_CAPACITY", "Task cancellation record capacity reached", true);
       const key = params.operationId, directory = this.directory(key);
       try { fs.mkdirSync(directory, { mode: 0o700 }); }
-      catch { throw failure("OPERATION_CORRUPT", "Unrecognized operation directory cannot be replaced"); }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:280}); throw failure("OPERATION_CORRUPT", "Unrecognized operation directory cannot be replaced"); }
       const record = { schemaVersion: 1, operationId: key, owner, deviceId: this.deviceId,
         kind: "cancelled", requestHash: null, cancelledBeforeSubmit: true, state: "accepted",
         createdAt: Date.now(), updatedAt: Date.now(),
@@ -306,7 +306,7 @@ class TaskManager {
     for (const record of this.records.values()) {
       if (record.owner !== owner || (FINAL.has(record.state) && record.state !== "unknown")) continue;
       try { results.push(this.cancel(owner, { operationId: record.operationId, requestId: crypto.randomUUID() }, true)); }
-      catch { results.push({ operationId: record.operationId, state: "unknown", cancelRequested: false }); }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:309}); results.push({ operationId: record.operationId, state: "unknown", cancelRequested: false }); }
     }
     return results;
   }

@@ -1,0 +1,13 @@
+# 5.6 diagnostics maintenance
+
+This maintenance change preserves the existing 5.5 wire protocol and saved profiles. It changes diagnostic behavior, not the protocol or application identity.
+
+The Windows logged launcher starts the supervisor in Electron Node mode before opening Chromium, and the desktop shortcut uses this launcher. Application entry points record process start, exit status, uncaught exceptions, unhandled rejections, warnings and output-pipe failures. Fatal JavaScript failures exit nonzero after synchronous recording; they do not continue an unsafe process. Supervisors record child spawn errors, output, exit codes and signals. GUI diagnostics include renderer termination reason, native child termination, preload errors, renderer errors/rejections, IPC failures and startup phases. Renderer recovery uses bounded backoff and surfaces a visible failure after repeated crashes.
+
+Records include bounded, redacted messages, stacks, codes, causes and process IDs. Command bodies, environment objects, authentication tokens, pairing codes and private keys are excluded or redacted. Successful high-volume relay traces are sampled with suppression summaries; error traces are not sampled.
+
+JSONL files rotate before appending beyond 256 KiB, with two history files. Each managed JSONL directory retains at most 64 files / 16 MiB, pruning oldest records. Legacy console/bootstrap files are compacted above 256 KiB on startup and every 30 seconds. Runtime files use per-process/thread names to reduce concurrent rotation conflicts. A failed primary sink is retried on the next event; stderr and a bounded temporary-directory emergency file retain the failure and original event. GUI export includes runtime failures and stack traces after redaction.
+
+Normal missing-file/process probes (ENOENT / ESRCH / ENOTDIR) are not treated as failures. Handled errors that were previously discarded are recorded without changing recovery/control-flow decisions. OS termination of all supervising processes, power loss, a full/unavailable filesystem and native failures before JavaScript starts cannot be guaranteed to produce an in-process record; surviving parents and OS/native crash records remain necessary evidence.
+
+Validation: `node --test tests/pro/diagnostics-bounded.cjs`. Tests exercise rotation, redaction, recovery after sink failure, rejection/exception/nonzero exit, export and process churn. The same tests must pass on the deployed Windows instance before launching it. Live renderer error/rejection/crash checks use only the isolated instance; pairing state and the existing 5.4 installation are preserved.

@@ -74,7 +74,7 @@ class Operations {
       try {
         const record = this.record(name);
         if (!deviceId || record.deviceId === deviceId) records.push(this.public(record));
-      } catch { records.push({ operationId: name, state: "unknown", errorCode: "OPERATION_CORRUPT" }); }
+      } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'operations.cjs',line:77}); records.push({ operationId: name, state: "unknown", errorCode: "OPERATION_CORRUPT" }); }
     }
     return { ok: true, operations: records.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limit) };
   }
@@ -91,7 +91,7 @@ class Operations {
       record.state = result.state; record.observedAt = Date.now();
       durableWrite(this.file(key), record);
       return { ...result, ...this.public(record), ok: true, outputEncoding: result.outputEncoding };
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'operations.cjs',line:94});
       return { ...this.public(record), ok: false, state: error.code === "OPERATION_NOT_FOUND" ? "unknown" : "unavailable",
         lastKnownState: record.state, error: publicFailure(error) };
     }

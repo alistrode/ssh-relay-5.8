@@ -7,7 +7,7 @@ async function executeSessionCommand(control, agent, { id, deviceId, remoteSessi
   const unknown = error => ({ session: id, requestId, sequence, persistent: true, success: false,
     completed: false, state: "unknown", stdout: "", stderr: "", errorCode: error.code || "CONTROL_UNAVAILABLE" });
   try { await agent.registerSessionRequest(id, { requestId, sequence, requestHash: request.requestHash, kind: "send" }); }
-  catch (error) { return unknown(error); }
+  catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-call.cjs',line:10}); return unknown(error); }
   let cwd;
   function translate(value, offsets) {
     if (value?.error) throw Object.assign(Error("Session query failed"), { code: value.error.code || "CONTROL_UNAVAILABLE" });

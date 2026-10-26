@@ -60,7 +60,7 @@ async function install({ executable, appRoot, profile, development }) {
       )
         return;
       throw Error("Existing desktop file was preserved");
-    } catch (e) {
+    } catch (e) { require('../src/pro/runtime-log.cjs').captureCaught(e,{component:'shortcuts.cjs',line:63});
       if (e.code !== "ENOENT") throw e;
     }
     fs.symlinkSync(executable, link);

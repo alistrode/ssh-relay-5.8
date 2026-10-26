@@ -24,7 +24,7 @@ class SessionOutput {
   feed(name, bytes) {
     if (this.failed) throw failure("Session output parser has already failed");
     try { return this.consume(name, bytes); }
-    catch (error) { this.failed = true; throw error; }
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-output.cjs',line:27}); this.failed = true; throw error; }
   }
   consume(name, bytes) {
     const stream = this.streams[name];
@@ -56,7 +56,7 @@ class SessionOutput {
       if (cwdBytes.toString("base64") !== match[2]) throw failure("Invalid session cwd encoding");
       let cwd;
       try { cwd = new TextDecoder("utf-8", { fatal: true }).decode(cwdBytes); }
-      catch { throw failure("Session cwd is not valid UTF-8"); }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-output.cjs',line:59}); throw failure("Session cwd is not valid UTF-8"); }
       if (!cwd || cwd.includes("\0")) throw failure("Invalid session cwd");
       this.result = { exitCode: Number(match[1]), cwd };
     }

@@ -1,41 +1,14 @@
 "use strict";
-// Startup diagnostics deliberately accept metadata only, never error messages,
-// command lines, URLs, paths, credentials, or renderer console contents.
+// Private diagnostics retain bounded, redacted errors and stacks; never command bodies or credentials.
 const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto"), zlib = require("node:zlib");
-const fields = new Set(["pid", "exitCode", "errorCode", "type", "reason", "version", "platform", "code"]);
-const enums = new Set(["GPU", "Utility", "Renderer", "Browser", "Zygote", "Sandbox helper", "clean-exit", "abnormal-exit", "killed", "crashed", "oom", "launch-failed", "integrity-failure", "win32", "linux", "darwin", "EPIPE", "ERR_STREAM_DESTROYED"]);
-const eventNames = new Set(["runtime_image_label", "main_enter", "electron_loaded", "uncaught_exception", "process_exit", "child_process_gone", "render_process_gone", "window_create", "window_loaded", "window_load_failed", "window_shown", "window_load_rejected", "before_quit", "app_ready", "output_pipe_closed", "launcher_enter", "runtime_missing", "process_started", "launcher_child_exit", "launcher_failed", "startup_permission_rejected", "permission_check_failed"]);
-for (const event of ["elevation_requested", "elevated_launcher_exit", "elevation_not_completed", "startup_failed", "switch_prompt_unavailable", "switch_prompt_shown", "switch_prompt_approved", "switch_prompt_declined"]) eventNames.add(event);
-function metadata(input = {}) {
-  const out = {};
-  for (const [key, value] of Object.entries(input)) {
-    if (!fields.has(key)) continue;
-    if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
-    else if (typeof value === "string" && (enums.has(value) || (key === "version" && /^\d+\.\d+\.\d+$/.test(value)))) out[key] = value;
-  }
-  return out;
-}
 function check(file) {
   try { if (fs.lstatSync(file).isSymbolicLink()) throw Error("Diagnostic symlink refused"); }
   catch (e) { if (e.code !== "ENOENT") throw e; }
 }
-function create(directory, { limit = 256 * 1024, copies = 3, runId = /^[a-f0-9-]{36}$/.test(process.env.SSH_RELAY_RUN_ID || "") ? process.env.SSH_RELAY_RUN_ID : crypto.randomUUID() } = {}) {
-  const file = path.join(directory, "gui.jsonl");
-  let available = true;
-  function record(event, details) {
-    if (!eventNames.has(event)) return;
-    try {
-      check(directory);
-      fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-      check(file);
-      const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | (fs.constants.O_NOFOLLOW || 0), 0o600);
-      try {
-        fs.fchmodSync(fd, 0o600);
-        fs.writeSync(fd, JSON.stringify({ time: new Date().toISOString(), runId, event, ...metadata(details) }) + "\n");
-      } finally { fs.closeSync(fd); }
-    } catch { available = false; }
-  }
-  return { record, runId, get available() { return available; } };
+function create(directory, { limit = 256 * 1024, copies = 2, runId = crypto.randomUUID() } = {}) {
+  const sink = require("./runtime-log.cjs").createLogger({file:path.join(directory,"gui.jsonl"),name:"gui",limit,copies});
+  let available=true;
+  return {record:(event,details={})=>{available=sink.record(event,{runId,...details});},runId,get available(){return available;}};
 }
 function exportDiagnostics(directory, destination) {
   const events = [];
@@ -50,9 +23,9 @@ function exportDiagnostics(directory, destination) {
       for (const line of buffer.subarray(0, n).toString("utf8").split("\n")) {
         try {
           const e = JSON.parse(line);
-          if (!eventNames.has(e.event) || !/^[a-f0-9-]{36}$/.test(e.runId) || !/^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(e.time)) continue;
-          events.push({ time: e.time, runId: e.runId, event: e.event, ...metadata(e) });
-        } catch {}
+          if (!/^[a-z0-9_]+$/.test(e.event) || !/^[a-f0-9-]{36}$/.test(e.runId) || !/^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(e.time)) continue;
+          events.push(require("./runtime-log.cjs").safe(e));
+        } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'gui-diagnostics.cjs',line:42}); }
       }
     } finally { fs.closeSync(fd); }
   }
@@ -69,8 +42,8 @@ function exportDiagnostics(directory, destination) {
         for (const line of buffer.subarray(0, n).toString("utf8").split("\n")) {
           try {
             const e = JSON.parse(line);
-            if (backgroundEvents.has(e.event) && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(e.time)) background.push({ role, time:e.time, event:e.event, ...metadata(e) });
-          } catch {}
+            if (backgroundEvents.has(e.event) && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(e.time)) background.push({role,...require("./runtime-log.cjs").safe(e)});
+          } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'gui-diagnostics.cjs',line:60}); }
         }
       } finally { fs.closeSync(fd); }
     }
@@ -87,8 +60,16 @@ function exportDiagnostics(directory, destination) {
       native.push({ previous: name.endsWith("previous"), gpuLaunchFailures, gpuUnavailable: text.includes("GPU process isn't usable") });
     } finally { fs.closeSync(input); }
   }
+  const runtime = [];
+  for (const dir of [directory,path.join(path.dirname(directory),'near','logs'),path.join(path.dirname(directory),'far','logs')]) {
+    if(!fs.existsSync(dir))continue;
+    for(const name of fs.readdirSync(dir).filter(n=>/^runtime-.+\.jsonl(?:\.\d+)?$/.test(n))) {
+      const file=path.join(dir,name);check(file);const stat=fs.statSync(file);if(!stat.isFile()||stat.size>300*1024)continue;
+      for(const line of fs.readFileSync(file,'utf8').split('\n')){try{const e=JSON.parse(line);if(typeof e.event==='string')runtime.push(require('./runtime-log.cjs').safe(e));}catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'gui-diagnostics.cjs',line:82}); }}
+    }
+  }
   const fd = fs.openSync(destination, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, 0o600);
-  try { fs.writeSync(fd, zlib.gzipSync(JSON.stringify({ schema: 1, events, background, native }))); }
+  try { fs.writeSync(fd, zlib.gzipSync(JSON.stringify({ schema: 2, events, background, native, runtime:runtime.slice(-4096) }))); }
   finally { fs.closeSync(fd); }
   return events.length;
 }
@@ -103,6 +84,6 @@ if (require.main === module) {
   try {
     if (process.argv.length !== 4) throw Error("Expected log directory and new export file");
     exportDiagnostics(process.argv[2], process.argv[3]);
-  } catch { process.stderr.write("Diagnostic export failed; preserve the local logs.\n"); process.exitCode = 1; }
+  } catch (error) { require("./runtime-log.cjs").captureCaught(error,{component:"diagnostic-export"});process.stderr.write("Diagnostic export failed; preserve the local logs.\n"); process.exitCode = 1; }
 }
 

@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('agent');
 const { systemVersion, normalizeSystem } = require("./os-version.cjs");
 const { clientActive } = require("./client-lifecycle.cjs");
 const { withRecovery } = require("./ai-recovery.cjs");
@@ -44,6 +45,7 @@ class Agent {
     allowCloudSelfTest = false,
   }) {
     if (!["near", "far"].includes(role)) throw Error("Invalid role");
+    runtimeLog.record("agent_construct",{role});
     this.role = role;
     this.dir = path.resolve(folder(dir));
     this.broker = broker(brokerUrl);
@@ -82,11 +84,12 @@ class Agent {
     return path.join(this.dir, name);
   }
   async start() {
+    runtimeLog.record("agent_start_begin",{role:this.role});
     if (!clientActive(this.dir)) throw Error("必须启动客户端，禁止独立后台运行");
     const lock = this.file("agent.lock");
     try {
       fs.mkdirSync(lock, { mode: 0o700 });
-    } catch (e) {
+    } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'agent.cjs',line:92});
       if (e.code !== "EEXIST") throw e;
       await new Promise((resolve) => setTimeout(resolve, 100));
       const previous = read(path.join(lock, "owner.json"), {});
@@ -119,14 +122,18 @@ class Agent {
       this.sessions = new NearSessions(this);
     }
     if (this.role === "far") this.executionScheduler = new ExecutionScheduler();
+    runtimeLog.record("task_manager_init_begin",{role:this.role});
     if (this.role === "far") this.taskManager = new TaskManager({
       dir: this.file("operations"), scheduler: this.executionScheduler, deviceId: this.identity.deviceId, bootId: this.bootId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
+    runtimeLog.record("task_manager_init_end",{role:this.role});
+    runtimeLog.record("session_manager_init_begin",{role:this.role});
     if (this.role === "far") this.sessionManager = new SessionManager({
       dir: this.file("sessions"), scheduler: this.executionScheduler, deviceId: this.identity.deviceId,
       authorized: controllerId => !!read(this.file("far/authorized-clients.json"), {})[controllerId],
     });
+    runtimeLog.record("session_manager_init_end",{role:this.role});
     if (this.role === "far") this.remoteFiles = new FileService({
       dir: this.file("transfers"), deviceId: this.identity.deviceId,
       authorizedFile: this.file("far/authorized-clients.json"),
@@ -147,8 +154,8 @@ class Agent {
       profileId: this.identity.deviceId,
     });
     if (this.role === "far") {
-      this.initFar();
-      await this.restorePairInvitations();
+      runtimeLog.record("far_identity_init",{});this.initFar();
+      runtimeLog.record("pair_restore_begin",{});await this.restorePairInvitations();runtimeLog.record("pair_restore_end",{});
     }
     this.log("agent_started", { deviceId: this.identity.deviceId });
     this.timer = setInterval(() => this.tick(), 500);
@@ -399,7 +406,7 @@ class Agent {
                 this.farState = "retrying";
               if (key === "far" && entry.event === "ssh_ready")
                 this.farState = "online";
-            } catch {}
+            } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'agent.cjs',line:409}); }
           else if (line.trim())
             this.log("worker_message", {
               worker: key,
@@ -486,9 +493,9 @@ class Agent {
     if (this.stopping) return;
     if (!clientActive(this.dir)) { void this.close().then(() => process.exit(0)); return; }
     try { this.taskManager?.tick(); }
-    catch (error) { this.log("task_manager_storage_error", { code: error.code || "TASK_STORAGE_FAILED" }); }
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent.cjs',line:496}); this.log("task_manager_storage_error", { code: error.code || "TASK_STORAGE_FAILED" }); }
     try { this.sessionManager?.tick(); }
-    catch (error) { this.log("session_manager_storage_error", { code: error.code || "SESSION_STORAGE_FAILED" }); }
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent.cjs',line:498}); this.log("session_manager_storage_error", { code: error.code || "SESSION_STORAGE_FAILED" }); }
     if (this.role === "far") {
       if (
         this.settings.enabled &&
@@ -549,10 +556,10 @@ class Agent {
         write(path.join(t.dir, "near.json"), config);
         try {
           fs.unlinkSync(path.join(t.dir, "runtime.json"));
-        } catch {}
+        } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'agent.cjs',line:559}); }
         try {
           fs.unlinkSync(path.join(t.dir, "peer.json"));
-        } catch {}
+        } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'agent.cjs',line:562}); }
         this.spawnWorker(
           device.id,
           path.resolve(__dirname, "../near.cjs"),
@@ -630,7 +637,7 @@ class Agent {
       if (peer.admission.mode !== "concurrent" && peer.admission.ownerId && peer.admission.ownerId !== this.identity.deviceId && peer.admission.approvedId !== this.identity.deviceId) {
         t.state = "remote_busy"; t.connecting = false; t.nextAt = Date.now() + 1000; return;
       }
-    } catch (e) {
+    } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'agent.cjs',line:640});
       t.connecting = false;
       t.nextAt = Date.now() + 500;
       return;
@@ -675,7 +682,7 @@ class Agent {
         t.workerFailures = 0;
         this.stats.connected++;
         this.log("connection_verified", { deviceId: t.id });
-      } catch (e) {
+      } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'agent.cjs',line:685});
         fail(e);
       }
     });
@@ -699,7 +706,7 @@ class Agent {
           return fp === info.fingerprint;
         },
       });
-    } catch (e) {
+    } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'agent.cjs',line:709});
       fail(e);
     }
   }
@@ -894,7 +901,7 @@ class Agent {
       const route = apiUrl.pathname;
       let data = {};
       try { data = body ? JSON.parse(body) : {}; }
-      catch { throw fault("INVALID_REQUEST", "Invalid JSON request body"); }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'agent.cjs',line:904}); throw fault("INVALID_REQUEST", "Invalid JSON request body"); }
       if (!data || typeof data !== "object" || Array.isArray(data))
         throw fault("INVALID_REQUEST", "Expected a JSON object");
       recoveryContext = { ...data };
@@ -999,7 +1006,7 @@ class Agent {
                 .filter(Boolean)
                 .map((x) => JSON.parse(x)),
             );
-          } catch {}
+          } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'agent.cjs',line:1009}); }
         value = {
           events: rows
             .sort((a, b) => String(a.time).localeCompare(String(b.time)))
@@ -1118,7 +1125,7 @@ class Agent {
         return;
       }
       reply(responseCode, value);
-    } catch (e) {
+    } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'agent.cjs',line:1128});
       this.log("api_error", {
         route: req.url,
         reason: /pair/i.test(req.url)
@@ -1153,7 +1160,7 @@ class Agent {
       fs.rmSync(this.file("agent.lock"), { recursive: true, force: true });
       try {
         fs.unlinkSync(this.file("agent-runtime.json"));
-      } catch {}
+      } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'agent.cjs',line:1163}); }
     }
   }
 }
@@ -1175,7 +1182,7 @@ if (require.main === module) {
   for (const s of ["SIGTERM", "SIGINT"])
     process.on(s, () => agent.close().then(() => process.exit(0)));
   agent.start().catch((e) => {
-    console.error(e.message);
+    runtimeLog.record("agent_start_failed",{error:e});console.error(e.message);
     process.exit(1);
   });
 }

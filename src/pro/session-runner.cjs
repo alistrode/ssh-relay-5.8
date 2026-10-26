@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('session-runner');
 const fs = require("node:fs");
 const path = require("node:path");
 const { SessionEngine } = require("./session-engine.cjs");
@@ -75,12 +76,12 @@ async function run(directory) {
         receipt(requestId, { ok: true, ...result });
         if (engine.closed) finishing = true;
       }
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-runner.cjs',line:79});
       const known = new Set(["SESSION_INVALID", "SESSION_LOST", "SESSION_UNAVAILABLE", "SESSION_SEQUENCE_CONFLICT",
         "REQUEST_CONFLICT", "INVALID_TASK_SPEC", "SESSION_CAPACITY", "SESSION_COMMAND_UNKNOWN", "SESSION_CORRUPT"]);
       receipt(requestId, { ok: false, errorCode: known.has(error.code) ? error.code : "SESSION_REQUEST_FAILED" });
     } finally {
-      try { fs.unlinkSync(file); } catch (error) { if (error.code !== "ENOENT") throw error; }
+      try { fs.unlinkSync(file); } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-runner.cjs',line:84}); if (error.code !== "ENOENT") throw error; }
       pending.delete(requestId);
     }
   }
@@ -118,7 +119,7 @@ async function run(directory) {
         // stale pending entry after its finally block removed it.
         if (pending.has(requestId)) pending.set(requestId, work);
       }
-    } catch { engine.close(config.owner); finishing = true; }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-runner.cjs',line:122}); engine.close(config.owner); finishing = true; }
     finally { polling = false; }
   }
   let heartbeat;
@@ -126,7 +127,7 @@ async function run(directory) {
   heartbeat = setInterval(() => {
     try { runner.heartbeatAt = Date.now(); runner.state = engine.closed ? "lost" : engine.journal.record.state;
       durableWrite(heartbeatFile, runner); }
-    catch { engine.close(config.owner); finishing = true; }
+    catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-runner.cjs',line:130}); engine.close(config.owner); finishing = true; }
   }, 2000);
   await new Promise(resolve => {
     const check = setInterval(() => {
@@ -140,10 +141,10 @@ async function run(directory) {
 }
 async function main(directory) {
   try { await run(directory); }
-  catch (error) {
+  catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'session-runner.cjs',line:144});
     const known = new Set(["PROCESS_IDENTITY_UNAVAILABLE", "SESSION_INVALID", "SESSION_LOST", "SESSION_ENGINE_EXISTS", "AUTH_REVOKED", "SESSION_CLOSED"]);
     try { durableWrite(path.join(path.resolve(directory), "runner-error.json"), {
-      errorCode: known.has(error.code) ? error.code : "SESSION_RUNNER_FAILED", finishedAt: Date.now() }); } catch {}
+      errorCode: known.has(error.code) ? error.code : "SESSION_RUNNER_FAILED", finishedAt: Date.now() }); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'session-runner.cjs',line:147}); }
     process.exitCode = 1;
   }
 }

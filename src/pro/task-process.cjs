@@ -30,7 +30,7 @@ function processIdentity(pid) {
       if (!value.startToken || !value.command) return null;
       return { pid, osBoot, startToken: value.startToken, command: value.command };
     }
-  } catch {}
+  } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'task-process.cjs',line:33}); }
   return null;
 }
 function sameProcess(expected) {
@@ -53,12 +53,12 @@ function processState(expected) {
     }
     if (process.platform === "win32") {
       const script = "try{$p=Get-CimInstance Win32_Process -Filter 'ProcessId=" + expected.pid +
-        "' -ErrorAction Stop;if(-not $p){'ABSENT'}}catch{exit 1}";
+        "' -ErrorAction Stop;if(-not $p){'ABSENT'}}catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-process.cjs',line:56});exit 1}";
       const result = cp.spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
         { encoding: "utf8", windowsHide: true, timeout: 10000 });
       if (result.status === 0 && result.stdout.trim() === "ABSENT") return "exited";
     }
-  } catch (error) { if (process.platform === "linux" && error.code === "ENOENT") return "exited"; }
+  } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-process.cjs',line:61}); if (process.platform === "linux" && error.code === "ENOENT") return "exited"; }
   return "unconfirmed";
 }
 function runnerArgumentsMatch(current, directory, script, windows = process.platform === "win32") {

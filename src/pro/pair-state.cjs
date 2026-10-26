@@ -74,7 +74,7 @@ function recoverPairTransactions(agent) {
   const directory = agent.file("pair-staging");
   let names;
   try { names = fs.readdirSync(directory); }
-  catch (error) { if (error.code === "ENOENT") return; throw error; }
+  catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'pair-state.cjs',line:77}); if (error.code === "ENOENT") return; throw error; }
   for (const name of names) {
     if (!/^[a-f0-9-]{36}$/.test(name)) throw Error("Invalid pairing staging entry");
     const stage = path.join(directory, name);

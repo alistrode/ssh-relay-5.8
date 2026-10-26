@@ -30,7 +30,7 @@ function forwardControl(controllerId, method, params) {
     try {
       process.send({ type: "task-rpc", rpcId, controllerId, method, params },
         failure => { if (failure) settle(rpcId, unavailable()); });
-    } catch { settle(rpcId, unavailable()); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'control-worker.cjs',line:33}); settle(rpcId, unavailable()); }
   });
 }
 module.exports = { forwardControl };

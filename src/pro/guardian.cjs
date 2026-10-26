@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('guardian');
 const fs = require("node:fs"),
   path = require("node:path"),
   cp = require("node:child_process"),
@@ -25,17 +26,17 @@ let child,
 const previous = read(runtime, null);
 if (previous?.pid) {
   if (ownedProcess(previous.pid, dir, "guardian", previous.osBoot))
-    process.exit(0);
+    {record({event:"guardian_duplicate_exit"});process.exit(0);}
 }
 // A separate exclusive lock covers simultaneous GUI and service starts.
 const lock = path.join(dir, "guardian.lock");
 try {
   fs.mkdirSync(lock, { mode: 0o700 });
-} catch (e) {
+} catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'guardian.cjs',line:35});
   if (e.code !== "EEXIST") throw e;
   const owner = read(path.join(lock, "owner.json"), {});
   const alive = ownedProcess(owner.pid, dir, "guardian", owner.osBoot);
-  if (alive || Date.now() - fs.statSync(lock).mtimeMs < 5000) process.exit(0);
+  if (alive || Date.now() - fs.statSync(lock).mtimeMs < 5000) {record({event:"guardian_lock_exit",alive});process.exit(0);}
   fs.rmSync(lock, { recursive: true });
   fs.mkdirSync(lock, { mode: 0o700 });
 }
@@ -50,16 +51,17 @@ write(runtime, {
 });
 function finish() {
   if (stopping) return;
+  record({event:"guardian_finish",clientActive:clientActive(dir)});
   stopping = true;
   clearTimeout(timer);
   if (child && !child.killed) child.kill("SIGTERM");
   record({ event: "guardian_stopped" });
   try {
     fs.unlinkSync(runtime);
-  } catch {}
+  } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'guardian.cjs',line:61});record({event:"guardian_cleanup_error",error});}
   try {
     fs.rmSync(lock, { recursive: true });
-  } catch {}
+  } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'guardian.cjs',line:64});record({event:"guardian_cleanup_error",error});}
   if (!child) process.exit(0);
   else setTimeout(() => process.exit(0), 10000).unref();
 }

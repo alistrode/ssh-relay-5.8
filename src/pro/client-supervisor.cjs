@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('supervisor');
 const fs=require("node:fs"),path=require("node:path"),http=require("node:http"),cp=require("node:child_process"),crypto=require("node:crypto");
 const {read,write,folder}=require("./store.cjs"), lifecycle=require("./client-lifecycle.cjs");
 const args=process.argv.slice(2),arg=name=>args[args.indexOf(name)+1];
@@ -6,10 +7,10 @@ const profile=path.resolve(arg("--profile-dir")),config=read(arg("--config-file"
 if(path.resolve(config.profile)!==profile)throw Error("Invalid client profile");
 require("./release.cjs").requireProfile(profile);
 const lock=path.join(folder(profile),"client-supervisor.lock"),runtime=path.join(profile,lifecycle.runtimeName);
-try{fs.mkdirSync(lock,{mode:0o700});}catch(error){
+try{fs.mkdirSync(lock,{mode:0o700});}catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'client-supervisor.cjs',line:10});
   if(error.code!=="EEXIST")throw error;
   const owner=read(path.join(lock,"owner.json"),{});
-  if(lifecycle.alive(owner.pid))process.exit(0);
+  if(lifecycle.alive(owner.pid)){runtimeLog.record("supervisor_duplicate_exit",{});process.exit(0);}
   fs.rmSync(lock,{recursive:true});fs.mkdirSync(lock,{mode:0o700});
 }
 write(path.join(lock,"owner.json"),{pid:process.pid});
@@ -19,9 +20,8 @@ const save=()=>write(runtime,state);
 function guiArgs(){return [...(config.args||[]),...(config.development?[config.appRoot]:[]),"--profile-dir",profile,"--managed-client"];}
 function spawnGui(showOnly=false){
   const env={...process.env,SSH_RELAY_CLIENT_SESSION:state.token,SSH_RELAY_CLIENT_PROFILE:profile};delete env.ELECTRON_RUN_AS_NODE;
-  const log=fs.openSync(path.join(profile,"client-process.log"),"a",0o600);
-  const proc=cp.spawn(config.executable,guiArgs(),{env,windowsHide:false,stdio:["ignore",log,log]});
-  fs.closeSync(log);
+  const proc=cp.spawn(config.executable,guiArgs(),{env,windowsHide:false,stdio:["ignore","pipe","pipe"]});
+  require("./runtime-log.cjs").observeChild(proc,runtimeLog,"gui");
   proc.once("error",()=>{if(child===proc)state.clientPid=null;});
   if(showOnly){proc.unref();return;}
   child=proc;state.clientPid=proc.pid||null;state.heartbeatAt=Date.now();state.generation++;lastLaunch=Date.now();save();
@@ -42,11 +42,11 @@ const server=http.createServer(async(req,res)=>{
     if(req.url==="/tray-exit"){
       if(data.pid!==state.clientPid)throw Error("Only the current client can exit from its tray");
       state.stopping=true;save();
-      try{await lifecycle.stopBackends(profile,state.clientPid);}catch(error){state.stopping=false;save();throw error;}
+      try{await lifecycle.stopBackends(profile,state.clientPid);}catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'client-supervisor.cjs',line:45});state.stopping=false;save();throw error;}
       state.desiredRunning=false;save();return reply(200,{ok:true,backendsStopped:true});
     }
     reply(404,{error:"Unknown client action"});
-  }catch(error){reply(400,{error:error.message});}
+  }catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'client-supervisor.cjs',line:49});reply(400,{error:error.message});}
 });
 async function loop(){
   if(busy)return;busy=true;
@@ -61,7 +61,7 @@ async function loop(){
       if(Date.now()-lastLaunch<2000)return;
       spawnGui();
     }
-  }catch(error){console.error("Client recovery:",error.message);}
+  }catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'client-supervisor.cjs',line:64});runtimeLog.record("client_recovery_error",{error});console.error("Client recovery:",error.message);}
   finally{busy=false;}
 }
 server.listen({port:0,host:"127.0.0.1",exclusive:true},async()=>{

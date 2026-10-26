@@ -15,7 +15,7 @@ function assertPrivateState(dir) {
       if (process.platform !== "win32" && typeof process.getuid === "function" &&
           (stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0)) throw denied();
       return true;
-    } catch (error) { if (error.code === "ENOENT") return false; throw error; }
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'private-state.cjs',line:18}); if (error.code === "ENOENT") return false; throw error; }
   });
   if (process.platform !== "win32" || !existing.length) return;
   // Check ACLs, do not alter inherited rights or request elevation.

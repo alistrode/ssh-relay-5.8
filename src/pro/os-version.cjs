@@ -18,7 +18,7 @@ function systemVersion() {
         const m = /^([A-Z_]+)=(.*)$/.exec(line); return m ? [[m[1], m[2].replace(/^['"]|['"]$/g, "")]] : [];
       }));
       name = values.NAME || "Linux"; version = values.VERSION_ID || release;
-    } catch { name = "Linux"; }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'os-version.cjs',line:21}); name = "Linux"; }
   } else if (platform === "win32") {
     name = os.version();
     if (!/server/i.test(name)) name = Number(release.split(".")[2]) >= 22000 ? "Windows 11" : "Windows 10";
@@ -26,7 +26,7 @@ function systemVersion() {
       const script = "$p=Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion';@{version=$p.DisplayVersion;build=($p.CurrentBuildNumber+'.'+$p.UBR)}|ConvertTo-Json -Compress";
       const value = JSON.parse(require("node:child_process").execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script,"utf16le").toString("base64")], { encoding:"utf8", windowsHide:true, timeout:10000 }));
       version = value.version || release; build = value.build || release;
-    } catch { /* Native OS information remains available without the registry. */ }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'os-version.cjs',line:29}); /* Native OS information remains available without the registry. */ }
   }
   return cached = normalizeSystem({ name, version, build, platform, arch: os.arch(),
     displayName: `${name} ${version}${build !== version ? " · " + build : ""} · ${os.arch()}` });

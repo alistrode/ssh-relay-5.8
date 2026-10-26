@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 "use strict";
+const runtimeLog=require('./pro/runtime-log.cjs').install('mcp');
 // CLI state selection happens before any ESM module creates application state.
 const path = require("node:path");
 const args = process.argv.slice(2),
@@ -9,6 +10,7 @@ if (at >= 0) {
   process.env.RELAY_MCP_STATE_DIR = path.resolve(args[at + 1]);
 }
 import("./mcp/server.js").catch((error) => {
+  runtimeLog.record("mcp_start_failed",{error});
   console.error(JSON.stringify(require("./pro/ai-recovery.cjs").withRecovery({ ok: false, error: { code: error.code, message: "MCP startup failed: " + error.message } }), null, 2));
   process.exitCode = 1;
 });

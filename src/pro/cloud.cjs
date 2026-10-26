@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('cloud');
 // 仅限云端下载使用。桌面发行包不允许独立后台。
 const fs=require("node:fs"),path=require("node:path"),os=require("node:os"),crypto=require("node:crypto");
 const lifecycle=require("./client-lifecycle.cjs"),{read,write,folder}=require("./store.cjs");
@@ -11,7 +12,7 @@ if(args[0]==="stop"){
   else console.log("纯云端实例未运行");
 }else{
   if(previous&&lifecycle.ownerAlive(profile,previous))throw Error("该纯云端实例已经运行");
-  try{fs.mkdirSync(lock,{mode:0o700});}catch(error){
+  try{fs.mkdirSync(lock,{mode:0o700});}catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'cloud.cjs',line:15});
     if(error.code!=="EEXIST")throw error;
     const owner=read(path.join(lock,"owner.json"),null);
     if(lifecycle.ownerAlive(profile,owner)||Date.now()-fs.statSync(lock).mtimeMs<5000)throw Error("纯云端实例正在启动");
@@ -23,7 +24,7 @@ if(args[0]==="stop"){
   async function stop(code=0){
     if(stopping)return;stopping=true;clearInterval(timer);
     write(runtime,{pid:process.pid,generation,desiredRunning:false,heartbeatAt:Date.now(),edition:"cloud"});
-    try{await lifecycle.stopBackends(profile,process.pid);}catch(error){console.error(error.message);code=1;}
+    try{await lifecycle.stopBackends(profile,process.pid);}catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'cloud.cjs',line:27});console.error(error.message);code=1;}
     if(read(runtime,null)?.generation===generation){fs.unlinkSync(runtime);fs.rmSync(lock,{recursive:true,force:true});}
     process.exitCode=code;
   }

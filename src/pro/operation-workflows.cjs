@@ -86,7 +86,7 @@ class OperationWorkflows {
     const results = [];
     for (const s of r.stages) if (s.childOperationId && !["completed", "failed"].includes(s.state)) {
       try { results.push(await this.operations.cancel(s.childOperationId, { requestId: r.cancelRequestId })); }
-      catch { results.push({ operationId: s.childOperationId, state: "unknown" }); }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'operation-workflows.cjs',line:89}); results.push({ operationId: s.childOperationId, state: "unknown" }); }
     }
     return { ...r, ok: true, children: results };
   }
@@ -94,7 +94,7 @@ class OperationWorkflows {
     const out = [];
     for (const name of fs.readdirSync(this.dir)) {
       if (!/^[a-f0-9-]{36}\.json$/.test(name)) continue;
-      try { const r = this.record(name.slice(0, -5)); if (!deviceId || r.deviceId === deviceId) out.push(r); } catch {}
+      try { const r = this.record(name.slice(0, -5)); if (!deviceId || r.deviceId === deviceId) out.push(r); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'operation-workflows.cjs',line:97}); }
     }
     return out;
   }
@@ -104,7 +104,7 @@ class OperationWorkflows {
     const stages = await Promise.all(r.stages.map(async s => {
       if (!s.childOperationId) return s;
       try { return { ...s, child: await this.operations.get(s.childOperationId, { limitBytes: 1 }) }; }
-      catch { return { ...s, child: { state: "unknown", errorCode: "OPERATION_QUERY_FAILED" } }; }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'operation-workflows.cjs',line:107}); return { ...s, child: { state: "unknown", errorCode: "OPERATION_QUERY_FAILED" } }; }
     }));
     return { ...r, stages, completed: r.state === "completed" };
   }

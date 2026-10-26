@@ -46,7 +46,7 @@ class NearSessions {
     const sessions = [];
     for (const id of fs.readdirSync(this.dir)) {
       if (!/^ssh_[a-f0-9-]{36}$/.test(id)) continue;
-      try { sessions.push(this.public(this.record(id))); } catch { sessions.push({ id, state: "unknown", errorCode: "SESSION_CORRUPT" }); }
+      try { sessions.push(this.public(this.record(id))); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'near-sessions.cjs',line:49}); sessions.push({ id, state: "unknown", errorCode: "SESSION_CORRUPT" }); }
     }
     return { sessions: sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 100) };
   }
@@ -129,7 +129,7 @@ class NearSessions {
         throw failure("CONTROL_RESULT_INVALID", "Remote session state is invalid");
       if (!requestId) { record.state = value.state; record.observedAt = Date.now(); durableWrite(this.file(id), record); }
       return { ...this.public(record), ...value, id, remoteSessionId: record.remoteSessionId };
-    } catch (error) { return { ...this.public(record), id, deviceId: record.deviceId, remoteSessionId: record.remoteSessionId,
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'near-sessions.cjs',line:132}); return { ...this.public(record), id, deviceId: record.deviceId, remoteSessionId: record.remoteSessionId,
       requestId: params.requestId, state: "unknown", completed: false, error: publicFailure(error) }; }
   }
 }

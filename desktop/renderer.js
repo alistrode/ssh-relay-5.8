@@ -1,4 +1,6 @@
 "use strict";
+window.addEventListener("error",event=>window.relay.diagnostic({event:event.error?"renderer_error":"renderer_resource_error",message:event.error?.message||event.message||"Resource load failed",stack:event.error?.stack||"",line:event.lineno,column:event.colno}),true);
+window.addEventListener("unhandledrejection",event=>window.relay.diagnostic({event:"renderer_rejection",message:event.reason?.message||String(event.reason),stack:event.reason?.stack||""}));
 const $=id=>document.getElementById(id),states={online:"已连接",waiting:"等待连接",connecting:"正在连接",retrying:"自动重连中",disconnected:"已断开",identity_error:"设备身份或授权需要核对",starting:"正在启动",running:"运行中",remote_busy:"等待远端确认",remote_full:"远端 20 台连接已满",remote_paused:"远端已暂停此连接",slot_paused:"20 台名额已满",unsupported_remote:"远端需要升级"};
 const rows={near:new Map(),far:new Map()},selected={near:new Set(),far:new Set()},snapshots={near:null,far:null},roleErrors=new Map(),batchBusy=new Set();
 let nearEnabled=false,farEnabled=false,pairRevision=0,pairTimer,refreshTask,refreshAgain=false,refreshTimer,logsTask,logsTimer,lastStartup,admission;

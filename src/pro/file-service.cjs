@@ -44,7 +44,7 @@ class FileService {
         });
         worker.once("error", () => finish(failure("TRANSFER_WORKER_FAILED", "File service worker failed; query the original transfer ID")));
         worker.once("exit", () => finish(failure("TRANSFER_OUTCOME_UNKNOWN", "File service worker exited without a receipt; query the original transfer ID")));
-      } catch { finish(failure("TRANSFER_WORKER_FAILED", "File service worker could not start")); }
+      } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'file-service.cjs',line:47}); finish(failure("TRANSFER_WORKER_FAILED", "File service worker could not start")); }
     }
   }
 }

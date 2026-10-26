@@ -50,7 +50,7 @@ class SessionExecutions {
               request.method !== "send" || !Number.isFinite(request.createdAt) || !/^[a-f0-9]{64}$/.test(request.requestHash)) throw Error("Invalid queued session request");
           queued.push({ key: sessionId + ":" + requestId, sessionId, requestId, createdAt: request.createdAt });
         }
-      } catch { active++; }
+      } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-executions.cjs',line:53}); active++; }
     }
     return { active, queued };
   }

@@ -40,7 +40,7 @@ class OperationGroups {
             this.exists(child.operationId)) throw Error();
         ids.add(child.operationId); ids.add(child.childOperationId); devices.add(child.deviceId);
       }
-    } catch { throw failure("OPERATION_CORRUPT", "Group operation metadata is invalid"); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'operation-groups.cjs',line:43}); throw failure("OPERATION_CORRUPT", "Group operation metadata is invalid"); }
     return record;
   }
   public(record) {
@@ -78,7 +78,7 @@ class OperationGroups {
       if (this.exists(child.operationId)) throw failure("REQUEST_CONFLICT", "Child ID belongs to a group");
       if (this.operations.exists(child.operationId)) {
         try { this.verifyChild(child, key); }
-        catch { throw failure("REQUEST_CONFLICT", "Child ID belongs to different task metadata"); }
+        catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'operation-groups.cjs',line:81}); throw failure("REQUEST_CONFLICT", "Child ID belongs to different task metadata"); }
       }
     }
     let record;
@@ -104,7 +104,7 @@ class OperationGroups {
       try {
         const record = this.record(name.slice(0, -5));
         if (!deviceId || record.children.some(child => child.deviceId === deviceId)) groups.push(this.public(record));
-      } catch { groups.push({ operationId: name.slice(0, -5), kind: "exec-group", state: "unknown", errorCode: "OPERATION_CORRUPT" }); }
+      } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'operation-groups.cjs',line:107}); groups.push({ operationId: name.slice(0, -5), kind: "exec-group", state: "unknown", errorCode: "OPERATION_CORRUPT" }); }
     }
     return groups;
   }
@@ -114,7 +114,7 @@ class OperationGroups {
       throw failure("INVALID_GROUP_CURSOR", "Paginate each child operationId using its own byte offsets");
     const results = await Promise.all(record.children.map(async child => {
       try { this.verifyChild(child, key); return await this.operations.get(child.operationId, params); }
-      catch (error) { return { operationId: child.operationId, deviceId: child.deviceId,
+      catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'operation-groups.cjs',line:117}); return { operationId: child.operationId, deviceId: child.deviceId,
         state: "unknown", errorCode: error.code || "OPERATION_QUERY_FAILED" }; }
     }));
     const knownFinal = new Set(["completed", "failed", "cancelled", "not_started"]);
@@ -130,7 +130,7 @@ class OperationGroups {
     const results = await Promise.all(record.children.map(async child => {
       try { this.verifyChild(child, key); return await this.operations.cancel(child.operationId,
         { requestId: childCancelId(requestId, child.operationId) }); }
-      catch (error) { return { operationId: child.operationId, deviceId: child.deviceId,
+      catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'operation-groups.cjs',line:133}); return { operationId: child.operationId, deviceId: child.deviceId,
         state: "unknown", cancelRequested: false, errorCode: error.code || "CANCEL_FAILED" }; }
     }));
     return { operationId: key, kind: record.kind, state: "cancel_requested", results };

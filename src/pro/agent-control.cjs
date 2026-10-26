@@ -12,7 +12,7 @@ async function openControl(ssh, deviceId) {
         done = true;
         if (error) reject(error); else resolve(stream);
       });
-    } catch (error) { clearTimeout(timer); reject(error); }
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent-control.cjs',line:15}); clearTimeout(timer); reject(error); }
   });
   const client = new ControlClient(stream);
   try {
@@ -21,7 +21,7 @@ async function openControl(ssh, deviceId) {
       throw failure("CONTROL_PROTOCOL_MISMATCH", "Verified target does not support this task protocol");
     client.capabilities = hello.capabilities;
     return client;
-  } catch (error) { client.close(); throw error; }
+  } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent-control.cjs',line:24}); client.close(); throw error; }
 }
 async function agentControl(agent, deviceId) {
   agent.connections.descriptor(deviceId);

@@ -13,7 +13,7 @@ async function statusAsync({profile}){
   if(process.platform==="linux")return {...settings,enabled:fs.existsSync(linuxFile()),mode:"client",clientOnly:true,supported:true};
   if(process.platform==="win32"){
     try{const value=JSON.parse(await powershell("$p=Join-Path ([Environment]::GetFolderPath('Startup')) 'SSH Relay Pro 5.5.lnk';@{enabled=(Test-Path $p);elevated=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)}|ConvertTo-Json -Compress"));return {...settings,...value,mode:"client",clientOnly:true,supported:true};}
-    catch{return {...settings,mode:"client",clientOnly:true,supported:true,effectiveUnknown:true};}
+    catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'autostart.cjs',line:16});return {...settings,mode:"client",clientOnly:true,supported:true,effectiveUnknown:true};}
   }
   return {...settings,supported:false,clientOnly:true,mode:"client"};
 }

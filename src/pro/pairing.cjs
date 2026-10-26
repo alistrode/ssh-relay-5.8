@@ -170,7 +170,7 @@ async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, 
           entry.answer = seal(sessionKey, assigned || info, "far:" + room + ":" + p.sid);
           send({ type: "paired", sid: p.sid, envelope: entry.answer });
           log?.("pair_authorized", { deviceId: who.deviceId });
-        } catch {
+        } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'pairing.cjs',line:173});
           entry.failed = true;
           log?.("pair_attempt_failed");
         } finally {
@@ -190,7 +190,7 @@ async function offer({ broker, info, authorize, log, ttl = 24 * 60 * 60 * 1000, 
           }
         }
       }
-    } catch {
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'pairing.cjs',line:193});
       log?.("pair_invalid_message");
     }
   });
@@ -300,7 +300,7 @@ async function join({ broker, code, who, accept, timeout = 90000 }) {
             resolve(info);
           }, 2000).unref();
         }
-      } catch (e) {
+      } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'pairing.cjs',line:303});
         done = true;
         cleanup();
         reject(Error("Pairing authentication or target verification failed"));

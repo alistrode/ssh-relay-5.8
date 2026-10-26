@@ -1,3 +1,4 @@
+const runtimeLog=require('./pro/runtime-log.cjs').install('relay-near');
 if (require.main === module) throw Error("5.5 不支持独立后台入口，请启动 SSH Relay Pro 客户端");
 var fs = require("node:fs");
 var path = require("node:path");

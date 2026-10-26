@@ -9,7 +9,7 @@ function clearLogs(directory) {
   for (const name of names) for (const suffix of ["", ".1", ".2", ".3", ".previous"]) {
     const file = path.join(directory, name + suffix);
     let stat;
-    try { stat = fs.lstatSync(file); } catch (e) { if (e.code === "ENOENT") continue; throw e; }
+    try { stat = fs.lstatSync(file); } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'manual-logs.cjs',line:12}); if (e.code === "ENOENT") continue; throw e; }
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw Error("Invalid log file");
     const fd = fs.openSync(file, fs.constants.O_WRONLY | (fs.constants.O_NOFOLLOW || 0));
     try {

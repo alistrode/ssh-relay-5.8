@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('file-worker');
 const { parentPort, workerData } = require("node:worker_threads");
 const { read } = require("./store.cjs");
 const { RemoteFiles } = require("./remote-files.cjs");
@@ -9,7 +10,7 @@ try {
     authorized: id => id === owner && !!read(authorizedFile, {})[id] });
   const value = files.handle(owner, method, params);
   parentPort.postMessage({ ok: true, value });
-} catch (error) {
+} catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'file-worker.cjs',line:13});
   const known = /^(TRANSFER_|SOURCE_CHANGED$|DESTINATION_CHANGED$|REQUEST_CONFLICT$|AUTH_REVOKED$|CONTROL_)/.test(error.code || "");
   parentPort.postMessage({ ok: false, code: known ? error.code : "TRANSFER_STORAGE_FAILED",
     message: known ? error.message : "File service storage operation failed" });

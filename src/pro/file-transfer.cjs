@@ -74,7 +74,7 @@ class TransferSnapshots {
         sourceIdentity: initial, size: initial.size, blockBytes: BLOCK_BYTES, sha256: full.digest("hex"), blocks,
         createdAt: Date.now(), state: "prepared" };
       durableWrite(path.join(dir, "manifest.json"), r); syncDirectory(dir); return r;
-    } catch (error) {
+    } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'file-transfer.cjs',line:77});
       // Partial snapshots remain isolated, never presented as prepared or reused.
       if (error.code?.startsWith("TRANSFER_") || error.code === "SOURCE_CHANGED") throw error;
       throw failure("TRANSFER_STORAGE_FAILED", "Could not save upload snapshot");

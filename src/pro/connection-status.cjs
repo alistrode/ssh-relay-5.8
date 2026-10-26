@@ -40,7 +40,7 @@ async function observeConnectionRequest(value, readDevices, { statusQuery = fals
         ? "Live state is matched by the request's exact deviceId."
         : "Pairing did not identify a target. Online remembered devices are not implicitly assigned to this pairing request.",
     };
-  } catch (error) {
+  } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'connection-status.cjs',line:43});
     connectionStatus = { scope: "live_remembered_devices", available: false,
       observedAt: Date.now(), targetDeviceId: value.deviceId || null,
       targetResolved: false, target: null, verifiedOnlineDevices: [], devices: [],

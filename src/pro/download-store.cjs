@@ -5,7 +5,7 @@ const { operationId } = require("./task-spec.cjs");
 const { privateJSON, durableWrite, syncDirectory } = require("./task-store.cjs");
 const { digest, identity, regular, BLOCK_BYTES } = require("./file-transfer.cjs");
 function fail(code, message) { throw Object.assign(Error(message), { code }); }
-function present(file) { try { const s = fs.lstatSync(file); if (!s.isFile() || s.isSymbolicLink() || s.nlink !== 1) fail("TRANSFER_PATH_INVALID", "Download destination must be a regular file"); return identity(s); } catch (e) { if (e.code === "ENOENT") return null; throw e; } }
+function present(file) { try { const s = fs.lstatSync(file); if (!s.isFile() || s.isSymbolicLink() || s.nlink !== 1) fail("TRANSFER_PATH_INVALID", "Download destination must be a regular file"); return identity(s); } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'download-store.cjs',line:8}); if (e.code === "ENOENT") return null; throw e; } }
 class DownloadStore {
   constructor(dir) { this.dir = folder(path.resolve(dir)); }
   file(id) { return path.join(this.dir, operationId(id) + ".json"); }

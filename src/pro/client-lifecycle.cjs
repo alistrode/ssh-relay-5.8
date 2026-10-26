@@ -6,7 +6,7 @@ function alive(pid) {
   if (!Number.isInteger(pid) || pid < 1) return false;
   try { process.kill(pid, 0);
     if(process.platform==="linux"){const stat=fs.readFileSync("/proc/"+pid+"/stat","utf8");if(stat.slice(stat.lastIndexOf(")")+2).startsWith("Z "))return false;}
-    return true; } catch (error) { return error.code === "EPERM"; }
+    return true; } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'client-lifecycle.cjs',line:9}); return error.code === "EPERM"; }
 }
 function clientState(profile) { return read(path.join(profile, runtimeName), null); }
 function profileFor(dir) {
@@ -16,7 +16,7 @@ function clientActive(dir) {
   try {
     const profile = require("./release.cjs").requireProfile(profileFor(dir)), state = clientState(profile);
     return !!(state?.desiredRunning && !state.stopping && alive(state.clientPid) && Date.now() - state.heartbeatAt < 15000);
-  } catch { return false; }
+  } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'client-lifecycle.cjs',line:19}); return false; }
 }
 function command(profile, action, extra = {}) {
   const state = clientState(profile);
@@ -25,7 +25,7 @@ function command(profile, action, extra = {}) {
     const req = http.request({ host:"127.0.0.1", port:state.port, path:"/"+action, method:"POST",
       headers:{Authorization:"Bearer "+state.token,"Content-Type":"application/json"}, timeout:45000 }, res => {
       let data=""; res.on("data", chunk => { data += chunk; }); res.on("end", () => {
-        try { const value=JSON.parse(data); res.statusCode===200 ? resolve(value) : reject(Error(value.error || "客户端操作失败")); } catch(error){reject(error);}
+        try { const value=JSON.parse(data); res.statusCode===200 ? resolve(value) : reject(Error(value.error || "客户端操作失败")); } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'client-lifecycle.cjs',line:28});reject(error);}
       });
     });
     req.on("error",reject); req.on("timeout",()=>req.destroy(Error("客户端操作超时")));
@@ -34,7 +34,7 @@ function command(profile, action, extra = {}) {
 }
 async function launch(options) {
   const profile = require("./release.cjs").requireProfile(options.profile,{create:true});
-  let state; try { state=clientState(profile); } catch {}
+  let state; try { state=clientState(profile); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'client-lifecycle.cjs',line:37}); }
   if (state && alive(state.pid) && state.desiredRunning) {
     if (!options.adoptPid) await command(profile,"show");
     return state;
@@ -50,7 +50,7 @@ async function launch(options) {
   } finally { fs.closeSync(log); }
   for(let n=0;n<100;n++) {
     await new Promise(resolve=>setTimeout(resolve,100));
-    try { state=clientState(profile);if(state?.desiredRunning && alive(state.pid))return state; } catch {}
+    try { state=clientState(profile);if(state?.desiredRunning && alive(state.pid))return state; } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'client-lifecycle.cjs',line:53}); }
   }
   throw Error("客户端守护启动失败，已停止独立后台启动");
 }
@@ -75,14 +75,14 @@ async function processList() {
   if(process.platform==="win32") {
     const script="Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress";
     return new Promise((resolve,reject)=>cp.execFile("powershell.exe",["-NoProfile","-NonInteractive","-EncodedCommand",Buffer.from(script,"utf16le").toString("base64")],{encoding:"utf8",windowsHide:true,maxBuffer:8*1024*1024,timeout:20000},(err,stdout)=>{
-      if(err)return reject(err);try{resolve([JSON.parse(stdout)].flat().map(p=>({pid:p.ProcessId,ppid:p.ParentProcessId,command:p.CommandLine||""})));}catch(error){reject(error);}
+      if(err)return reject(err);try{resolve([JSON.parse(stdout)].flat().map(p=>({pid:p.ProcessId,ppid:p.ParentProcessId,command:p.CommandLine||""})));}catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'client-lifecycle.cjs',line:78});reject(error);}
     }));
   }
   const rows=[];
   for(const pid of fs.readdirSync("/proc").filter(p=>/^\d+$/.test(p)))try{
     const stat=fs.readFileSync("/proc/"+pid+"/stat","utf8"), fields=stat.slice(stat.lastIndexOf(")")+2).split(" ");
     if(fields[0]!=="Z")rows.push({pid:Number(pid),ppid:Number(fields[1]),command:fs.readFileSync("/proc/"+pid+"/cmdline").toString().replace(/\0/g," ")});
-  }catch{}
+  }catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'client-lifecycle.cjs',line:85}); }
   return rows;
 }
 async function stopBackends(profile, clientPid) {
@@ -104,7 +104,7 @@ async function stopBackends(profile, clientPid) {
     if(!last.length)return;
     for(const p of last.reverse()) {
       if(process.platform==="win32")await new Promise(resolve=>cp.execFile("taskkill.exe",["/PID",String(p.pid),"/T","/F"],{windowsHide:true,timeout:10000},()=>resolve()));
-      else try{process.kill(p.pid,round<2?"SIGTERM":"SIGKILL");}catch{}
+      else try{process.kill(p.pid,round<2?"SIGTERM":"SIGKILL");}catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'client-lifecycle.cjs',line:107}); }
     }
     await new Promise(resolve=>setTimeout(resolve,300));
   }

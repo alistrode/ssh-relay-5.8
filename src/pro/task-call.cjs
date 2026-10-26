@@ -42,7 +42,7 @@ async function executeTask(control, request, {
       page = await control.request("get", { operationId: request.operationId,
         stdoutOffset: offsets.stdout, stderrOffset: offsets.stderr, limitBytes: 65536 });
     }
-  } catch (error) {
+  } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-call.cjs',line:45});
     return { ...partial(), success: false, completed: false, state: "unknown",
       errorCode: error.code || "CONTROL_UNAVAILABLE",
       error: "Operation outcome is unknown; query this operationId before any retry" };

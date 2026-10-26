@@ -46,7 +46,7 @@ function framing(stream, onFrame, onClose = () => {}) {
         onFrame(frame, size);
         if (closed) return;
       }
-    } catch { fail(); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'control-channel.cjs',line:49}); fail(); }
   });
   stream.on("error", close);
   stream.on("close", close);
@@ -105,7 +105,7 @@ function serveControl(stream, handler, { canStart = () => true } = {}) {
         return handler(frame.method, frame.params);
       }).then(result => {
         try { channel.send({ rpcId: frame.rpcId, ok: true, result }); }
-        catch (failure) { sendError(frame.rpcId, failure); }
+        catch (failure) { require('./runtime-log.cjs').captureCaught(failure,{component:'control-channel.cjs',line:108}); sendError(frame.rpcId, failure); }
       }, failure => sendError(frame.rpcId, failure)).finally(() => {
         active--; ids.delete(frame.rpcId);
         pump();
@@ -151,7 +151,7 @@ class ControlClient {
       }, timeoutMs);
       this.pending.set(rpcId, { resolve, reject, timer });
       try { this.channel.send({ rpcId, method, params }); }
-      catch (failure) {
+      catch (failure) { require('./runtime-log.cjs').captureCaught(failure,{component:'control-channel.cjs',line:154});
         clearTimeout(timer); this.pending.delete(rpcId); reject(failure);
       }
     });

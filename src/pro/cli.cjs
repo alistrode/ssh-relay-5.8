@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('cli');
 const { recoveryInstructions, withRecovery } = require("./ai-recovery.cjs");
 const fs = require("node:fs"),
   path = require("node:path"),
@@ -15,7 +16,7 @@ async function stdinJSON() {
   }
   let value;
   try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-  catch { throw Error("Invalid stdin JSON"); }
+  catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'cli.cjs',line:19}); throw Error("Invalid stdin JSON"); }
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw Error("Expected a JSON object from stdin");
   return value;
@@ -100,6 +101,7 @@ if (require.main === module)
       );
     console.log(JSON.stringify(withRecovery(value), null, 2));
   })().catch((e) => {
+    runtimeLog.record("cli_failed",{error:e});
     console.error(JSON.stringify(withRecovery({ ok: false, error: { code: e.code, message: e.message, retryable: e.retryable }, connectionTaskId: e.connectionTaskId, recovery: e.recovery }), null, 2));
     process.exitCode = 1;
   });

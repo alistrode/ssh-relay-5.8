@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('worker');
 const path = require("node:path");
 const kind = process.argv[2],
   config = process.argv[3];

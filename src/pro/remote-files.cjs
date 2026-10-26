@@ -6,7 +6,7 @@ const { privateJSON, durableWrite, syncDirectory } = require("./task-store.cjs")
 const { BLOCK_BYTES, digest, identity, regular } = require("./file-transfer.cjs");
 function fail(code, message) { throw Object.assign(Error(message), { code }); }
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-function present(file) { try { return identity(fs.lstatSync(file)); } catch (e) { if (e.code === "ENOENT") return null; throw e; } }
+function present(file) { try { return identity(fs.lstatSync(file)); } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'remote-files.cjs',line:9}); if (e.code === "ENOENT") return null; throw e; } }
 class RemoteFiles {
   constructor({ dir, deviceId, authorized }) { this.dir = folder(path.resolve(dir)); this.deviceId = operationId(deviceId); this.authorized = authorized; this.downloads = new (require("./remote-downloads.cjs").RemoteDownloads)(this); }
   check(owner) { operationId(owner); if (!this.authorized(owner)) fail("AUTH_REVOKED", "Transfer controller authorization is unavailable"); }
@@ -124,7 +124,7 @@ class RemoteFiles {
   }
   handle(owner, method, p) {
     try { return this.dispatch(owner, method, p); }
-    catch (error) {
+    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'remote-files.cjs',line:127});
       if (/^(TRANSFER_|SOURCE_CHANGED$|DESTINATION_CHANGED$|REQUEST_CONFLICT$|AUTH_REVOKED$|CONTROL_)/.test(error.code || "")) throw error;
       throw Object.assign(Error("Transfer storage operation failed; query the saved transfer ID"), { code: "TRANSFER_STORAGE_FAILED" });
     }

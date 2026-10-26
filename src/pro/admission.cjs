@@ -22,7 +22,7 @@ function verifyProbe(envelope, authorized, now = Date.now(), acceptChallenge = n
     const key = utils.parseKey(entry.publicKey);
     if (key instanceof Error || key.verify(Buffer.from(envelope.payload), Buffer.from(envelope.signature, "base64")) !== true) return null;
     return { ...value, system: require("./os-version.cjs").normalizeSystem(value.system), hostname: typeof value.hostname === "string" ? value.hostname.slice(0,160) : "", label: String(entry.label || "Authorized near end").slice(0, 80) };
-  } catch { return null; }
+  } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'admission.cjs',line:25}); return null; }
 }
 class Admission {
   constructor({ now = Date.now, onChange = () => {}, ttl = 60000 } = {}) {

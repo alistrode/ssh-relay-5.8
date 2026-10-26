@@ -1,4 +1,5 @@
 "use strict";
+const runtimeLog=require('./runtime-log.cjs').install('task-runner');
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -22,7 +23,7 @@ async function run(directory) {
   if (requestHash(manifest.deviceId, manifest.kind, spec) !== manifest.requestHash)
     throw Error("Operation input does not match its accepted request");
   try { fs.mkdirSync(file("execution.lock"), { mode: 0o700 }); }
-  catch (error) { if (error.code === "EEXIST") return; throw error; }
+  catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-runner.cjs',line:26}); if (error.code === "EEXIST") return; throw error; }
   if (privateJSON(file("result.json"), null)) return;
   const identity = processIdentity(process.pid);
   if (!identity) {
@@ -48,7 +49,7 @@ async function run(directory) {
   const windows = process.platform === "win32";
   const source = windows
     ? "\uFEFF$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);$global:LASTEXITCODE=0;try {\n" +
-      spec.command + "\n;if($LASTEXITCODE){exit $LASTEXITCODE}} catch {[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n"
+      spec.command + "\n;if($LASTEXITCODE){exit $LASTEXITCODE}} catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-runner.cjs',line:52});[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n"
     : spec.command + "\n";
   if (script) durableText(script, source);
   function stop(why) {
@@ -69,10 +70,10 @@ async function run(directory) {
       });
     } else {
       try { process.kill(-child.pid, "SIGTERM"); cancellationApplied = true; }
-      catch { cancellationError = "CANCEL_FAILED"; return; }
+      catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-runner.cjs',line:73}); cancellationError = "CANCEL_FAILED"; return; }
       killTimer = setTimeout(() => {
         if (sameProcess(childIdentity)) {
-          try { process.kill(-child.pid, "SIGKILL"); } catch {}
+          try { process.kill(-child.pid, "SIGKILL"); } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'task-runner.cjs',line:76}); }
         }
       }, 3000);
     }
@@ -90,7 +91,7 @@ async function run(directory) {
         if (!written) throw Error("Output write stalled");
         offset += written; stream.bytes += written;
       }
-    } catch { outputError = true; stop("output_storage"); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-runner.cjs',line:94}); outputError = true; stop("output_storage"); }
   }
   async function finish(code, signal, spawnError) {
     if (finishing) return;
@@ -98,8 +99,8 @@ async function run(directory) {
     clearInterval(interval); clearTimeout(timeout); clearTimeout(killTimer);
     if (killer) await killer;
     for (const stream of Object.values(output)) {
-      try { fs.fsyncSync(stream.fd); } catch { outputError = true; }
-      try { fs.closeSync(stream.fd); } catch { outputError = true; }
+      try { fs.fsyncSync(stream.fd); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-runner.cjs',line:102}); outputError = true; }
+      try { fs.closeSync(stream.fd); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-runner.cjs',line:103}); outputError = true; }
     }
     const state = outputError ? "unknown" : reason === "timeout" || spawnError ? "failed" :
       reason === "cancel" && (!child || cancellationApplied) ? "cancelled" :
@@ -116,7 +117,7 @@ async function run(directory) {
     manifest = { ...manifest, state, updatedAt: result.finishedAt };
     durableWrite(file("manifest.json"), manifest);
     for (const name of ["input.json", ...(script ? [path.basename(script)] : [])]) {
-      try { fs.unlinkSync(file(name)); } catch (error) { if (error.code !== "ENOENT") throw error; }
+      try { fs.unlinkSync(file(name)); } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-runner.cjs',line:120}); if (error.code !== "ENOENT") throw error; }
     }
     if (temporary) fs.rmSync(temporary, { recursive: true, force: true });
   }
@@ -139,8 +140,8 @@ async function run(directory) {
   child.once("spawn", () => { childIdentity = processIdentity(child.pid); });
   child.stdout.on("data", data => append("stdout", data));
   child.stderr.on("data", data => append("stderr", data));
-  child.on("error", () => finish(null, null, true).catch(() => { process.exitCode = 1; }));
-  child.on("close", (code, signal) => finish(code, signal, false).catch(() => { process.exitCode = 1; }));
+  child.on("error", () => finish(null, null, true).catch(error => { runtimeLog.record("task_runner_failed",{error});process.exitCode = 1; }));
+  child.on("close", (code, signal) => finish(code, signal, false).catch(error => { runtimeLog.record("task_runner_failed",{error});process.exitCode = 1; }));
   interval = setInterval(() => {
     try {
       if (Date.now() - runnerRecord.heartbeatAt >= 2000) {
@@ -149,11 +150,11 @@ async function run(directory) {
       }
       const request = privateJSON(file("cancel.json"), null);
       if (request && request.owner === manifest.owner) stop("cancel");
-    } catch { stop("output_storage"); }
+    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-runner.cjs',line:153}); stop("output_storage"); }
   }, 200);
   timeout = setTimeout(() => stop("timeout"), spec.timeoutMs);
   process.on("SIGTERM", () => stop("cancel"));
   await new Promise(resolve => child.once("close", resolve));
 }
 module.exports = { run, LIMIT };
-if (require.main === module) run(process.argv[2]).catch(() => { process.exitCode = 1; });
+if (require.main === module) run(process.argv[2]).catch(error => { runtimeLog.record("task_runner_failed",{error});process.exitCode = 1; });
