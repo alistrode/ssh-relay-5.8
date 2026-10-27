@@ -49,7 +49,7 @@ async function run(directory) {
   const windows = process.platform === "win32";
   const source = windows
     ? "\uFEFF$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);$global:LASTEXITCODE=0;try {\n" +
-      spec.command + "\n;if($LASTEXITCODE){exit $LASTEXITCODE}} catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-runner.cjs',line:52});[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n"
+      spec.command + "\n;if($LASTEXITCODE){exit $LASTEXITCODE}} catch {[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n"
     : spec.command + "\n";
   if (script) durableText(script, source);
   function stop(why) {

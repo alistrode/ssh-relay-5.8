@@ -53,7 +53,7 @@ function processState(expected) {
     }
     if (process.platform === "win32") {
       const script = "try{$p=Get-CimInstance Win32_Process -Filter 'ProcessId=" + expected.pid +
-        "' -ErrorAction Stop;if(-not $p){'ABSENT'}}catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'task-process.cjs',line:56});exit 1}";
+        "' -ErrorAction Stop;if(-not $p){'ABSENT'}}catch {exit 1}";
       const result = cp.spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
         { encoding: "utf8", windowsHide: true, timeout: 10000 });
       if (result.status === 0 && result.stdout.trim() === "ABSENT") return "exited";
