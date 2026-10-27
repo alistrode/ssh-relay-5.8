@@ -1,8 +1,8 @@
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 const sourceRoot=process.env.RELAY_SOURCE||path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-const {Client}=await import(path.join(sourceRoot,'node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js'));
-const {StdioClientTransport}=await import(path.join(sourceRoot,'node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js'));
+const {Client}=await import(pathToFileURL(path.join(sourceRoot,'node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js')).href);
+const {StdioClientTransport}=await import(pathToFileURL(path.join(sourceRoot,'node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js')).href);
 import fs from 'node:fs';
 const root=sourceRoot, dir=process.env.RELAY_AGENT;
 if(!dir)throw Error('Set RELAY_AGENT explicitly');
