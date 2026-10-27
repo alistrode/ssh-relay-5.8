@@ -1,0 +1,7 @@
+{
+  "version": "5.7.0",
+  "node": "v24.19.0",
+  "sourceCommit": "bdd0dd182644cc5484fe41b8e68ec110ef2601ea",
+  "edition": "cloud",
+  "privateStateIncluded": false
+}
