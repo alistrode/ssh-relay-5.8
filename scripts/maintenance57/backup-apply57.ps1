@@ -1,0 +1,4 @@
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$r='E:\xxm\ssh-relay-5.7-isolated';$app="$r\release\resources\app";$stamp=Get-Date -Format yyyyMMdd-HHmmss;$backup="E:\xxm\beifen\ssh-relay-5.7\source-$stamp.tar.gz";[void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($backup));tar.exe -czf $backup -C $app src desktop package.json package-lock.json;if($LASTEXITCODE -ne 0){throw 'Backup failed'}
+Expand-Archive -LiteralPath "$r\dev\repair57.zip" -DestinationPath "$r\dev\repair57-stage" -Force
+foreach($n in @('src\pro\client-lifecycle.cjs','src\pro\guardian.cjs','desktop\main.cjs','desktop\renderer.js','desktop\preload.cjs')){[IO.File]::Copy((Join-Path "$r\dev\repair57-stage" $n),(Join-Path $app $n),$true)}
+@{state='patched';backup=$backup}|ConvertTo-Json -Compress

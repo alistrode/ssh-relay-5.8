@@ -10,6 +10,7 @@ const { operationId, normalizeTask, requestHash } = require("./task-spec.cjs");
 const { processIdentity, sameProcess } = require("./task-process.cjs");
 const LIMIT = 64 * 1024 * 1024;
 async function run(directory) {
+  await require("./task-process.cjs").prepareIdentity();
   directory = path.resolve(directory);
   const key = operationId(path.basename(directory));
   if (fs.lstatSync(directory).isSymbolicLink()) throw Error("Invalid operation directory");

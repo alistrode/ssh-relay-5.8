@@ -16,7 +16,7 @@ async function controlFor(session) {
   if (conn.config.agentDeviceId !== session.deviceId) throw Object.assign(Error("Session connection target identity changed"), { code: "SESSION_TARGET_CHANGED" });
   let control = controls.get(conn);
   if (!control || control.channel.closed()) { control = await openControl(conn.client, session.deviceId); controls.set(conn, control); }
-  if (control.capabilities.sessionProtocol !== 55 || !control.capabilities.sessionResume)
+  if (control.capabilities.sessionProtocol !== 57 || !control.capabilities.sessionResume)
     throw Object.assign(Error("Original target does not support recoverable sessions"), { code: "SESSION_UNSUPPORTED" });
   return control;
 }
@@ -52,8 +52,8 @@ export async function getSession(id) {
 }
 export async function startSession(name, label) {
   const conn = await connect(name), config = conn.config;
-  if (!config.agentDeviceId || config.capabilities?.sessionProtocol !== 55 || !config.capabilities?.sessionResume)
-    throw Object.assign(Error("5.5 recoverable sessions are required"), { code: "RELEASE_MISMATCH" });
+  if (!config.agentDeviceId || config.capabilities?.sessionProtocol !== 57 || !config.capabilities?.sessionResume)
+    throw Object.assign(Error("5.7 recoverable sessions are required"), { code: "RELEASE_MISMATCH" });
   const remoteSessionId = crypto.randomUUID(), id = "ssh_" + remoteSessionId, agent = await localAgentClient();
   await agent.registerSession({ id, deviceId: config.agentDeviceId, server: config.name, name: label || name, platform: config.platform });
   const session = { id, remoteSessionId, deviceId: config.agentDeviceId, server: config.name, name: label || name,

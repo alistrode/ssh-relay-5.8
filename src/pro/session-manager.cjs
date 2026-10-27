@@ -52,7 +52,7 @@ class SessionManager {
     }
     if (!this.identityAvailable || !this.osBoot) throw failure("PROCESS_IDENTITY_UNAVAILABLE", "Session process identity cannot be verified");
     if (fs.readdirSync(this.dir).length >= 64) throw failure("SESSION_CAPACITY", "Session record capacity reached");
-    try { fs.mkdirSync(dir, { mode: 0o700 }); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-manager.cjs',line:55}); throw failure("SESSION_CORRUPT", "Existing session directory cannot be replaced"); }
+    try { fs.mkdirSync(dir, { mode: 0o700 }); } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'session-manager.cjs',line:57}); throw failure("SESSION_CORRUPT", "Existing session directory cannot be replaced"); }
     durableWrite(file, { schemaVersion: 1, executionBudgetVersion: 1, sessionId, owner, deviceId: this.deviceId, platform: this.platform,
       osBoot: this.osBoot, cwd: normalized.cwd, requestHash, createdAt: Date.now() });
     folder(path.join(dir, "inbox")); folder(path.join(dir, "requests"));
@@ -155,8 +155,8 @@ class SessionManager {
       results.push(...this.revoke(owner));
     return results;
   }
-  tick() {
-    this.scheduler.tick();
+  tick({ schedule = true } = {}) {
+    if (schedule) this.scheduler.tick();
     if (Date.now() - (this.lastAuthorizationCheck || 0) < 2000) return;
     this.lastAuthorizationCheck = Date.now(); this.reconcileAuthorization();
   }

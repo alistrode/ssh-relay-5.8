@@ -3,7 +3,9 @@ const fs = require("node:fs");
 const cp = require("node:child_process");
 const path = require("node:path");
 const { systemBootId } = require("./store.cjs");
+let selfIdentity;
 function processIdentity(pid) {
+  if (pid === process.pid && selfIdentity) return selfIdentity;
   if (!Number.isInteger(pid) || pid < 1) return null;
   const osBoot = systemBootId();
   if (!osBoot) return null;
@@ -16,8 +18,10 @@ function processIdentity(pid) {
       const stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
       const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
       if (fields[0] === "Z") return null;
-      return { pid, osBoot, startToken: fields[19],
+      const identity = { pid, osBoot, startToken: fields[19],
         args: fs.readFileSync("/proc/" + pid + "/cmdline").toString().split("\0").filter(Boolean) };
+      if (pid === process.pid) selfIdentity = identity;
+      return identity;
     }
     if (process.platform === "win32") {
       const script = "$p=Get-CimInstance Win32_Process -Filter 'ProcessId=" + pid +
@@ -28,10 +32,23 @@ function processIdentity(pid) {
       if (result.status !== 0 || !result.stdout.trim()) return null;
       const value = JSON.parse(result.stdout);
       if (!value.startToken || !value.command) return null;
-      return { pid, osBoot, startToken: value.startToken, command: value.command };
+      const identity = { pid, osBoot, startToken: value.startToken, command: value.command };
+      if (pid === process.pid) selfIdentity = identity;
+      return identity;
     }
   } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'task-process.cjs',line:33}); }
   return null;
+}
+async function prepareIdentity(){
+  if(selfIdentity)return selfIdentity;
+  const osBoot=await require("./store.cjs").prepareSystemBootId();
+  if(!osBoot)return null;
+  if(process.platform!=="win32")return processIdentity(process.pid);
+  const script="$p=Get-CimInstance Win32_Process -Filter 'ProcessId="+process.pid+"' -ErrorAction Stop;if($p){[pscustomobject]@{startToken=$p.CreationDate.ToUniversalTime().Ticks.ToString();command=$p.CommandLine}|ConvertTo-Json -Compress}";
+  return new Promise(resolve=>cp.execFile("powershell.exe",["-NoProfile","-NonInteractive","-EncodedCommand",Buffer.from(script,"utf16le").toString("base64")],{encoding:"utf8",windowsHide:true,timeout:10000},(error,stdout)=>{
+    try{if(error)throw error;const value=JSON.parse(stdout);if(!value.startToken||!value.command)throw Error("Self identity unavailable");selfIdentity={pid:process.pid,osBoot,startToken:value.startToken,command:value.command};resolve(selfIdentity);}
+    catch(error){require('./runtime-log.cjs').captureCaught(error,{component:'self-identity',phase:'async-startup'});resolve(null);}
+  }));
 }
 function sameProcess(expected) {
   const current = processIdentity(expected?.pid);
@@ -77,4 +94,4 @@ function ownedProcessRunner(record, directory, script, directoryField) {
 }
 function ownedRunner(record, directory) { return ownedProcessRunner(record, directory, "task-runner.cjs", "operationDir"); }
 function ownedSessionRunner(record, directory) { return ownedProcessRunner(record, directory, "session-runner.cjs", "sessionDir"); }
-module.exports = { processIdentity, sameProcess, processState, ownedRunner, ownedSessionRunner, runnerArgumentsMatch };
+module.exports = { prepareIdentity, processIdentity, sameProcess, processState, ownedRunner, ownedSessionRunner, runnerArgumentsMatch };

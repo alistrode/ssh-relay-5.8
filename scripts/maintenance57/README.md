@@ -1,0 +1,1 @@
+这些脚本记录本次指定 Windows 实机 5.7 维护，路径对应 E:\xxm\ssh-relay-5.7-isolated 和独立 Acer profile。执行前必须使用已核验目标；不是通用系统修复工具。备份在 E:\xxm\beifen\ssh-relay-5.7。restart57 只在客户端归属匹配且确认后台已停止后结束该 GUI，再启动既有 5.7 交互任务。勿将正在运行的远端命令重复提交。capture57 只使用原生 PrintWindow，不采集整个桌面；截图必须私下检查并删除。

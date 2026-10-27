@@ -6,6 +6,7 @@ import { connect, sftp, sftpCall, transportStopping } from "./transport.js";
 const require = createRequire(import.meta.url);
 const { TransferSnapshots } = require("../pro/file-transfer.cjs");
 const { openControl } = require("../pro/agent-control.cjs");
+const {run:localFileJob}=require("../pro/local-file-job.cjs");
 function snapshots() { return new TransferSnapshots(statePath("transfers")); }
 async function recoverTransfer(work){
   let failures=0;
@@ -21,13 +22,13 @@ async function recoverTransfer(work){
 }
 export async function uploadSnapshot(server, localPath, remotePath) {
   const conn = await recoverTransfer(()=>connect(server)), transferId = crypto.randomUUID();
-  const r = snapshots().create({ transferId, deviceId: conn.config.agentDeviceId, localPath, remotePath, policy: "overwrite" });
+  const r = await localFileJob(statePath("transfers"),"create",{ transferId, deviceId: conn.config.agentDeviceId, localPath, remotePath, policy: "overwrite" });
   try { return await recoverTransfer(()=>resumeUpload(server, r.transferId)); }
   catch (error) { throw Object.assign(error, { transferId: r.transferId, deviceId: r.deviceId }); }
 }
 export async function resumeUpload(server, transferId, { statusOnly = false } = {}) {
-  const store = snapshots(), r = store.validate(transferId), conn = await connect(server);
-  if (conn.config.agentDeviceId !== r.deviceId || conn.config.capabilities.fileProtocol !== 55)
+  const store = snapshots(), r = await localFileJob(statePath("transfers"),"validate",transferId), conn = await connect(server);
+  if (conn.config.agentDeviceId !== r.deviceId || conn.config.capabilities.fileProtocol !== 57)
     throw Object.assign(Error("Transfer target differs or does not support recovery"), { transferId });
   const control = await openControl(conn.client, r.deviceId);
   try {
@@ -58,7 +59,7 @@ export async function resumeUpload(server, transferId, { statusOnly = false } = 
             try { await control.request("file.block", { transferId, index: i, sha256: r.blocks[i] }); continue; }
             catch (e) { if (!["TRANSFER_BLOCK_MISMATCH", "TRANSFER_BLOCK_INCOMPLETE"].includes(e.code)) throw e; }
           }
-          const bytes = store.block(transferId, i);
+          const bytes = store.block(transferId, i, r);
           await sftpCall(s, "write", handle, bytes, 0, bytes.length, i * r.blockBytes);
           await control.request("file.block", { transferId, index: i, sha256: r.blocks[i] });
         }
@@ -84,7 +85,7 @@ export async function resumeDownload(server, transferId, { statusOnly = false } 
   const store = downloads(), intent = store.intent(transferId);
   if (!intent) throw Object.assign(Error("Unknown download intent"), { transferId });
   const conn = await connect(server);
-  if (conn.config.agentDeviceId !== intent.deviceId || conn.config.capabilities.fileProtocol !== 55)
+  if (conn.config.agentDeviceId !== intent.deviceId || conn.config.capabilities.fileProtocol !== 57)
     throw Object.assign(Error("Download target differs or lacks recovery"), { transferId });
   const control = await openControl(conn.client, intent.deviceId);
   try {

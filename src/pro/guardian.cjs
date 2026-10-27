@@ -91,7 +91,7 @@ function spawn() {
         message: data
           .toString()
           .replace(/BUNDLE=.*/g, "[REDACTED]")
-          .slice(0, 500),
+,
       }),
     );
   proc.on("message", (message) => {

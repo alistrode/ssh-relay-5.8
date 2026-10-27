@@ -83,8 +83,9 @@ class TransferSnapshots {
       if (output !== undefined) fs.closeSync(output);
     }
   }
-  block(id, index) {
-    const r = this.record(id);
+  block(id, index, validatedRecord = null) {
+    const r = validatedRecord || this.record(id);
+    if(r.transferId!==id)throw failure("TRANSFER_CORRUPT","Snapshot record identity differs");
     if (!Number.isInteger(index) || index < 0 || index >= r.blocks.length) throw failure("TRANSFER_INVALID", "Invalid snapshot block index");
     const fd = regular(path.join(this.directory(id), "snapshot.bin"), fs.constants.O_RDONLY);
     try {
@@ -101,10 +102,19 @@ class TransferSnapshots {
     } finally { fs.closeSync(fd); }
   }
   validate(id) {
-    const r = this.record(id), full = crypto.createHash("sha256");
-    for (let i = 0; i < r.blocks.length; i++) full.update(this.block(id, i));
-    if (full.digest("hex") !== r.sha256) throw failure("TRANSFER_CORRUPT", "Snapshot complete hash differs");
-    return r;
+    const r=this.record(id),full=crypto.createHash("sha256"),file=path.join(this.directory(id),"snapshot.bin");
+    const fd=regular(file,fs.constants.O_RDONLY),initial=identity(fs.fstatSync(fd));
+    try{
+      if(initial.size!==r.size)throw failure("TRANSFER_CORRUPT","Snapshot size changed");
+      for(let i=0;i<r.blocks.length;i++){
+        const bytes=Buffer.alloc(Math.min(BLOCK_BYTES,r.size-i*BLOCK_BYTES));let offset=0;
+        while(offset<bytes.length){const n=fs.readSync(fd,bytes,offset,bytes.length-offset,i*BLOCK_BYTES+offset);if(!n)throw failure("TRANSFER_CORRUPT","Snapshot block is incomplete");offset+=n;}
+        if(digest(bytes)!==r.blocks[i])throw failure("TRANSFER_CORRUPT","Snapshot block hash differs");
+        full.update(bytes);
+      }
+      if(full.digest("hex")!==r.sha256||!same(initial,identity(fs.fstatSync(fd)))||!same(initial,identity(fs.lstatSync(file))))throw failure("TRANSFER_CORRUPT","Snapshot complete hash or identity differs");
+      return r;
+    }finally{fs.closeSync(fd);}
   }
 }
 module.exports = { TransferSnapshots, BLOCK_BYTES, digest, identity, regular };

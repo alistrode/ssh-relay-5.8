@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-27",
+  "platform": "Windows 11 25H2 26200.9711 x64",
+  "application": "5.7 desktop, interactive user session",
+  "finalProbe": {
+    "durationMs": 300006,
+    "requests": 300,
+    "errors": 0,
+    "offlineResults": 0,
+    "p50Ms": 1.9,
+    "p95Ms": 3.4,
+    "maxMs": 4.5
+  },
+  "finalProcesses": {
+    "allResponding": true,
+    "sameGuiSupervisorAndAgentThroughFinalObservation": true,
+    "summedWorkingSetBytes": 210448384,
+    "summedWorkingSetCaveat": "Shared pages may be counted more than once; this is not private-memory usage.",
+    "heartbeatAgeMs": 961,
+    "logDirectoryBytes": 803478
+  },
+  "manualChecks": {
+    "verifiedSshIdentityAndCommand": true,
+    "persistentCancellationCompleted": true,
+    "nextCommandAfterCancellationSucceeded": true,
+    "ordinaryCommandErrorDidNotCloseApplication": true,
+    "ipcErrorDidNotCloseRenderer": true,
+    "roundTripBytes": 65536,
+    "roundTripByteComparison": "equal",
+    "delayedHeartbeatProbeMs": 60000,
+    "delayedHeartbeatSessionActive": true,
+    "rendererStackCharacters": 20016,
+    "rendererStackEndMarkerRetained": true,
+    "rendererCauseChainRetained": true,
+    "nativeWindowPaintInspected": true,
+    "privateCapturesDeleted": true,
+    "standaloneCloudPackageStarted": true,
+    "productionDependencyEntrypointsContained": true
+  },
+  "startupStillRecorded": {
+    "windowCreateToPaintMs": 11132,
+    "guiStallsMs": [
+      4560,
+      4956
+    ],
+    "agentStallsMs": [
+      13253,
+      4017
+    ]
+  },
+  "limitations": [
+    "Finite observation, not proof against every future freeze.",
+    "Startup delays and broader performance-plan items remain documented.",
+    "No project test suite created or run."
+  ]
+}

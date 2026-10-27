@@ -42,7 +42,7 @@ function bindings(dir) {
   return result;
 }
 export function descriptorConfig(descriptor, base, allowCloudSelfTest = false) {
-  if (descriptor.applicationRelease !== "5.5" || descriptor.relayProtocol !== 55 || descriptor.deviceId !== base.deviceId || descriptor.host !== "127.0.0.1" ||
+  if (descriptor.applicationRelease !== "5.7" || descriptor.relayProtocol !== 57 || descriptor.deviceId !== base.deviceId || descriptor.host !== "127.0.0.1" ||
       !Number.isInteger(descriptor.port) || descriptor.port < 1 || descriptor.port > 65535 ||
       !Number.isSafeInteger(descriptor.generation) || descriptor.generation < 0 ||
       typeof descriptor.agentBootId !== "string" || !descriptor.agentBootId || descriptor.agentBootId.length > 128 ||
@@ -60,7 +60,7 @@ export function descriptorConfig(descriptor, base, allowCloudSelfTest = false) {
 }
 export async function agentServers(dir, allowCloudSelfTest = false) {
   const client = await agentClient(dir);
-  const status = await client.devices();
+  const status = await client.deviceSnapshot();
   if (!status.ok || !Array.isArray(status.devices)) throw Error("Invalid Agent device list");
   const names = bindings(dir), servers = Object.create(null);
   for (const device of status.devices) {
@@ -81,7 +81,7 @@ export async function agentServers(dir, allowCloudSelfTest = false) {
   // Only ready devices need private descriptors. Offline devices remain visible
   // with explicit state and cannot be mistaken for a verified SSH endpoint.
   await Promise.all(Object.values(servers).filter(d => d.state === "online").map(async base => {
-    try { servers[base.name] = descriptorConfig(await client.getConnection(base.deviceId), base, allowCloudSelfTest); }
+    try { servers[base.name] = descriptorConfig((()=>{const error=status.descriptorErrors?.[base.deviceId];if(error)throw Object.assign(Error(error.message),{code:error.code});return status.descriptors?.[base.deviceId];})(), base, allowCloudSelfTest); }
     catch (error) {
       if (error.statusCode === 401 || /^LOCAL_/.test(error.code || "")) throw error;
       const transient = ["DEVICE_NOT_READY", "DEVICE_DISCONNECTED", "WAITING_APPROVAL", "DEVICE_NOT_FOUND"].includes(error.code);

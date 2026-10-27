@@ -22,13 +22,21 @@ function systemVersion() {
   } else if (platform === "win32") {
     name = os.version();
     if (!/server/i.test(name)) name = Number(release.split(".")[2]) >= 22000 ? "Windows 11" : "Windows 10";
-    try {
-      const script = "$p=Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion';@{version=$p.DisplayVersion;build=($p.CurrentBuildNumber+'.'+$p.UBR)}|ConvertTo-Json -Compress";
-      const value = JSON.parse(require("node:child_process").execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script,"utf16le").toString("base64")], { encoding:"utf8", windowsHide:true, timeout:10000 }));
-      version = value.version || release; build = value.build || release;
-    } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'os-version.cjs',line:29}); /* Native OS information remains available without the registry. */ }
+
   }
   return cached = normalizeSystem({ name, version, build, platform, arch: os.arch(),
     displayName: `${name} ${version}${build !== version ? " · " + build : ""} · ${os.arch()}` });
 }
-module.exports = { systemVersion, normalizeSystem };
+let pending;
+async function prepareSystemVersion(){
+  const baseline=systemVersion();if(process.platform!=="win32")return baseline;
+  if(!pending)pending=new Promise(resolve=>{
+    const script="$p=Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' -ErrorAction Stop;@{version=$p.DisplayVersion;build=($p.CurrentBuildNumber+'.'+$p.UBR)}|ConvertTo-Json -Compress";
+    require("node:child_process").execFile("powershell.exe",["-NoProfile","-NonInteractive","-EncodedCommand",Buffer.from(script,"utf16le").toString("base64")],{encoding:"utf8",windowsHide:true,timeout:10000},(error,stdout)=>{
+      try{if(error)throw error;const value=JSON.parse(stdout),version=value.version||baseline.version,build=value.build||baseline.build;cached=normalizeSystem({...baseline,version,build,displayName:`${baseline.name} ${version}${build!==version?" · "+build:""} · ${baseline.arch}`});}
+      catch(error){require('./runtime-log.cjs').captureCaught(error,{component:'os-version',disposition:'keep-native-os-metadata'});}
+      resolve(cached);
+    });
+  });return pending;
+}
+module.exports = { systemVersion, normalizeSystem, prepareSystemVersion };

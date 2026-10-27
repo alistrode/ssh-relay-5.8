@@ -54,7 +54,7 @@ module.exports = async function (ARGS, CONTEXT) {
       "if(registry.sourceHash(source)!==spec.sourceHash)throw Error('Scheduled module version changed; inspect and re-register the schedule');" +
       "const container={exports:{}};new Function('module','require',source)(container,require('node:module').createRequire(registry.jobFile(spec.name)));" +
       "Promise.resolve(container.exports(spec.args)).then(result=>process.stdout.write(JSON.stringify(result))).catch(error=>{process.stderr.write(error.message);process.exitCode=1;});";
-  } else throw new Error("5.5 only accepts controlled schedules; injected implementation source is refused");
+  } else throw new Error("5.7 only accepts controlled schedules; injected implementation source is refused");
   const runner = match + lock + implementation;
   fs.writeFileSync(file, runner, { mode: 0o600 });
   let result;

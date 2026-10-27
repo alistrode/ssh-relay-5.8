@@ -22,7 +22,7 @@ function createRelay(config, role) {
     throw new Error("Invalid session configuration");
   const events = new EventEmitter();
   const opposite = role === "near" ? "far" : "near";
-  const prefix = `ssh-relay/5.5/${config.session}/`;
+  const prefix = `ssh-relay/5.7/${config.session}/`;
   const proxy = proxyForWebSocket(config.broker);
   const client = mqtt.connect(config.broker, {
     clientId: `ssh-${role}-${crypto.randomBytes(10).toString("hex")}`,
@@ -49,7 +49,7 @@ function createRelay(config, role) {
     lastPeerStatus = 0;
   let ready = false,
     stopping = false,
-    peerProtocol = 55,
+    peerProtocol = 57,
     peerInstance;
   const stats = {
     opened: 0,
@@ -68,7 +68,7 @@ function createRelay(config, role) {
       ...(state
         ? {
             cid: state.cid,
-            protocol: 55,
+            protocol: 57,
             opened: state.opened,
             sent: state.out,
             received: state.incoming,
@@ -140,8 +140,8 @@ function createRelay(config, role) {
       ...frame,
       time: Date.now(),
       role,
-      applicationRelease: "5.5",
-      protocol: 55,
+      applicationRelease: "5.7",
+      protocol: 57,
       relayEpoch: instance + ":" + epoch,
     });
     const packet = JSON.stringify({ body, mac: sign(body).toString("base64") });
@@ -298,7 +298,7 @@ function createRelay(config, role) {
   }
   function enqueue(state, type, data) {
     const frame = { cid: state.cid, seq: state.out++, type };
-    if (type === "open" && state.reliable) frame.protocol = 55;
+    if (type === "open" && state.reliable) frame.protocol = 57;
     if (data) frame.data = data.toString("base64");
     if (config.traceFrames)
       trace("frame_send", state, {
@@ -501,7 +501,7 @@ function createRelay(config, role) {
       )
         return reject("authentication");
       const frame = JSON.parse(envelope.body);
-      if (frame.applicationRelease !== "5.5" || frame.protocol !== 55) return reject("release_mismatch");
+      if (frame.applicationRelease !== "5.7" || frame.protocol !== 57) return reject("release_mismatch");
       if (frame.role !== opposite || !Number.isSafeInteger(frame.time)) return reject("role_or_time");
       const origin = frame.relayEpoch || frame.status?.relayEpoch || frame.status?.relayInstance;
       if (clock && frame.type === "clock_probe") {
@@ -543,8 +543,8 @@ function createRelay(config, role) {
       if (frame.type === "status") {
         const peer = frame.status;
         if (!peer || typeof peer !== "object") return reject("status_shape");
-        if (peer.applicationRelease !== "5.5" || peer.relayProtocol !== 55) return reject("release_mismatch");
-        peerProtocol = 55;
+        if (peer.applicationRelease !== "5.7" || peer.relayProtocol !== 57) return reject("release_mismatch");
+        peerProtocol = 57;
         events.emit("peer", peer);
         return;
       }
@@ -684,7 +684,7 @@ function createRelay(config, role) {
     if (!ready || stopping) return socket.destroy();
     socket.pause();
     const cid = crypto.randomBytes(16).toString("hex");
-    const state = attach(cid, socket, peerProtocol === 55);
+    const state = attach(cid, socket, peerProtocol === 57);
     socket.pause();
     enqueue(state, "open");
     state.openTimer = setTimeout(
@@ -705,8 +705,8 @@ function createRelay(config, role) {
       type: "status",
       status: {
         ...status,
-        applicationRelease: "5.5",
-        relayProtocol: 55,
+        applicationRelease: "5.7",
+        relayProtocol: 57,
         relayInstance: instance,
         relayEpoch: instance + ":" + epoch,
       },

@@ -1,7 +1,7 @@
 "use strict";
 // Run the real cloud distribution without a display or Electron.
 const fs=require("node:fs"),path=require("node:path"),cp=require("node:child_process");
-const root=path.resolve(__dirname,".."),bundle=path.join(root,"run-output/SSHRelayPro-5.5-Cloud-Linux-x64"),profile=path.resolve(process.env.RUNNER_TEMP||path.join(root,"work"),"ssh-relay-cloud55"),env={...process.env};
+const root=path.resolve(__dirname,".."),bundle=path.join(root,"run-output/SSHRelayPro-5.7-Cloud-Linux-x64"),profile=path.resolve(process.env.RUNNER_TEMP||path.join(root,"work"),"ssh-relay-cloud57"),env={...process.env};
 delete env.DISPLAY;delete env.WAYLAND_DISPLAY;delete env.ELECTRON_RUN_AS_NODE;
 const child=cp.spawn(path.join(bundle,"Start-Cloud.sh"),["--profile-dir",profile],{env,stdio:"inherit"});
 const exited=new Promise((resolve,reject)=>{child.on("error",reject);child.on("exit",(code,signal)=>resolve({code,signal}));});

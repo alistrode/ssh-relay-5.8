@@ -8,6 +8,7 @@ const { durableWrite, privateJSON, syncDirectory } = require("./task-store.cjs")
 const { operationId, normalizeTask, requestHash } = require("./task-spec.cjs");
 const { jobHash } = require("./task-jobs.cjs");
 const { ownedRunner, processIdentity } = require("./task-process.cjs");
+const log=require("./runtime-log.cjs").createLogger({name:"task-manager"});
 const FINAL = new Set(["completed", "failed", "cancelled", "unknown"]);
 function failure(code, message, retryable = false) {
   return Object.assign(Error(message), { code, retryable });
@@ -22,15 +23,17 @@ class TaskManager {
     this.identityAvailable = !!processIdentityProvider(process.pid);
     this.records = new Map();
     this.active = new Set();
+    this.pending = new Set();
     this.corrupt = new Set();
     this.stopping = false;
     this.recover();
+    for(const record of this.records.values())if(record.state==="accepted")this.pending.add(record.operationId);
     this.scheduler = scheduler;
     if (scheduler) scheduler.register("task", { snapshot: () => this.executionSnapshot(), start: request => this.startScheduled(request.key) });
   }
   directory(key) { return path.join(this.dir, operationId(key)); }
   file(key, name) { return path.join(this.directory(key), name); }
-  save(record) { durableWrite(this.file(record.operationId, "manifest.json"), record); }
+  save(record) { durableWrite(this.file(record.operationId, "manifest.json"), record); if(record.state==="accepted")this.pending.add(record.operationId);else this.pending.delete(record.operationId); }
   validate(record, key) {
     if (!record || record.operationId !== key || record.deviceId !== this.deviceId ||
         (!["exec", "job"].includes(record.kind) &&
@@ -133,7 +136,7 @@ class TaskManager {
     }
     if (this.records.size + this.corrupt.size >= 10000 ||
         (this.scheduler && this.scheduler.pendingCount() >= this.scheduler.queueLimit) ||
-        [...this.records.values()].filter(record => record.state === "accepted").length >= 64)
+        this.pending.size >= 64)
       throw failure("TASK_CAPACITY", "Task queue or retained record capacity reached", true);
     const directory = this.directory(key);
     try { fs.mkdirSync(directory, { mode: 0o700 }); }
@@ -161,13 +164,15 @@ class TaskManager {
         { detached: true, windowsHide: true, stdio: "ignore",
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
       child.once("spawn", () => { spawned = true; child.unref(); });
-      child.once("error", () => {
+      child.once("error", error => {
+        log.record("task_child_error",{operationId:key,error});
         try {
           if (!spawned) this.finishBeforeStart(record, "failed", "RUNNER_SPAWN_FAILED");
           else this.unknown(record, "RUNNER_PROCESS_ERROR", true);
         } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:168}); this.corrupt.add(key); }
       });
-      child.once("close", () => {
+      child.once("close", (exitCode,signal) => {
+        log.record("task_child_closed",{operationId:key,exitCode,signal});
         try {
           if (!this.result(record) && !FINAL.has(record.state))
             this.unknown(record, "RUNNER_EXIT_WITHOUT_RESULT", true);
@@ -177,7 +182,7 @@ class TaskManager {
   }
   executionSnapshot() {
     return { active: this.active.size, queued: !this.identityAvailable || this.stopping ? [] :
-      [...this.records.values()].filter(record => record.state === "accepted").map(record => ({ key: record.operationId, createdAt: record.createdAt })) };
+      [...this.pending].map(key => this.records.get(key)).filter(record => record?.state === "accepted").map(record => ({ key: record.operationId, createdAt: record.createdAt })) };
   }
   startScheduled(key) {
     const record = this.records.get(key);
@@ -191,7 +196,7 @@ class TaskManager {
       return false;
     }
   }
-  tick() {
+  tick({ schedule = true } = {}) {
     if (this.stopping) return;
     for (const key of [...this.active]) {
       const record = this.records.get(key);
@@ -212,7 +217,7 @@ class TaskManager {
           this.unknown(record, "RUNNER_HEARTBEAT_LOST", true);
       } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'tasks.cjs',line:213}); this.corrupt.add(key); }
     }
-    if (this.scheduler) { this.scheduler.tick(); return; }
+    if (this.scheduler) { if (schedule) this.scheduler.tick(); return; }
     if (this.active.size >= 2 || !this.identityAvailable) return;
     const queued = [...this.records.values()].filter(record => record.state === "accepted")
       .sort((a, b) => a.createdAt - b.createdAt || a.operationId.localeCompare(b.operationId));
@@ -287,6 +292,7 @@ class TaskManager {
       return this.get(owner, { operationId: key }, allowRevoked);
     }
     const record = this.lookup(owner, params.operationId, allowRevoked);
+    log.record("task_cancel_requested",{operationId:record.operationId,requestId:params.requestId,state:record.state});
     const requestId = operationId(params.requestId), key = record.operationId;
     if (this.result(record)) return this.get(owner, { operationId: key }, allowRevoked);
     if (FINAL.has(record.state)) {

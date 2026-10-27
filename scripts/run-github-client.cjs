@@ -5,7 +5,7 @@ const fs=require("node:fs"),path=require("node:path"),cp=require("node:child_pro
 const repository=path.resolve(__dirname,".."),root=process.env.SSH_RELAY_RUN_APP||repository,profile=path.join(repository,"work/github-client"),output=path.join(repository,"run-output");
 require("../src/pro/release.cjs").requireProfile(profile,{create:true});fs.mkdirSync(output,{recursive:true});
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const record={release:"5.5",platform:process.platform,startedAt:new Date().toISOString(),operations:[]};
+const record={release:"5.7",platform:process.platform,startedAt:new Date().toISOString(),operations:[]};
 function save(){fs.writeFileSync(path.join(output,"run.json"),JSON.stringify(record,null,2)+"\n");}
 async function waitFor(fn,ms=120000){const until=Date.now()+ms;let last;while(Date.now()<until){try{const value=await fn();if(value)return value;}catch(error){last=error;}await sleep(500);}throw last||Error("Application startup did not finish");}
 async function connectInspector(port,select){

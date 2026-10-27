@@ -2,11 +2,11 @@
 const fs = require("node:fs"), path = require("node:path");
 const { recoveryInstructions } = require("../src/pro/ai-recovery.cjs");
 const root = path.resolve(__dirname, "..");
-const targets = ["AGENTS.md", ".agents/skills/ssh-relay/SKILL.md", "docs/AI-RECOVERY-5.5.md",
+const targets = ["AGENTS.md", ".agents/skills/ssh-relay/SKILL.md", "docs/AI-RECOVERY-5.7.md",
   "docs/SSH-RELAY-CONTINUE-DEVELOPMENT.md", "docs/SSH-RELAY-END-TO-END-DESIGN.md",
   "docs/SSH-RELAY-DEVELOPMENT-HANDOFF.md"];
 const start = "<!-- ai-recovery-policy:start -->", end = "<!-- ai-recovery-policy:end -->";
-const block = start + "\n## 5.5 AI 断线恢复与任务继续规则\n\n" + recoveryInstructions + "\n\n" + end;
+const block = start + "\n## 5.7 AI 断线恢复与任务继续规则\n\n" + recoveryInstructions + "\n\n" + end;
 for (const name of targets) {
   const file = path.join(root, name), before = fs.readFileSync(file, "utf8");
   const a = before.indexOf(start), b = before.indexOf(end);

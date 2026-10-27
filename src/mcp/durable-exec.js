@@ -57,10 +57,10 @@ export async function durableExec(name, command, { cwd, timeout }) {
   if (hasOperationPlan() && !plannedOperation(config.agentDeviceId))
     throw Object.assign(Error("Target differs from the saved group plan"), { code: "REQUEST_CONFLICT" });
   if (plannedOperation(config.agentDeviceId) &&
-      (!config.capabilities.persistentExec || config.capabilities.taskProtocol !== 55))
+      (!config.capabilities.persistentExec || config.capabilities.taskProtocol !== 57))
     throw Object.assign(Error("Saved group target no longer supports persistent tasks"), { code: "TASK_UNSUPPORTED" });
-  if (!config.agentDeviceId || !config.capabilities.persistentExec || config.capabilities.taskProtocol !== 55)
-    throw Object.assign(Error("5.5 persistent execution is required; older endpoints are refused"), { code: "RELEASE_MISMATCH" });
+  if (!config.agentDeviceId || !config.capabilities.persistentExec || config.capabilities.taskProtocol !== 57)
+    throw Object.assign(Error("5.7 persistent execution is required; older endpoints are refused"), { code: "RELEASE_MISMATCH" });
   return submitTask(conn, "exec", execSpec(config, command, { cwd, timeout }), timeout);
 }
 export function execSpec(config, command, { cwd, timeout }) {

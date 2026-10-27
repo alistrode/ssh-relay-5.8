@@ -1,89 +1,48 @@
 "use strict";
-// Private diagnostics retain bounded, redacted errors and stacks; never command bodies or credentials.
-const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto"), zlib = require("node:zlib");
-function check(file) {
-  try { if (fs.lstatSync(file).isSymbolicLink()) throw Error("Diagnostic symlink refused"); }
-  catch (e) { if (e.code !== "ENOENT") throw e; }
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),zlib=require('node:zlib');
+const readline=require('node:readline'),{Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
+const {createLogger,safe,captureCaught}=require('./runtime-log.cjs');
+function create(directory,{limit=256*1024,copies=2,runId=crypto.randomUUID()}={}){
+ const sink=createLogger({file:path.join(directory,'gui.jsonl'),name:'gui',limit,copies});let available=true;
+ return {record:(event,details={})=>{available=sink.record(event,{runId,...details});},runId,get available(){return available;}};
 }
-function create(directory, { limit = 256 * 1024, copies = 2, runId = crypto.randomUUID() } = {}) {
-  const sink = require("./runtime-log.cjs").createLogger({file:path.join(directory,"gui.jsonl"),name:"gui",limit,copies});
-  let available=true;
-  return {record:(event,details={})=>{available=sink.record(event,{runId,...details});},runId,get available(){return available;}};
-}
-function exportDiagnostics(directory, destination) {
-  const events = [];
-  for (const name of ["launcher.jsonl.3", "launcher.jsonl.2", "launcher.jsonl.1", "launcher.jsonl", "gui.jsonl.3", "gui.jsonl.2", "gui.jsonl.1", "gui.jsonl"]) {
-    const file = path.join(directory, name);
-    check(file);
-    if (!fs.existsSync(file)) continue;
-    // Bound reads even if an external process replaced a diagnostic file.
-    const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
-    try {
-      const buffer = Buffer.alloc(256 * 1024 + 2048), n = fs.readSync(fd, buffer, 0, buffer.length, 0);
-      for (const line of buffer.subarray(0, n).toString("utf8").split("\n")) {
-        try {
-          const e = JSON.parse(line);
-          if (!/^[a-z0-9_]+$/.test(e.event) || !/^[a-f0-9-]{36}$/.test(e.runId) || !/^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(e.time)) continue;
-          events.push(require("./runtime-log.cjs").safe(e));
-        } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'gui-diagnostics.cjs',line:42}); }
-      }
-    } finally { fs.closeSync(fd); }
+function logFiles(directory){
+ const result=[],profile=path.dirname(directory);
+ for(const dir of [directory,profile,path.join(profile,'near'),path.join(profile,'far'),path.join(profile,'near','logs'),path.join(profile,'far','logs')]){
+  if(!fs.existsSync(dir))continue;
+  if(fs.lstatSync(dir).isSymbolicLink())throw Error('Diagnostic directory symlink refused');
+  for(const name of fs.readdirSync(dir)){
+   if(!/^(?:runtime-.+|agent-events|guardian-events|gui|launcher|emergency-.+|chromium|client-process|client-supervisor|bootstrap)\.(?:jsonl|log)(?:\.[\w.-]+)?$/.test(name)&&name!=='RETENTION-NOTICE.json')continue;
+   const file=path.join(dir,name),stat=fs.lstatSync(file);if(stat.isSymbolicLink())throw Error('Diagnostic symlink refused');
+   if(stat.isFile())result.push({file,name:path.relative(profile,file)});
   }
-  const background = [];
-  const backgroundEvents = new Set(["agent_started", "agent_stopped", "worker_started", "worker_exited", "worker_spawn_error", "connection_verified", "connection_failed", "pair_saved", "pair_offer_created", "device_unpaired", "api_error", "guardian_started", "guardian_stopped", "agent_exited", "agent_spawned"]);
-  for (const role of ["near", "far"]) {
-    const roleDirectory = path.join(path.dirname(directory), role); check(roleDirectory);
-    for (const name of ["guardian-events.jsonl.1", "guardian-events.jsonl", "agent-events.jsonl.1", "agent-events.jsonl"]) {
-      const file = path.join(roleDirectory, name); check(file);
-      if (!fs.existsSync(file)) continue;
-      const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
-      try {
-        const buffer = Buffer.alloc(256 * 1024), n = fs.readSync(fd, buffer, 0, buffer.length, 0);
-        for (const line of buffer.subarray(0, n).toString("utf8").split("\n")) {
-          try {
-            const e = JSON.parse(line);
-            if (backgroundEvents.has(e.event) && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(e.time)) background.push({role,...require("./runtime-log.cjs").safe(e)});
-          } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'gui-diagnostics.cjs',line:60}); }
-        }
-      } finally { fs.closeSync(fd); }
+ }
+ return result.sort((a,b)=>a.name.localeCompare(b.name));
+}
+async function exportDiagnostics(directory,destination){
+ const files=logFiles(directory);let count=0;
+ async function* records(){
+  yield '{"schema":3,"records":[';let first=true;
+  for(const item of files){
+   const input=fs.createReadStream(item.file,{flags:fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW||0)});
+   const source=item.file.endsWith('.gz')?input.pipe(zlib.createGunzip()):input;
+   if(source!==input)input.on('error',error=>source.destroy(error));
+   const lines=readline.createInterface({input:source,crlfDelay:Infinity});
+   try{
+    for await(const line of lines){
+     if(!line)continue;let value;
+     try{value=JSON.parse(line);}catch{value={event:'unstructured_log',message:line};}
+     yield (first?'':',')+JSON.stringify({source:item.name,...safe(value)});first=false;count++;
     }
+   }catch(error){captureCaught(error,{component:'diagnostic-export',file:item.name});yield (first?'':',')+JSON.stringify({source:item.name,event:'export_read_failed',error:safe(error)});first=false;}
+   finally{lines.close();source.destroy();input.destroy();}
   }
-  const native = [];
-  for (const name of ["chromium.log.previous", "chromium.log"]) {
-    const file = path.join(directory, name); check(file);
-    if (!fs.existsSync(file)) continue;
-    const input = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
-    try {
-      const buffer = Buffer.alloc(256 * 1024), count = fs.readSync(input, buffer, 0, buffer.length, 0), text = buffer.subarray(0, count).toString("utf8");
-      const gpuLaunchFailures = {};
-      for (const match of text.matchAll(/GPU process launch failed: error_code=(\d{1,8})/g)) gpuLaunchFailures[match[1]] = (gpuLaunchFailures[match[1]] || 0) + 1;
-      native.push({ previous: name.endsWith("previous"), gpuLaunchFailures, gpuUnavailable: text.includes("GPU process isn't usable") });
-    } finally { fs.closeSync(input); }
-  }
-  const runtime = [];
-  for (const dir of [directory,path.join(path.dirname(directory),'near','logs'),path.join(path.dirname(directory),'far','logs')]) {
-    if(!fs.existsSync(dir))continue;
-    for(const name of fs.readdirSync(dir).filter(n=>/^runtime-.+\.jsonl(?:\.\d+)?$/.test(n))) {
-      const file=path.join(dir,name);check(file);const stat=fs.statSync(file);if(!stat.isFile()||stat.size>300*1024)continue;
-      for(const line of fs.readFileSync(file,'utf8').split('\n')){try{const e=JSON.parse(line);if(typeof e.event==='string')runtime.push(require('./runtime-log.cjs').safe(e));}catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'gui-diagnostics.cjs',line:82}); }}
-    }
-  }
-  const fd = fs.openSync(destination, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, 0o600);
-  try { fs.writeSync(fd, zlib.gzipSync(JSON.stringify({ schema: 2, events, background, native, runtime:runtime.slice(-4096) }))); }
-  finally { fs.closeSync(fd); }
-  return events.length;
+  yield ']}';
+ }
+ await pipeline(Readable.from(records()),zlib.createGzip(),fs.createWriteStream(destination,{flags:'wx',mode:0o600}));return count;
 }
-function installPipeGuards(record) {
-  for (const stream of [process.stdout, process.stderr]) stream.on("error", error => {
-    if (error.code !== "EPIPE" && error.code !== "ERR_STREAM_DESTROYED") throw error;
-    record("output_pipe_closed", { code: error.code });
-  });
+function installPipeGuards(record){for(const stream of [process.stdout,process.stderr])stream.on('error',error=>record('output_pipe_error',{error}));}
+module.exports={create,exportDiagnostics,installPipeGuards};
+if(require.main===module){
+ (async()=>{if(process.argv.length!==4)throw Error('Expected log directory and new export file');await exportDiagnostics(process.argv[2],process.argv[3]);})().catch(error=>{captureCaught(error,{component:'diagnostic-export'});process.exitCode=1;});
 }
-module.exports = { create, exportDiagnostics, installPipeGuards };
-if (require.main === module) {
-  try {
-    if (process.argv.length !== 4) throw Error("Expected log directory and new export file");
-    exportDiagnostics(process.argv[2], process.argv[3]);
-  } catch (error) { require("./runtime-log.cjs").captureCaught(error,{component:"diagnostic-export"});process.stderr.write("Diagnostic export failed; preserve the local logs.\n"); process.exitCode = 1; }
-}
-

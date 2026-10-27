@@ -4,7 +4,7 @@ const runtimeLog=require('./runtime-log.cjs').install('cloud');
 const fs=require("node:fs"),path=require("node:path"),os=require("node:os"),crypto=require("node:crypto");
 const lifecycle=require("./client-lifecycle.cjs"),{read,write,folder}=require("./store.cjs");
 if(!lifecycle.cloudEdition)throw Error("请下载标注“仅限云端下载使用”的纯云端包；桌面版不允许纯后台");
-const args=process.argv.slice(2),at=args.lastIndexOf("--profile-dir"),profile=path.resolve(at<0?path.join(os.homedir(),".ssh-relay-pro-5.5-cloud"):args[at+1]);
+const args=process.argv.slice(2),at=args.lastIndexOf("--profile-dir"),profile=path.resolve(at<0?path.join(os.homedir(),".ssh-relay-pro-5.7-cloud"):args[at+1]);
 require("./release.cjs").requireProfile(profile,{create:true});
 const runtime=path.join(profile,"cloud-runtime.json"),lock=path.join(profile,"cloud.lock"),previous=read(runtime,null);
 if(args[0]==="stop"){
@@ -38,6 +38,6 @@ if(args[0]==="stop"){
       if(!fs.existsSync(path.join(dir,"settings.json")))write(path.join(dir,"settings.json"),{enabled:true,autoConnect:true,label:os.hostname(),defaultDevice:null});
       await ensure({dir,role});
     }
-    if(!stopping){ready=true;heartbeat(true);console.log("SSH Relay Pro 5.5 Cloud 已启动（仅限云端下载使用，无图形界面）。Ctrl+C 或 Stop-Cloud.sh 停止。");}
+    if(!stopping){ready=true;heartbeat(true);console.log("SSH Relay Pro 5.7 Cloud 已启动（仅限云端下载使用，无图形界面）。Ctrl+C 或 Stop-Cloud.sh 停止。");}
   })().catch(error=>{console.error(error.message);void stop(1);});
 }

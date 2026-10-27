@@ -1,8 +1,5 @@
-name: Run SSH Relay 5.5 desktop
+name: Run SSH Relay 5.7 desktop
 on:
-  push:
-    branches: ['5.5']
-    paths: ['src/**', 'desktop/**', 'scripts/run-github-client.cjs', '.github/workflows/run-5.5.yml', 'package*.json']
   workflow_dispatch:
 permissions:
   contents: write
@@ -42,30 +39,30 @@ jobs:
           from pathlib import Path
           import subprocess,zipfile
           Path('run-output').mkdir(exist_ok=True)
-          with zipfile.ZipFile('run-output/SSHRelayPro-5.5-source.zip','w',zipfile.ZIP_DEFLATED) as archive:
+          with zipfile.ZipFile('run-output/SSHRelayPro-5.7-source.zip','w',zipfile.ZIP_DEFLATED) as archive:
               for entry in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
                   if entry and not entry.startswith(('packages/','run-records/')) and Path(entry).is_file():
-                      archive.write(entry,'SSHRelayPro-5.5/'+entry)
+                      archive.write(entry,'SSHRelayPro-5.7/'+entry)
       - name: Package the existing Windows desktop distribution
         if: success() && runner.os == 'Windows'
         shell: pwsh
         run: |
-          node scripts/package-windows55.cjs
+          node scripts/package-windows57.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:SSH_RELAY_RUN_APP = (Resolve-Path run-output/SSHRelayPro-5.5/release/resources/app).Path
-          $env:SSH_RELAY_RUN_EXECUTABLE = (Resolve-Path run-output/SSHRelayPro-5.5/release/SSHRelayPro.exe).Path
+          $env:SSH_RELAY_RUN_APP = (Resolve-Path run-output/SSHRelayPro-5.7/release/resources/app).Path
+          $env:SSH_RELAY_RUN_EXECUTABLE = (Resolve-Path run-output/SSHRelayPro-5.7/release/SSHRelayPro.exe).Path
           node scripts/run-github-client.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -Path run-output/SSHRelayPro-5.5 -DestinationPath run-output/SSHRelayPro-5.5-Windows-x64.zip
+          Compress-Archive -Path run-output/SSHRelayPro-5.7 -DestinationPath run-output/SSHRelayPro-5.7-Windows-x64.zip
       - name: Upload the runnable Windows package and complete source
         if: success() && runner.os == 'Windows'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="ssh-relay-5.5-${GITHUB_SHA:0:8}"
-          gh release create "$tag" run-output/SSHRelayPro-5.5-Windows-x64.zip run-output/SSHRelayPro-5.5-source.zip --target "$GITHUB_SHA" --prerelease --title 'SSH Relay Pro 5.5 · Windows x64' --notes '完整解压后双击 Start-5.5.cmd。内置 Electron 运行环境，无需安装 Node/npm。包含简化启动设置和直接复制配对码修复；仅连接 5.5。包内不含私钥、配对信息或本机配置。源码和第三方许可随附。'
-      - name: Save source, screenshot and run record to the 5.5 branch
+          tag="ssh-relay-5.7-${GITHUB_SHA:0:8}"
+          gh release create "$tag" run-output/SSHRelayPro-5.7-Windows-x64.zip run-output/SSHRelayPro-5.7-source.zip --target "$GITHUB_SHA" --prerelease --title 'SSH Relay Pro 5.7 · Windows x64' --notes '完整解压后双击 Start-5.7.cmd。内置 Electron 运行环境，无需安装 Node/npm。包含简化启动设置和直接复制配对码修复；仅连接 5.7。包内不含私钥、配对信息或本机配置。源码和第三方许可随附。'
+      - name: Save source, screenshot and run record to the 5.7 branch
         if: always()
         shell: python
         env:
@@ -77,14 +74,14 @@ jobs:
           prefix='run-records/'+os.environ['GITHUB_RUN_ID']+'/'+os.environ['RUNNER_OS'].lower()+'/'
           headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
           for file in Path('run-output').iterdir():
-              if file.name not in ['run.json','client.png','SSHRelayPro-5.5-source.zip']:
+              if file.name not in ['run.json','client.png','SSHRelayPro-5.7-source.zip']:
                   continue
-              payload={'message':'docs: save 5.5 '+os.environ['RUNNER_OS']+' application run','branch':'5.5','content':base64.b64encode(file.read_bytes()).decode()}
+              payload={'message':'docs: save 5.7 '+os.environ['RUNNER_OS']+' application run','branch':'5.7','content':base64.b64encode(file.read_bytes()).decode()}
               url=base+prefix+file.name
               for attempt in range(6):
                   try:
                       try:
-                          old=json.load(urllib.request.urlopen(urllib.request.Request(url+'?ref=5.5',headers=headers)))
+                          old=json.load(urllib.request.urlopen(urllib.request.Request(url+'?ref=5.7',headers=headers)))
                           payload['sha']=old['sha']
                       except urllib.error.HTTPError as error:
                           if error.code!=404: raise

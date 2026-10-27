@@ -1,5 +1,5 @@
 const runtimeLog=require('./pro/runtime-log.cjs').install('relay-near');
-if (require.main === module) throw Error("5.5 不支持独立后台入口，请启动 SSH Relay Pro 客户端");
+if (require.main === module) throw Error("5.7 不支持独立后台入口，请启动 SSH Relay Pro 客户端");
 var fs = require("node:fs");
 var path = require("node:path");
 var net = require("node:net");
@@ -11,7 +11,7 @@ var { createTraceWriter } = require("./diagnostics.cjs");
 var configPath = path.resolve(process.argv[2]);
 var config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 var recordTrace = createTraceWriter(path.dirname(configPath), "near");
-if(config.version!==55||config.applicationRelease!=="5.5"||config.localPort!==0)throw Error("Only a private 5.5 endpoint with an OS-assigned port is supported");
+if(config.version!==57||config.applicationRelease!=="5.7"||config.localPort!==0)throw Error("Only a private 5.7 endpoint with an OS-assigned port is supported");
 var relay = createRelay(config, "near");
 var requestId = crypto.randomUUID(), remoteChallenge;
 function announce() {

@@ -90,13 +90,13 @@ const readiness = new Map();
 function stateDirectory({ dir, profileDir, role = "near" } = {}) {
   if (!["near", "far"].includes(role)) throw Error("Invalid role");
   if (dir && profileDir) throw Error("Use state dir or profile dir, not both");
-  return path.resolve(dir || path.join(profileDir || path.join(os.homedir(), ".ssh-relay-pro-5.5"), role));
+  return path.resolve(dir || path.join(profileDir || path.join(os.homedir(), ".ssh-relay-pro-5.7"), role));
 }
 async function health(dir, role) {
-  const value = await request(dir, "/v55/health", undefined, { timeoutMs: 2000 });
+  const value = await request(dir, "/v57/health", undefined, { timeoutMs: 2000 });
   const runtime = read(path.join(dir, "agent-runtime.json"));
   const identity = read(path.join(dir, "identity.json"));
-  if (value.apiVersion !== 55 || value.role !== role ||
+  if (value.apiVersion !== 57 || value.role !== role ||
       value.profileId !== identity?.deviceId ||
       value.profileId !== runtime?.profileId ||
       value.bootId !== runtime?.bootId || runtime?.role !== role) {
@@ -110,7 +110,7 @@ async function startAgent(options, dir) {
   const role = options.role || "near";
   const check = async () => {
     try { await health(dir, role); return true; }
-    catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent-client.cjs',line:113});
+    catch (error) {
       diagnostic.record("agent_health_failed",{role,error,phase:"health"});
       // Never start another service over a responding, incompatible endpoint.
       if (error.statusCode || error.code === "AGENT_IDENTITY_MISMATCH") throw error;
@@ -122,29 +122,18 @@ async function startAgent(options, dir) {
   if (await check()) return;
   await require("./client-lifecycle.cjs").requireClient(dir);
   folder(dir);
-  const fd = fs.openSync(path.join(dir, "bootstrap.log"), "a", 0o600);
-  try {
-    const child = cp.spawn(process.execPath, [
-      path.join(__dirname, "guardian.cjs"), "--state-dir", dir, "--role", role,
-      ...(options.allowCloudSelfTest ? ["--allow-cloud-self-test"] : []),
-    ], {
-      stdio: ["ignore", fd, fd], detached: true, windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SSH_RELAY_CLIENT_PROFILE: require("./client-lifecycle.cjs").profileFor(dir) },
-    });
-    await new Promise((resolve, reject) => {
-      child.once("error", reject);
-      child.once("spawn", resolve);
-    });
-    child.unref();
-  } finally { fs.closeSync(fd); }
+  await require("./spawn-detached.cjs").spawnDetached(process.execPath, [
+    path.join(__dirname, "guardian.cjs"), "--state-dir", dir, "--role", role,
+    ...(options.allowCloudSelfTest ? ["--allow-cloud-self-test"] : []),
+  ], { logFile: path.join(dir, "bootstrap.log"), profile: require("./client-lifecycle.cjs").profileFor(dir) });
   const startupWaitMs=90000;
   const deadline = Date.now() + startupWaitMs;
   while (Date.now() < deadline) {
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 500));
     if (await check()) return;
   }
   diagnostic.record("agent_start_timeout",{role,waitMs:startupWaitMs});
-  throw Error("Agent could not start; inspect the private bootstrap.log");
+  throw Error("连接服务启动超时（角色："+role+"，等待："+startupWaitMs+"ms）；详细日志："+path.join(dir,"bootstrap.log"));
 }
 async function ensureAgent(options = {}) {
   const dir = stateDirectory(options), role = options.role || "near";
@@ -163,31 +152,32 @@ async function ensureAgent(options = {}) {
       return request(dir, route, body, requestOptions);
     },
   };
-  client.devices = () => client.request("GET", "/v55/devices");
+  client.devices = () => client.request("GET", "/v57/devices");
+  client.deviceSnapshot = () => client.request("GET", "/v57/device-snapshot");
   const { observeConnectionRequest } = require("./connection-status.cjs");
-  const currentDevices = () => client.request("GET", "/v55/devices", undefined, { timeoutMs: 2000 });
+  const currentDevices = () => client.request("GET", "/v57/devices", undefined, { timeoutMs: 2000 });
   client.connect = async (input) => observeConnectionRequest(
-    await client.request("POST", "/v55/connections", input, { timeoutMs: 25000 }), currentDevices);
+    await client.request("POST", "/v57/connections", input, { timeoutMs: 25000 }), currentDevices);
   client.connectionTask = async (key) => observeConnectionRequest(
-    await client.request("GET", "/v55/connections/" + encodeURIComponent(key)), currentDevices,
+    await client.request("GET", "/v57/connections/" + encodeURIComponent(key)), currentDevices,
     { statusQuery: true });
-  client.getConnection = (deviceId) => client.request("GET", "/v55/devices/" + encodeURIComponent(deviceId) + "/connection");
+  client.getConnection = (deviceId) => client.request("GET", "/v57/devices/" + encodeURIComponent(deviceId) + "/connection");
   client.disconnect = (deviceId, requestId) => client.request("POST",
-    "/v55/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });
-  client.workflowStage = (key, input) => client.request("POST", "/v55/operations/" + encodeURIComponent(key) + "/stage", input);
-  client.registerOperation = (input) => client.request("POST", "/v55/operations", input);
-  client.registerSession = input => client.request("POST", "/v55/sessions", input);
-  client.sessions = () => client.request("GET", "/v55/sessions");
-  client.session = (id, params = {}) => client.request("GET", "/v55/sessions/" + encodeURIComponent(id) + "?" + new URLSearchParams(params));
-  client.registerSessionRequest = (id, input) => client.request("POST", "/v55/sessions/" + encodeURIComponent(id) + "/requests", input);
-  client.sessionRequests = id => client.request("GET", "/v55/sessions/" + encodeURIComponent(id) + "/requests");
-  client.markOperationDispatch = (key) => client.request("POST", "/v55/operations/" + encodeURIComponent(key) + "/dispatch", {});
-  client.operationNotStarted = (key) => client.request("POST", "/v55/operations/" + encodeURIComponent(key) + "/not-started", {});
-  client.operations = (params = {}) => client.request("GET", "/v55/operations?" + new URLSearchParams(params));
+    "/v57/devices/" + encodeURIComponent(deviceId) + "/disconnect", { requestId });
+  client.workflowStage = (key, input) => client.request("POST", "/v57/operations/" + encodeURIComponent(key) + "/stage", input);
+  client.registerOperation = (input) => client.request("POST", "/v57/operations", input);
+  client.registerSession = input => client.request("POST", "/v57/sessions", input);
+  client.sessions = () => client.request("GET", "/v57/sessions");
+  client.session = (id, params = {}) => client.request("GET", "/v57/sessions/" + encodeURIComponent(id) + "?" + new URLSearchParams(params));
+  client.registerSessionRequest = (id, input) => client.request("POST", "/v57/sessions/" + encodeURIComponent(id) + "/requests", input);
+  client.sessionRequests = id => client.request("GET", "/v57/sessions/" + encodeURIComponent(id) + "/requests");
+  client.markOperationDispatch = (key) => client.request("POST", "/v57/operations/" + encodeURIComponent(key) + "/dispatch", {});
+  client.operationNotStarted = (key) => client.request("POST", "/v57/operations/" + encodeURIComponent(key) + "/not-started", {});
+  client.operations = (params = {}) => client.request("GET", "/v57/operations?" + new URLSearchParams(params));
   client.operation = (key, params = {}) => client.request("GET",
-    "/v55/operations/" + encodeURIComponent(key) + "?" + new URLSearchParams(params));
+    "/v57/operations/" + encodeURIComponent(key) + "?" + new URLSearchParams(params));
   client.cancelOperation = (key, requestId) => client.request("POST",
-    "/v55/operations/" + encodeURIComponent(key) + "/cancel", { requestId });
+    "/v57/operations/" + encodeURIComponent(key) + "/cancel", { requestId });
   client.ensureReady = async (deviceId) => {
     const key = dir + ":" + deviceId;
     if (readiness.has(key)) return readiness.get(key);
@@ -212,7 +202,7 @@ async function ensureAgent(options = {}) {
   };
   return client;
 }
-// Current 5.5 CLI API.
+// Current 5.7 CLI API.
 async function ensure(options) { await ensureAgent(options); }
 module.exports = { request, ensure, ensureAgent, stateDirectory };
 

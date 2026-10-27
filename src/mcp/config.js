@@ -8,8 +8,8 @@ export function arg(name) {
 }
 const agentDir = arg("--agent-dir");
 if (process.argv.some(value => value === "--connection" || value === "--connections"))
-  throw Error("5.5 refuses connection blocks and manifests from other branches; use that branch's own client");
-if (args.includes("--agent-dir") && (!agentDir || agentDir.startsWith("--"))) throw Error("--agent-dir requires a 5.5 state path");
+  throw Error("5.7 refuses connection blocks and manifests from other branches; use that branch's own client");
+if (args.includes("--agent-dir") && (!agentDir || agentDir.startsWith("--"))) throw Error("--agent-dir requires a 5.7 state path");
 const allowCloudSelfTest = arg("--allow-cloud-self-test") === "yes";
 const context = new AsyncLocalStorage();
 const discovery = createAgentDiscovery(() => agentServers(agentDir, allowCloudSelfTest));

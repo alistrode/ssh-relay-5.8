@@ -4,6 +4,12 @@ const recoveryInstructions = `连接断开后不允许停下汇报，不得仅�
 function withRecovery(value, context = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const state = value.state;
+  // A known terminal task result is not a connection failure. Respect cancellation
+  // and command exit codes without suggesting reconnecting or replaying work.
+  if (value.completed === true && ["completed", "failed", "cancelled"].includes(state)) {
+    const { recovery, ...terminal } = value;
+    return terminal;
+  }
   const live = value.connectionStatus;
   const terminalConnectionRequest = !!value.connectionTaskId &&
     (value.requestStatus?.terminal === true || ["ready", "failed", "unknown", "disconnected"].includes(state));
@@ -52,7 +58,7 @@ function withRecovery(value, context = {}) {
     else next.push({ tool: "ssh_operation_status", arguments: ids.server ? { server: ids.server } : {}, when: "Discover original operations if their IDs were lost; do not resubmit unknown work" });
   }
   return { ...value, recovery: {
-    policyVersion: "5.5", instructions: recoveryInstructions,
+    policyVersion: "5.7", instructions: recoveryInstructions,
     onConnectionLoss: "automatically_reconnect_and_continue",
     stopOnDisconnect: false, reportDisconnectAndStop: false, requireManualReconnect: false,
     retry: { initialDelayMs: 1000, maxDelayMs: 30000, multiplier: 2, stopAfterAttempts: false },

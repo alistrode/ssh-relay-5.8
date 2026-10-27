@@ -10,6 +10,7 @@ const { folder, systemBootId } = require("./store.cjs");
 const { privateJSON, durableWrite } = require("./task-store.cjs");
 function failure(code, message) { return Object.assign(Error(message), { code }); }
 async function run(directory) {
+  await require("./task-process.cjs").prepareIdentity();
   directory = path.resolve(directory);
   const config = privateJSON(path.join(directory, "session.json"));
   if (!config || config.schemaVersion !== 1) throw failure("SESSION_INVALID", "Session runner configuration is invalid");
@@ -114,7 +115,7 @@ async function run(directory) {
         if (!permit || permit.requestId !== requestId) continue;
         const file = path.join(inbox, name);
         pending.set(requestId, null);
-        const work = handle(file, requestId).catch(() => { engine.close(config.owner); finishing = true; });
+        const work = handle(file, requestId).catch(error => { runtimeLog.record("session_request_boundary_failed",{requestId,error}); engine.close(config.owner); finishing = true; });
         // handle() can finish synchronously on invalid input; never restore a
         // stale pending entry after its finally block removed it.
         if (pending.has(requestId)) pending.set(requestId, work);
@@ -123,7 +124,16 @@ async function run(directory) {
     finally { polling = false; }
   }
   let heartbeat;
-  const interval = setInterval(poll, 50);
+  let interval,watcher,idleDelay=50;
+  function schedulePoll(){
+    clearTimeout(interval);poll();
+    idleDelay=pending.size?50:Math.min(500,idleDelay+50);
+    if(!finishing)interval=setTimeout(schedulePoll,idleDelay);
+  }
+  // A bounded polling fallback remains for platforms where directory events coalesce.
+  try{watcher=fs.watch(directory,{recursive:true},()=>{idleDelay=50;clearTimeout(interval);interval=setTimeout(schedulePoll,0);});watcher.on('error',error=>runtimeLog.record('session_watch_failed',{error}));}
+  catch(error){runtimeLog.record('session_watch_unavailable',{error});}
+  interval=setTimeout(schedulePoll,0);
   heartbeat = setInterval(() => {
     try { runner.heartbeatAt = Date.now(); runner.state = engine.closed ? "lost" : engine.journal.record.state;
       durableWrite(heartbeatFile, runner); }
@@ -133,9 +143,9 @@ async function run(directory) {
     const check = setInterval(() => {
       if (engine.closed) finishing = true;
       if (finishing && pending.size === 0) { clearInterval(check); resolve(); }
-    }, 50);
+    }, 100);
   });
-  clearInterval(interval); clearInterval(heartbeat);
+  clearTimeout(interval); watcher?.close(); clearInterval(heartbeat);
   engine.close(config.owner);
   runner.state = "lost"; runner.heartbeatAt = Date.now(); durableWrite(heartbeatFile, runner);
 }

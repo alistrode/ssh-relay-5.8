@@ -1,6 +1,6 @@
 {
   "name": "private-public-ssh-relay-source",
-  "version": "5.6.0",
+  "version": "5.7.0",
   "private": true,
   "scripts": {
     "build": "esbuild src/near.cjs src/remote.cjs --bundle --platform=node --target=node22 --outdir=dist --out-extension:.js=.cjs --legal-comments=external --external:cpu-features --external:./crypto/build/Release/sshcrypto.node",

@@ -4,7 +4,7 @@ const { privateJSON, durableWrite } = require("./task-store.cjs");
 const { operationId } = require("./task-spec.cjs");
 const { processState } = require("./task-process.cjs");
 class SessionExecutions {
-  constructor(manager, { inspect = processState } = {}) { this.manager = manager; this.inspect = inspect; this.checked = new Map(); }
+  constructor(manager, { inspect = processState } = {}) { this.manager = manager; this.inspect = inspect; this.checked = new Map(); this.finished = new Set(); }
   gone(config, dir) {
     const previous = this.checked.get(config.sessionId);
     if (previous && Date.now() - previous.at < 30000) return previous.gone;
@@ -16,7 +16,7 @@ class SessionExecutions {
   snapshot() {
     let active = 0; const queued = [], manager = this.manager;
     for (const sessionId of fs.readdirSync(manager.dir)) {
-      if (!/^[a-f0-9-]{36}$/.test(sessionId)) continue;
+      if (!/^[a-f0-9-]{36}$/.test(sessionId) || this.finished.has(sessionId)) continue;
       const dir = path.join(manager.dir, sessionId);
       try {
         const config = privateJSON(path.join(dir, "session.json"), null);
@@ -39,6 +39,9 @@ class SessionExecutions {
           if (final || rejected || stopped) { fs.unlinkSync(permitFile); permit = null; }
           else active++;
         } else if (manifest?.state === "busy" || manifest?.unresolvedCommands) active++;
+        if (!permit && manifest && ["lost", "closed"].includes(manifest.state) && !manifest.unresolvedCommands) {
+          this.finished.add(sessionId); this.checked.delete(sessionId); continue;
+        }
         if (config.executionBudgetVersion !== 1 || !manager.identityAvailable || !manager.authorized(config.owner) ||
             ["lost", "closed", "unknown"].includes(manifest?.state) || fs.existsSync(path.join(dir, "close.json")) || fs.existsSync(path.join(dir, "revoke.json"))) continue;
         for (const name of fs.readdirSync(path.join(dir, "inbox"))) {

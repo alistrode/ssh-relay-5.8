@@ -6,7 +6,7 @@ const {folder,read,write}=require("../src/pro/store.cjs"),lifecycle=require("../
 const args=process.argv.slice(1),arg=(name,fallback)=>args.includes(name)?args[args.indexOf(name)+1]:fallback;
 const displayVersion=require("../src/pro/release.cjs").DISPLAY_VERSION;
 if(process.platform==="win32"&&args.includes("--disable-gpu")){app.disableHardwareAcceleration();app.commandLine.appendSwitch("disable-gpu-compositing");app.commandLine.appendSwitch("disable-direct-composition");}
-const root=path.resolve(__dirname,".."),profile=path.resolve(arg("--profile-dir",path.join(os.homedir(),".ssh-relay-pro-5.5")));
+const root=path.resolve(__dirname,".."),profile=path.resolve(arg("--profile-dir",path.join(os.homedir(),".ssh-relay-pro-5.7")));
 require("../src/pro/release.cjs").requireProfile(profile,{create:true});
 const diagnostics=require("../src/pro/gui-diagnostics.cjs"),diagnosticDirectory=path.join(profile,"logs"),diagnostic=diagnostics.create(diagnosticDirectory);
 diagnostics.installPipeGuards(diagnostic.record);
@@ -28,24 +28,37 @@ if(!args.includes("--managed-client")){
   lifecycle.launch({...options(),bootstrapPid:process.pid}).then(()=>app.exit(0)).catch(error=>{diagnostic.record("client_launch_failed",{error});console.error(error.message);app.exit(1);});
 }else if(!app.requestSingleInstanceLock())app.exit(0);
 else{
-  let window,tray,quitting=false,exiting=false,heartbeat,pollTimer,startupChanging=false,backendReady=false,startupFailure=false;const healthyRoles=new Set();
+  let window,tray,quitting=false,exiting=false,heartbeat,pollTimer,heartbeatPending=false,startupChanging=false,backendReady=false,startupFailure=false;const healthyRoles=new Set();
   const agentClient=require("../src/pro/agent-client.cjs"),statusPending=new Map(),seenAdmission=new Set();
   let prompting=false;
-  if(process.platform==="win32")app.setAppUserModelId("rororo.ssh-relay.pro.5.5");
-  if(process.platform==="linux"){app.setDesktopName("ssh-relay-pro-5.5.desktop");app.commandLine.appendSwitch("class","ssh-relay-pro");}
+  if(process.platform==="win32")app.setAppUserModelId("rororo.ssh-relay.pro.5.7");
+  if(process.platform==="linux"){app.setDesktopName("ssh-relay-pro-5.7.desktop");app.commandLine.appendSwitch("class","ssh-relay-pro");}
   app.on("second-instance",()=>show());
   function roleDirectory(role){return path.join(profile,role);}
   async function ensure(role){return agentClient.ensureAgent({dir:roleDirectory(role),role,allowCloudSelfTest:args.includes("--allow-cloud-self-test")});}
-  function request(role,route,body){return agentClient.request(roleDirectory(role),route,body,body===undefined?{timeoutMs:5000}:{});}
+  function hasBackend(role){return fs.existsSync(path.join(roleDirectory(role),"agent-runtime.json"));}
+  async function request(role,route,body){
+    if(!hasBackend(role)){
+      if(route==="/status")return require("./role-state.cjs").localStatus(profile,role);
+      if(route==="/logs"){const {tailEvents}=require("../src/pro/log-tail.cjs");return {events:[...tailEvents(path.join(roleDirectory(role),"agent-events.jsonl")),...tailEvents(path.join(roleDirectory(role),"guardian-events.jsonl"))]};}
+      if(route==="/logs/clear")return require("../src/pro/manual-logs.cjs").clearLogs(roleDirectory(role));
+      await ensure(role);
+    }
+    return agentClient.request(roleDirectory(role),route,body,body===undefined?{timeoutMs:5000}:{});
+  }
   function statusRequest(role){
-    if(!backendReady)return Promise.reject(Error("客户端正在迁移并启动连接服务"));
+    if(!backendReady)return Promise.resolve(require("./role-state.cjs").localStatus(profile,role));
     if(!statusPending.has(role))statusPending.set(role,(async()=>{
-      try{const result=await request(role,"/status");healthyRoles.add(role);if(startupFailure&&healthyRoles.size===2){startupFailure=false;notice("连接服务已就绪");diagnostic.record("backend_recovered",{});}return result;}catch (error) { healthyRoles.delete(role);require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:39});await ensure(role);return request(role,"/status");}
+      try{const result=await request(role,"/status");if(result.initializing)healthyRoles.delete(role);else healthyRoles.add(role);if(startupFailure&&healthyRoles.size===2){startupFailure=false;notice("连接服务已就绪");diagnostic.record("backend_ready",{});}return result;}
+      catch(error){healthyRoles.delete(role);diagnostic.record("status_request_failed",{role,error});return {...require("./role-state.cjs").localStatus(profile,role),state:"service_failed",initializing:false,serviceError:error.message};}
     })().finally(()=>statusPending.delete(role)));
     return statusPending.get(role);
   }
+  process.on("relay-diagnostic-fault",error=>notice("日志写入失败，正在使用备用记录渠道："+error.message));
+  process.on("relay-diagnostic-retention",()=>notice("日志归档超过空间预算；已保留全部记录，请导出归档。"));
+  process.on("relay-unexpected-error",error=>notice("发生未预期错误，已记录："+error.message));
   function show(){if(!window||window.isDestroyed())createWindow();if(window.isMinimized())window.restore();window.show();window.focus();}
-  function notice(message){window?.webContents.send("relay-notice",message);}
+  function notice(message){if(window&&!window.isDestroyed()&&!window.webContents.isDestroyed())window.webContents.send("relay-notice",message);}
   function createWindow(){
     if(quitting)return;
     window=new BrowserWindow({show:false,backgroundColor:"#f1f5fa",width:1180,height:850,minWidth:860,minHeight:650,title:"SSH Relay Pro "+displayVersion,icon:path.join(root,"assets/relay.ico"),
@@ -54,11 +67,9 @@ else{
     window.on("unresponsive",()=>diagnostic.record("window_unresponsive",{}));
     window.on("responsive",()=>diagnostic.record("window_responsive",{}));
     window.webContents.on("did-finish-load",()=>diagnostic.record("window_loaded"));
-    let renderFailures=0,lastRenderFailure=0;
-    window.webContents.on("render-process-gone",(_event,details)=>{const now=Date.now();if(now-lastRenderFailure>60000)renderFailures=0;lastRenderFailure=now;renderFailures++;
-      diagnostic.record("render_process_gone",{reason:details.reason,exitCode:details.exitCode,attempt:renderFailures});
-      if(!quitting&&renderFailures<=6)setTimeout(()=>{if(window&&!window.isDestroyed()){diagnostic.record("renderer_recovery",{attempt:renderFailures});window.reload();}},Math.min(30000,500*2**(renderFailures-1)));
-      else if(!quitting)void dialog.showMessageBox(window,{type:"error",message:"界面连续崩溃，已暂停自动刷新。诊断日志已保存。"}).catch(error=>diagnostic.record("crash_notice_failed",{error}));
+    window.webContents.on("render-process-gone",(_event,details)=>{
+      diagnostic.record("render_process_gone",{reason:details.reason,exitCode:details.exitCode});
+      if(!quitting)void dialog.showMessageBox(window,{type:"error",message:"界面发生故障，诊断日志已保存。",detail:"原因："+details.reason+"；退出码："+details.exitCode}).catch(error=>diagnostic.record("crash_notice_failed",{error}));
     });
     diagnostic.record("window_create",{});
     window.loadFile(path.join(__dirname,"index.html")).catch(error=>diagnostic.record("window_load_failed",{error}));
@@ -80,12 +91,12 @@ else{
     tray.setContextMenu(Menu.buildFromTemplate([{label:"打开客户端",click:show},{label:"重连已启用电脑",click:async()=>{notice("正在重新连接…");try{await request("near","/retry",{});notice("重连请求已提交");}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:73});notice(error.message);}}},{type:"separator"},{id:"tray-exit",label:"退出（关闭全部连接和进程）",click:()=>void trayExit()}]));tray.on("click",show);
   }
   const validSender=event=>event.sender===window?.webContents;
-  ipcMain.on("renderer-diagnostic",(event,value)=>{if(!validSender(event))return;if(!value||!["renderer_error","renderer_rejection","renderer_resource_error"].includes(value.event))return;diagnostic.record(value.event,{message:String(value.message||"").slice(0,3072),stack:String(value.stack||"").slice(0,6144),line:Number(value.line)||0,column:Number(value.column)||0});});
-  const routes=new Set(["/status","/logs","/logs/clear","/pair/create","/pair/current","/pair/cancel","/pair/connect","/settings","/device","/controller","/unpair","/retry","/connection/decision"]);
+  ipcMain.on("renderer-diagnostic",(event,value)=>{if(!validSender(event))return;if(!value||!["renderer_error","renderer_rejection","renderer_resource_error"].includes(value.event))return;diagnostic.record(value.event,{message:String(value.message||""),stack:String(value.stack||""),line:Number(value.line)||0,column:Number(value.column)||0});});
+  const routes=new Set(["/status","/logs","/logs/clear","/pair/create","/pair/current","/pair/cancel","/pair/connect","/settings","/device","/controller","/unpair","/retry","/connection/decision","/service/start"]);
   ipcMain.handle("relay",async(event,role,route,body)=>{
     if(!validSender(event)||!["near","far"].includes(role)||!routes.has(route)||exiting)throw Error("Invalid UI request");
-    if(!backendReady)throw Error("客户端正在准备，请稍候");
-    const value=route==="/status"?await statusRequest(role):await request(role,route,body);
+    if(!backendReady&&route!=="/status")throw Error("客户端正在准备，请稍候");
+    const value=route==="/service/start"?(await ensure(role),await statusRequest(role)):route==="/status"?await statusRequest(role):await request(role,route,body);
     if(role==="far"&&route==="/status")void checkAdmission(value);return value;
   });
   ipcMain.handle("relay-batch",async(event,role,action,ids)=>{
@@ -100,7 +111,7 @@ else{
     }));return {results,succeeded:results.filter(r=>r.ok).length,failed:results.filter(r=>!r.ok).length};
   });
   ipcMain.handle("pair-copy",async(event,code)=>{
-    if(!validSender(event)||!/^55-\w{10}-\w{10}$/.test(code))throw Error("请先生成配对码");
+    if(!validSender(event)||!/^57-\w{10}-\w{10}$/.test(code))throw Error("请先生成配对码");
     clipboard.writeText(code);return true;
   });
   ipcMain.handle("startup-status",event=>{if(!validSender(event))throw Error("Invalid sender");return startup.statusAsync(options());});
@@ -128,18 +139,22 @@ else{
   app.on("window-all-closed",()=>{if(!quitting&&!window)createWindow();});
   app.whenReady().then(async()=>{
     folder(profile);
-    await require("./runtime-image-labels.cjs").prepareRuntimeImages(diagnostic.record);
+
     for(const role of ["near","far"]){const dir=folder(roleDirectory(role));write(path.join(dir,"client-owner.json"),{profile});if(!fs.existsSync(path.join(dir,"settings.json")))write(path.join(dir,"settings.json"),{enabled:false,autoConnect:true,label:os.hostname(),defaultDevice:null});}
-    createWindow();createTray();
+    createWindow();
+    void require("../src/pro/os-version.cjs").prepareSystemVersion().catch(error=>diagnostic.record("system_metadata_failed",{error}));
+    try{createTray();}catch(error){diagnostic.record("tray_create_failed",{error});notice("托盘创建失败："+error.message);}
     const beat=async()=>{
-      if(quitting||exiting)return;
+      if(quitting||exiting||heartbeatPending)return;
+      heartbeatPending=true;
       try{await lifecycle.command(profile,"heartbeat",{pid:process.pid});}
       catch (caughtFailure) { require('../src/pro/runtime-log.cjs').captureCaught(caughtFailure,{component:'main.cjs',line:130});try{await lifecycle.launch({...options(),adoptPid:process.pid,sessionToken:process.env.SSH_RELAY_CLIENT_SESSION});}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:130});diagnostic.record("client_guardian_recovery_failed",{error});}}
+      finally{heartbeatPending=false;}
     };
-    await beat();heartbeat=setInterval(()=>void beat(),2000);
-    try{diagnostic.record("backend_prepare_begin",{});await startup.prepareClientProfile(options());diagnostic.record("backend_prepare_end",{});backendReady=true;await Promise.all(["near","far"].map(ensure));}
+    void beat();heartbeat=setInterval(()=>void beat(),2000);
+    try{diagnostic.record("backend_prepare_begin",{});await startup.prepareClientProfile(options());diagnostic.record("backend_prepare_end",{});backendReady=true;await Promise.allSettled(["near","far"].filter(role=>read(path.join(roleDirectory(role),"settings.json"),{}).enabled===true).map(async role=>{try{await ensure(role);}catch(error){startupFailure=true;diagnostic.record("role_start_failed",{role,error});notice(role+" 服务启动失败："+error.message);}}));}
     catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:134});startupFailure=true;notice("启动尚未完成："+error.message);diagnostic.record("client_backend_start_failed",{error});}
     if(!args.includes("--no-shortcuts"))try{await require("./shortcuts.cjs").install(options());}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:135});diagnostic.record("shortcut_failed",{error});}
     pollTimer=setInterval(()=>{if(!quitting&&!exiting&&window&&!window.isVisible())void statusRequest("far").then(checkAdmission).catch(error=>diagnostic.record("background_status_failed",{error}));},3000);
-  }).catch(error=>{diagnostic.record("client_start_failed",{error});app.exit(1);});
+  }).catch(error=>{diagnostic.record("client_start_failed",{error});startupFailure=true;if(!window)createWindow();notice("启动失败："+error.message);});
 }

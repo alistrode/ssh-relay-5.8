@@ -15,7 +15,7 @@ function profileFor(dir) {
 function clientActive(dir) {
   try {
     const profile = require("./release.cjs").requireProfile(profileFor(dir)), state = clientState(profile);
-    return !!(state?.desiredRunning && !state.stopping && alive(state.clientPid) && Date.now() - state.heartbeatAt < 15000);
+    return !!(state?.desiredRunning && !state.stopping && alive(state.pid) && alive(state.clientPid));
   } catch (caughtFailure) { require('./runtime-log.cjs').captureCaught(caughtFailure,{component:'client-lifecycle.cjs',line:19}); return false; }
 }
 function command(profile, action, extra = {}) {
@@ -86,6 +86,7 @@ async function processList() {
   return rows;
 }
 async function stopBackends(profile, clientPid) {
+  require("./release.cjs").requireProfile(profile);
   const normalize=s=>process.platform==="win32"?s.replace(/\\/g,"/").toLowerCase():s;
   const prefix=normalize(path.resolve(profile));
   const includeUi = !alive(clientPid);
@@ -95,7 +96,7 @@ async function stopBackends(profile, clientPid) {
     const rows=await processList(), selected=new Set();
     for(const p of rows) {
       const command=normalize(p.command);
-      if(p.pid!==process.pid && p.pid!==clientPid && command.includes(prefix) && (known.test(command) || (includeUi && /--type=|crashpad.handler/.test(command))))selected.add(p.pid);
+      if(p.pid!==process.pid && p.pid!==clientPid && command.split(/"([^"]*)"|\s+/).filter(Boolean).some(value=>{value=value.replace(/^--[^=]+=/,"");return value===prefix||value.startsWith(prefix+"/");}) && (known.test(command) || (includeUi && /--type=|crashpad.handler/.test(command))))selected.add(p.pid);
     }
     // Include the Electron-owned backend tree while preserving Chromium/UI children.
     let changed=true;

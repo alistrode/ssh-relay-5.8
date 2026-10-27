@@ -9,7 +9,7 @@ function ownerAlive(profile,state){
   try{const args=fs.readFileSync('/proc/'+state.pid+'/cmdline','utf8').split('\0');return args.includes(path.join(__dirname,'cloud.cjs'))&&args.includes(path.resolve(profile))&&base.alive(state.pid);}catch{return false;}
 }
 function clientActive(dir){
-  try{const profile=require("./release.cjs").requireProfile(profileFor(dir)),state=read(path.join(profile,"cloud-runtime.json"),null);return !!(state?.desiredRunning&&Date.now()-state.heartbeatAt<15000&&ownerAlive(profile,state));}catch{return false;}
+  try{const profile=require("./release.cjs").requireProfile(profileFor(dir)),state=read(path.join(profile,"cloud-runtime.json"),null);return !!(state?.desiredRunning&&ownerAlive(profile,state));}catch{return false;}
 }
 async function requireClient(dir){if(!clientActive(dir))throw Error("请先启动纯云端实例：Start-Cloud.sh；仅限云端下载使用");}
 module.exports={...base,cloudEdition:true,profileFor,clientActive,requireClient,ownerAlive,launch:async()=>{throw Error("纯云端版不启动图形客户端，请使用 Start-Cloud.sh");}};

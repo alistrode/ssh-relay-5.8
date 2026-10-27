@@ -12,7 +12,7 @@ export function planGroupTargets(servers, resolve) {
     names.add(alias);
     let config;
     try { config = resolve(name); } catch { continue; }
-    if (!config?.agentDeviceId) throw Error("Only 5.5 device identities are supported");
+    if (!config?.agentDeviceId) throw Error("Only 5.7 device identities are supported");
     const identity = "device:" + config.agentDeviceId;
     if (seen.has(identity))
       throw new Error("Group contains duplicate target devices");

@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSH Relay Pro 5.6</title><link rel="stylesheet" href="style.css"></head>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSH Relay Pro 5.7</title><link rel="stylesheet" href="style.css"></head>
 <body>
-<header><span class="mark">›_</span><div><h1>SSH Relay Pro <small>5.6</small></h1><p>客户端统一运行 · 双向各 20 台 · 自动恢复</p><p id="localSystem" class="system-version">正在读取本机系统版本</p></div><span id="refreshState">客户端正在启动</span></header>
+<header><span class="mark">›_</span><div><h1>SSH Relay Pro <small>5.7</small></h1><p>客户端统一运行 · 双向各 20 台 · 自动恢复</p><p id="localSystem" class="system-version">正在读取本机系统版本</p></div><span id="refreshState">客户端正在启动</span></header>
 <main>
 <section><div class="section-heading"><h2>连接其他电脑 <span id="nearCount">0 / 20 台</span></h2><button id="nearToggle" class="secondary">启用连接</button></div><p id="nearState" class="muted">正在读取状态</p>
-<div id="nearControls"><form id="pair"><label for="code">输入远端显示的配对码</label><div class="row"><input id="code" placeholder="55-XXXXXXXXXX-XXXXXXXXXX" autocomplete="off" spellcheck="false" maxlength="30"><button id="pairButton">配对并记住</button></div></form>
+<div id="nearControls"><form id="pair"><label for="code">输入远端显示的配对码</label><div class="row"><input id="code" placeholder="57-XXXXXXXXXX-XXXXXXXXXX" autocomplete="off" spellcheck="false" maxlength="30"><button id="pairButton">配对并记住</button></div></form>
 <div class="batch-toolbar" data-role="near"><div class="row"><label><input type="checkbox" data-select-all> 全选</label><span data-selection-count>已选 0 台</span><button data-clear class="secondary">取消选择</button><button data-box class="secondary" aria-pressed="false">框选</button></div><div class="row"><button data-batch="connect">连接所选</button><button data-batch="disconnect" class="secondary">断开所选</button><button data-batch="unpair" class="danger">取消所选配对</button></div><div class="row all-actions"><button data-all="connect" class="secondary">一键全部连接</button><button data-all="disconnect" class="secondary">一键全部断开</button><button data-all="unpair" class="danger-quiet">一键取消全部配对</button></div></div>
 <div id="devices" class="devices" data-device-role="near"></div><button id="retry" class="secondary">重新连接所有已启用电脑</button></div></section>
 <section><div class="section-heading"><h2>允许其他电脑连接本机 <span id="farCount">0 / 20 台</span></h2><button id="farToggle" class="secondary">允许连接本机</button></div><p id="farState" class="muted">正在读取状态</p><p class="muted">最多 20 台已授权电脑同时连接，逐台独立断开与授权。</p>

@@ -14,24 +14,25 @@ function syncDirectory(dir) {
 function durableText(file, value) {
   folder(path.dirname(file));
   const temporary = file + "." + crypto.randomUUID() + ".tmp";
-  let fd;
+  let fd, renamed=false;
   try {
     fd = fs.openSync(temporary, "wx", 0o600);
     fs.writeFileSync(fd, value);
     fs.fsyncSync(fd);
     fs.closeSync(fd); fd = undefined;
-    fs.renameSync(temporary, file);
+    fs.renameSync(temporary, file); renamed=true;
     return { fileFsync: true, directoryFsync: syncDirectory(path.dirname(file)) };
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
-    try { fs.unlinkSync(temporary); } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-store.cjs',line:27}); if (error.code !== "ENOENT") throw error; }
+    try { if(!renamed)fs.unlinkSync(temporary); } catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-store.cjs',line:27}); if (error.code !== "ENOENT") throw error; }
   }
 }
 function durableWrite(file, value) { return durableText(file, JSON.stringify(value) + "\n"); }
 function privateJSON(file, fallback) {
   let stat;
-  try { stat = fs.lstatSync(file); }
+  try { stat = fs.lstatSync(file,{throwIfNoEntry:false}); }
   catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'task-store.cjs',line:34}); if (error.code === "ENOENT") return fallback; throw error; }
+  if (!stat)return fallback;
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024)
     throw Object.assign(Error("Invalid operation record"), { code: "OPERATION_CORRUPT" });
   try { return JSON.parse(fs.readFileSync(file, "utf8")); }

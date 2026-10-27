@@ -19,3 +19,5 @@ work/
 /vendor/
 
 /run-output/
+
+node_modules

@@ -11,8 +11,9 @@ function folder(dir) {
 function read(file, fallback) {
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (e) { require('./runtime-log.cjs').captureCaught(e,{component:'store.cjs',line:14});
+  } catch (e) {
     if (e.code === "ENOENT") return fallback;
+    require('./runtime-log.cjs').captureCaught(e,{component:'store-read',file});
     throw e;
   }
 }
@@ -27,15 +28,16 @@ function write(file, value) {
     "." +
     crypto.randomBytes(4).toString("hex") +
     ".tmp";
+  let renamed=false;
   try {
     fs.writeFileSync(temp, JSON.stringify(value, null, 2) + "\n", {
       mode: 0o600,
       flag: "wx",
     });
-    fs.renameSync(temp, file);
+    fs.renameSync(temp, file); renamed=true;
   } finally {
     try {
-      fs.unlinkSync(temp);
+      if(!renamed)fs.unlinkSync(temp);
     } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'store.cjs',line:39}); }
   }
 }
@@ -62,6 +64,18 @@ function broker(value) {
   return u.href;
 }
 let cachedBoot;
+let bootPending;
+async function prepareSystemBootId(){
+  if(cachedBoot!==undefined)return cachedBoot;
+  if(process.platform!=="win32")return systemBootId();
+  if(!bootPending)bootPending=new Promise(resolve=>{
+    const script="(Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime.ToUniversalTime().Ticks";
+    require("node:child_process").execFile("powershell.exe",["-NoProfile","-NonInteractive","-EncodedCommand",Buffer.from(script,"utf16le").toString("base64")],{encoding:"utf8",windowsHide:true,timeout:15000},(error,stdout)=>{
+      if(error)require('./runtime-log.cjs').captureCaught(error,{component:'system-boot',phase:'async-startup'});
+      cachedBoot=error?null:stdout.trim();resolve(cachedBoot);
+    });
+  });return bootPending;
+}
 function systemBootId() {
   if (cachedBoot !== undefined) return cachedBoot;
   try {
@@ -140,6 +154,7 @@ function ownedProcess(pid, dir, moduleName, bootId) {
 module.exports = {
   ownedProcess,
   systemBootId,
+  prepareSystemBootId,
   folder,
   read,
   write,

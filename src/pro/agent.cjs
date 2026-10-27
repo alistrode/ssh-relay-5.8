@@ -86,6 +86,7 @@ class Agent {
   async start() {
     runtimeLog.record("agent_start_begin",{role:this.role});
     if (!clientActive(this.dir)) throw Error("必须启动客户端，禁止独立后台运行");
+    await Promise.all([require("./task-process.cjs").prepareIdentity(),require("./os-version.cjs").prepareSystemVersion()]);
     const lock = this.file("agent.lock");
     try {
       fs.mkdirSync(lock, { mode: 0o700 });
@@ -150,7 +151,7 @@ class Agent {
       token: this.apiToken,
       role: this.role,
       bootId: this.bootId,
-      apiVersion: 55,
+      apiVersion: 57,
       profileId: this.identity.deviceId,
     });
     if (this.role === "far") {
@@ -168,8 +169,8 @@ class Agent {
     if (!info) {
       const host = keyPair("relay-pro-host");
       info = {
-        version: 55,
-        applicationRelease: "5.5",
+        version: 57,
+        applicationRelease: "5.7",
         target: process.platform === "win32" ? "win10" : "linux",
         broker: this.broker,
         session: crypto.randomBytes(16).toString("hex"),
@@ -183,7 +184,7 @@ class Agent {
       text(path.join(dir, "host_key"), host.privateKey);
       write(path.join(dir, "connection-private.json"), info);
     }
-    if (info.version !== 55 || info.applicationRelease !== "5.5") throw Error("Only 5.5 far identities are supported");
+    if (info.version !== 57 || info.applicationRelease !== "5.7") throw Error("Only 5.7 far identities are supported");
     if (info.deviceId !== this.identity.deviceId)
       throw Error("Far device identity mismatch");
     info.system = systemVersion();
@@ -196,12 +197,12 @@ class Agent {
       reconnectPolicy: true,
       clientKeysFile: clients,
       connectionAdmission: true,
-      controlSubsystem: 55,
-      taskProtocol: 55,
+      controlSubsystem: 57,
+      taskProtocol: 57,
       persistentTasks: this.taskManager?.identityAvailable === true,
       taskJobs: jobCatalog(),
-      fileProtocol: this.remoteFiles ? 55 : undefined,
-      sessionProtocol: 55,
+      fileProtocol: this.remoteFiles ? 57 : undefined,
+      sessionProtocol: 57,
       persistentSessions: this.sessionManager?.identityAvailable === true,
       clockSkewCorrection: true,
     });
@@ -222,7 +223,7 @@ class Agent {
   }
   safeInfo(info) {
     if (
-      !info || info.version !== 55 || info.applicationRelease !== "5.5" ||
+      !info || info.version !== 57 || info.applicationRelease !== "5.7" ||
       !/^SHA256:[A-Za-z0-9+/]{43}$/.test(info.fingerprint) ||
       !/^[a-f0-9]{32}$/.test(info.session) ||
       !/^[a-f0-9]{64}$/.test(info.secret) ||
@@ -314,7 +315,7 @@ class Agent {
         who: {
           deviceId: this.identity.deviceId,
           publicKey: keys.publicKey,
-          applicationRelease: "5.5",
+          applicationRelease: "5.7",
           label: this.settings.label,
           hostname: os.hostname(),
           system: systemVersion(),
@@ -492,10 +493,12 @@ class Agent {
   tick() {
     if (this.stopping) return;
     if (!clientActive(this.dir)) { void this.close().then(() => process.exit(0)); return; }
-    try { this.taskManager?.tick(); }
+    try { this.taskManager?.tick({ schedule: false }); }
     catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent.cjs',line:496}); this.log("task_manager_storage_error", { code: error.code || "TASK_STORAGE_FAILED" }); }
-    try { this.sessionManager?.tick(); }
+    try { this.sessionManager?.tick({ schedule: false }); }
     catch (error) { require('./runtime-log.cjs').captureCaught(error,{component:'agent.cjs',line:498}); this.log("session_manager_storage_error", { code: error.code || "SESSION_STORAGE_FAILED" }); }
+    try { this.executionScheduler?.tick(); }
+    catch (error) { runtimeLog.record("scheduler_tick_failed", { error }); }
     if (this.role === "far") {
       if (
         this.settings.enabled &&
@@ -622,10 +625,10 @@ class Agent {
       const peer = read(path.join(t.dir, "peer.json"), null);
       if (
         !peer ||
-        peer.relayProtocol !== 55 || peer.applicationRelease !== "5.5" ||
+        peer.relayProtocol !== 57 || peer.applicationRelease !== "5.7" ||
         Date.now() - peer.receivedAt > 45000
       )
-        throw Error("Waiting for the authenticated 5.5 peer");
+        throw Error("Waiting for the authenticated 5.7 peer");
       if (!peer.admission) {
         t.state = "unsupported_remote"; t.connecting = false; t.nextAt = Date.now() + 2000; return;
       }
@@ -863,6 +866,7 @@ class Agent {
       pairing: this.offer?.active
         ? { active: true, expiresAt: this.offer.expiresAt }
         : null,
+      invitation: this.role === "far" ? this.currentPairInvitation() : null,
       workerPid: this.children.get("far")?.child.pid || null,
       admission: this.role === "far" ? this.admission || null : undefined,
       logDirectory: this.dir,
@@ -925,64 +929,72 @@ class Agent {
         }
         return value;
       };
-      if (this.role === "near" && route === "/v55/sessions" && req.method === "POST") {
+      if (this.role === "near" && route === "/v57/sessions" && req.method === "POST") {
         reply(200, this.sessions.register(data)); return;
       }
-      if (this.role === "near" && route === "/v55/sessions" && req.method === "GET") {
+      if (this.role === "near" && route === "/v57/sessions" && req.method === "GET") {
         reply(200, this.sessions.list()); return;
       }
-      if (this.role === "near" && /^\/v55\/sessions\/ssh_[a-f0-9-]+\/requests$/.test(route)) {
+      if (this.role === "near" && /^\/v57\/sessions\/ssh_[a-f0-9-]+\/requests$/.test(route)) {
         const key = route.split("/")[3];
         if (req.method === "POST") { reply(200, this.sessions.registerRequest(key, data)); return; }
         if (req.method === "GET") { reply(200, this.sessions.requests(key)); return; }
       }
-      if (this.role === "near" && req.method === "GET" && /^\/v55\/sessions\/ssh_[a-f0-9-]+$/.test(route)) {
+      if (this.role === "near" && req.method === "GET" && /^\/v57\/sessions\/ssh_[a-f0-9-]+$/.test(route)) {
         reply(200, await this.sessions.get(route.split("/")[3], { ...pageParams(),
           ...(apiUrl.searchParams.has("requestId") ? { requestId: apiUrl.searchParams.get("requestId") } : {}) })); return;
       }
-      if (this.role === "near" && req.method === "POST" && route === "/v55/operations") {
+      if (this.role === "near" && req.method === "POST" && route === "/v57/operations") {
         value = this.operations.register(data);
         reply(200, value); return;
       }
-      if (this.role === "near" && req.method === "GET" && route === "/v55/operations") {
+      if (this.role === "near" && req.method === "GET" && route === "/v57/operations") {
         value = this.operations.list({
           limit: apiUrl.searchParams.has("limit") ? Number(apiUrl.searchParams.get("limit")) : 20,
           deviceId: apiUrl.searchParams.get("deviceId") || undefined });
         reply(200, value); return;
       }
-      if (this.role === "near" && req.method === "GET" && /^\/v55\/operations\/[a-f0-9-]+$/.test(route)) {
+      if (this.role === "near" && req.method === "GET" && /^\/v57\/operations\/[a-f0-9-]+$/.test(route)) {
         value = await this.operations.get(route.split("/")[3], pageParams());
         reply(200, value); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/cancel$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v57\/operations\/[a-f0-9-]+\/cancel$/.test(route)) {
         value = await this.operations.cancel(route.split("/")[3], data);
         reply(value.state === "cancel_requested" ? 202 : 200, value); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/stage$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v57\/operations\/[a-f0-9-]+\/stage$/.test(route)) {
         reply(200, this.operations.workflows.stage(route.split("/")[3], data)); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/dispatch$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v57\/operations\/[a-f0-9-]+\/dispatch$/.test(route)) {
         reply(200, this.operations.markDispatch(route.split("/")[3])); return;
       }
-      if (this.role === "near" && req.method === "POST" && /^\/v55\/operations\/[a-f0-9-]+\/not-started$/.test(route)) {
+      if (this.role === "near" && req.method === "POST" && /^\/v57\/operations\/[a-f0-9-]+\/not-started$/.test(route)) {
         reply(200, this.operations.notStarted(route.split("/")[3])); return;
       }
-      if (req.url.startsWith("/v55/") && req.url !== "/v55/health" && this.role !== "near")
+      if (req.url.startsWith("/v57/") && req.url !== "/v57/health" && this.role !== "near")
         throw fault("ROLE_MISMATCH", "Device connection API requires a near Agent");
-      if (req.method === "GET" && req.url === "/v55/health")
-        value = { apiVersion: 55, profileId: this.identity.deviceId, bootId: this.bootId, role: this.role };
-      else if (req.method === "GET" && req.url === "/v55/devices") {
+      if (req.method === "GET" && req.url === "/v57/health")
+        value = { apiVersion: 57, profileId: this.identity.deviceId, bootId: this.bootId, role: this.role };
+      else if (req.method === "GET" && req.url === "/v57/device-snapshot") {
+        const status=this.status(),descriptors={},descriptorErrors={};
+        for(const device of status.devices)if(device.state==="online"){
+          try{descriptors[device.id]=this.connections.descriptor(device.id);}
+          catch(error){runtimeLog.record("snapshot_descriptor_failed",{deviceId:device.id,error});descriptorErrors[device.id]={code:error.code||"INVALID_DEVICE_DESCRIPTOR",message:error.message};}
+        }
+        value={ok:true,devices:status.devices.map(({connectionReport,workerPid,...device})=>device),descriptors,descriptorErrors,slots:status.deviceSlots};
+      }
+      else if (req.method === "GET" && req.url === "/v57/devices") {
         const status = this.status();
         value = { ok: true, devices: status.devices.map(({ connectionReport, workerPid, ...device }) => device),
           slots: status.deviceSlots };
-      } else if (req.method === "POST" && req.url === "/v55/connections") {
+      } else if (req.method === "POST" && req.url === "/v57/connections") {
         value = await this.connections.connect(data);
         responseCode = ["ready", "failed", "unknown"].includes(value.state) ? 200 : 202;
-      } else if (req.method === "GET" && /^\/v55\/connections\/[a-f0-9-]+$/.test(req.url)) {
+      } else if (req.method === "GET" && /^\/v57\/connections\/[a-f0-9-]+$/.test(req.url)) {
         value = this.connections.result(this.connections.get(req.url.split("/")[3]));
-      } else if (req.method === "GET" && /^\/v55\/devices\/[a-f0-9-]+\/connection$/.test(req.url)) {
+      } else if (req.method === "GET" && /^\/v57\/devices\/[a-f0-9-]+\/connection$/.test(req.url)) {
         value = this.connections.descriptor(req.url.split("/")[3]);
-      } else if (req.method === "POST" && /^\/v55\/devices\/[a-f0-9-]+\/disconnect$/.test(req.url)) {
+      } else if (req.method === "POST" && /^\/v57\/devices\/[a-f0-9-]+\/disconnect$/.test(req.url)) {
         value = this.connections.disconnect(req.url.split("/")[3], data);
       }
       else if (req.method === "GET" && req.url === "/status") value = this.status();
@@ -990,28 +1002,8 @@ class Agent {
         value = require("./manual-logs.cjs").clearLogs(this.dir);
       }
       else if (req.method === "GET" && req.url === "/logs") {
-        let rows = [];
-        for (const name of [
-          "guardian-events.jsonl.1",
-          "guardian-events.jsonl",
-          "agent-events.jsonl.1",
-          "agent-events.jsonl",
-        ])
-          try {
-            rows.push(
-              ...fs
-                .readFileSync(this.file(name), "utf8")
-                .trim()
-                .split("\n")
-                .filter(Boolean)
-                .map((x) => JSON.parse(x)),
-            );
-          } catch (caughtError) { require('./runtime-log.cjs').captureCaught(caughtError,{component:'agent.cjs',line:1009}); }
-        value = {
-          events: rows
-            .sort((a, b) => String(a.time).localeCompare(String(b.time)))
-            .slice(-300),
-        };
+        const {tailEvents}=require("./log-tail.cjs");
+        value={events:[...tailEvents(this.file("guardian-events.jsonl")),...tailEvents(this.file("agent-events.jsonl"))].sort((a,b)=>String(a.time).localeCompare(String(b.time))).slice(-300)};
       } else if (req.method === "GET" && req.url === "/pair/current")
         value = this.currentPairInvitation();
       else if (req.method === "POST" && req.url === "/pair/create")
@@ -1132,7 +1124,7 @@ class Agent {
           ? "pairing failed"
           : e.message.slice(0, 200),
       });
-      if (req.url.startsWith("/v55/")) {
+      if (req.url.startsWith("/v57/")) {
         const safe = publicFailure(e);
         const code = safe.code;
         const status = code === "DEVICE_LIMIT_REACHED" || code === "REQUEST_CONFLICT" ? 409 :
@@ -1153,6 +1145,7 @@ class Agent {
     for (const offer of this.pairOffers || []) offer.cancel();
     for (const t of this.targets.values()) this.invalidateTarget(t);
     for (const key of this.children.keys()) this.stopWorker(key);
+    await this.remoteFiles?.close();
     this.log("agent_stopped");
     await new Promise((resolve) => this.server.close(resolve));
     const own = read(path.join(this.dir, "agent.lock/owner.json"), {});
@@ -1172,7 +1165,7 @@ if (require.main === module) {
     role: arg("--role", "near"),
     dir: arg(
       "--state-dir",
-      path.join(os.homedir(), ".ssh-relay-pro-5.5", arg("--role", "near")),
+      path.join(os.homedir(), ".ssh-relay-pro-5.7", arg("--role", "near")),
     ),
     brokerUrl: arg("--broker", DEFAULT_BROKER),
     allowCloudSelfTest: args.includes("--allow-cloud-self-test"),

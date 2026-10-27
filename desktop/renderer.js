@@ -1,10 +1,12 @@
 "use strict";
-window.addEventListener("error",event=>window.relay.diagnostic({event:event.error?"renderer_error":"renderer_resource_error",message:event.error?.message||event.message||"Resource load failed",stack:event.error?.stack||"",line:event.lineno,column:event.colno}),true);
-window.addEventListener("unhandledrejection",event=>window.relay.diagnostic({event:"renderer_rejection",message:event.reason?.message||String(event.reason),stack:event.reason?.stack||""}));
-const $=id=>document.getElementById(id),states={online:"已连接",waiting:"等待连接",connecting:"正在连接",retrying:"自动重连中",disconnected:"已断开",identity_error:"设备身份或授权需要核对",starting:"正在启动",running:"运行中",remote_busy:"等待远端确认",remote_full:"远端 20 台连接已满",remote_paused:"远端已暂停此连接",slot_paused:"20 台名额已满",unsupported_remote:"远端需要升级"};
+function diagnosticStack(error,seen=new Set()){if(error==null)return "";if(typeof error!=="object")return String(error);if(seen.has(error))return "[Circular error cause]";seen.add(error);let stack=String(error.stack||error.message||error);if(error.cause!==undefined)stack+="\nCaused by: "+diagnosticStack(error.cause,seen);if(Array.isArray(error.errors))for(const nested of error.errors)stack+="\nAggregate error: "+diagnosticStack(nested,seen);return stack;}
+window.addEventListener("error",event=>window.relay.diagnostic({event:event.error?"renderer_error":"renderer_resource_error",message:event.error?.message||event.message||"Resource load failed",stack:diagnosticStack(event.error),line:event.lineno,column:event.colno}),true);
+window.addEventListener("unhandledrejection",event=>window.relay.diagnostic({event:"renderer_rejection",message:event.reason?.message||String(event.reason),stack:diagnosticStack(event.reason)}));
+const $=id=>document.getElementById(id),states={online:"已连接",waiting:"等待连接",connecting:"正在连接",retrying:"自动重连中",disconnected:"已断开",identity_error:"设备身份或授权需要核对",service_failed:"连接服务已停止，请恢复服务",starting:"正在启动",running:"运行中",remote_busy:"等待远端确认",remote_full:"远端 20 台连接已满",remote_paused:"远端已暂停此连接",slot_paused:"20 台名额已满",unsupported_remote:"远端需要升级"};
 const rows={near:new Map(),far:new Map()},selected={near:new Set(),far:new Set()},snapshots={near:null,far:null},roleErrors=new Map(),batchBusy=new Set();
-let nearEnabled=false,farEnabled=false,pairRevision=0,pairTimer,refreshTask,refreshAgain=false,refreshTimer,logsTask,logsTimer,lastStartup,admission;
+let nearEnabled=false,farEnabled=false,pairRevision=0,pairTimer,logsTask,logsTimer,lastStartup,admission;
 const text=(node,value)=>{if(node.textContent!==String(value))node.textContent=String(value);};
+function report(error,operation){window.relay.diagnostic({event:"renderer_error",message:operation+": "+(error?.message||String(error)),stack:diagnosticStack(error)});}
 function message(value,kind="info"){text($("message"),value);$("message").dataset.kind=kind;$("message").style.display="block";}
 async function action(control,fn,success="操作已完成"){
   if(control?.disabled)return;
@@ -12,7 +14,7 @@ async function action(control,fn,success="操作已完成"){
   if(control){control.disabled=true;control.dataset.busy="true";control.setAttribute("aria-busy","true");text(control,"处理中…");}
   message("正在处理…");
   try{const result=await fn();if(result!==false){message(typeof result==="string"?result:result?.message||success,result?.kind||"success");if(control){control.dataset.feedback="success";text(control,"✓ 完成");}}return result;}
-  catch(error){message("操作未完成："+error.message,"error");if(control){control.dataset.feedback="error";text(control,"重试");}}
+  catch(error){report(error,"action");message("操作未完成："+error.message,"error");if(control){control.dataset.feedback="error";text(control,"重试");}}
   finally{
     if(control){delete control.dataset.busy;control.removeAttribute("aria-busy");setTimeout(()=>{if(!control.isConnected)return;delete control.dataset.feedback;text(control,label);control.disabled=false;syncSelection("near");syncSelection("far");syncCode();},750);}
     void refresh();
@@ -65,43 +67,50 @@ function renderRows(role,status){
 async function refreshRole(role){
   const revision=pairRevision;
   try{
-    const value=await window.relay.call(role,"/status");roleErrors.delete(role);snapshots[role]=value;
+    const value=await window.relay.call(role,"/status");if(value.serviceError)roleErrors.set(role,value.serviceError);else roleErrors.delete(role);snapshots[role]=value;
     if(value.system?.displayName)text($("localSystem"),"本机 · "+value.system.displayName);
     if(role==="near"){
-      nearEnabled=value.settings.enabled;text($("nearState"),nearEnabled?"已开启 · 最多同时连接 20 台电脑":"已关闭 · 配对记录保留");
-      if(!$("nearToggle").dataset.busy&&!$("nearToggle").dataset.feedback)text($("nearToggle"),nearEnabled?"关闭连接功能":"启用连接功能");
+      nearEnabled=value.settings.enabled;text($("nearState"),value.serviceError?"连接服务已停止："+value.serviceError:nearEnabled?"已开启 · 最多同时连接 20 台电脑":"已关闭 · 配对记录保留");
+      if(!$("nearToggle").dataset.busy&&!$("nearToggle").dataset.feedback)text($("nearToggle"),value.serviceError?"恢复连接服务":nearEnabled?"关闭连接功能":"启用连接功能");
       $("nearControls").hidden=!nearEnabled;text($("nearCount"),value.devices.filter(d=>d.state==="online").length+" / 20 台已连接");
     }else{
-      farEnabled=value.settings.enabled;const invitation=await window.relay.call("far","/pair/current");if(revision===pairRevision)showPair(invitation);
+      farEnabled=value.settings.enabled;if(revision===pairRevision)showPair(value.invitation);
       text($("farState"),farEnabled?"已允许连接 · "+(states[value.state]||value.state):"已关闭 · 本机不接受连接");
-      if(!$("farToggle").dataset.busy&&!$("farToggle").dataset.feedback)text($("farToggle"),farEnabled?"关闭本机被连接":"允许连接本机");
+      if(!$("farToggle").dataset.busy&&!$("farToggle").dataset.feedback)text($("farToggle"),value.serviceError?"恢复连接服务":farEnabled?"关闭本机被连接":"允许连接本机");
       $("farControls").hidden=!farEnabled;text($("farCount"),(value.admission?.connectedControllerIds?.length||0)+" / 20 台已连接");
     }renderRows(role,value);syncCode();
-  }catch(error){roleErrors.set(role,error.message);text($(role+"State"),"正在恢复客户端连接："+error.message);}
+  }catch(error){report(error,"status:"+role);roleErrors.set(role,error.message);text($(role+"State"),"状态读取失败："+error.message);}
 }
-function refresh(){
-  refreshAgain=true;if(refreshTask)return refreshTask;clearTimeout(refreshTimer);
-  refreshTask=(async()=>{do{refreshAgain=false;await Promise.all([refreshRole("near"),refreshRole("far")]);}while(refreshAgain);text($("refreshState"),roleErrors.size?"正在准备连接":"客户端与连接服务在线");})().finally(()=>{refreshTask=null;if(!document.hidden)refreshTimer=setTimeout(refresh,3000);});return refreshTask;
+const roleRefresh={near:{task:null,timer:null,again:false},far:{task:null,timer:null,again:false}};
+function scheduleRole(role){
+  const state=roleRefresh[role];clearTimeout(state.timer);
+  if(state.task){state.again=true;return state.task;}
+  state.task=refreshRole(role).finally(()=>{
+    state.task=null;
+    text($("refreshState"),roleErrors.size?"部分状态读取失败":Object.values(snapshots).some(s=>s?.initializing)?"连接服务正在准备":Object.values(snapshots).every(s=>s&&!s.settings.enabled)?"客户端就绪 · 连接功能已关闭":"客户端与连接服务在线");
+    if(!document.hidden){const delay=state.again?0:3000;state.again=false;state.timer=setTimeout(()=>scheduleRole(role),delay);}
+  });return state.task;
 }
+function refresh(){for(const role of ["near","far"])void scheduleRole(role);}
 async function refreshLogs(){
   clearTimeout(logsTimer);if(logsTask||document.hidden||!$("logPanel").open)return;
-  logsTask=(async()=>{const results=await Promise.allSettled(["near","far"].map(async role=>{const value=await window.relay.call(role,"/logs");return value.events.map(e=>({...e,role}));}));const lines=results.flatMap((r,i)=>r.status==="fulfilled"?r.value:[{time:"",role:i?"far":"near",event:"日志暂不可读"}]);text($("logs"),lines.sort((a,b)=>a.time.localeCompare(b.time)).slice(-35).map(e=>[e.time,e.role,e.event,e.reason||""].join(" ")).join("\n"));})().finally(()=>{logsTask=null;if(!document.hidden&&$("logPanel").open)logsTimer=setTimeout(refreshLogs,5000);});return logsTask;
+  logsTask=(async()=>{const results=await Promise.allSettled(["near","far"].map(async role=>{const value=await window.relay.call(role,"/logs");return value.events.map(e=>({...e,role}));}));for(const [i,result]of results.entries())if(result.status==="rejected")report(result.reason,"logs:"+(i?"far":"near"));const lines=results.flatMap((r,i)=>r.status==="fulfilled"?r.value:[{time:"",role:i?"far":"near",event:"日志暂不可读"}]);text($("logs"),lines.sort((a,b)=>a.time.localeCompare(b.time)).slice(-35).map(e=>[e.time,e.role,e.event,e.reason||""].join(" ")).join("\n"));})().finally(()=>{logsTask=null;if(!document.hidden&&$("logPanel").open)logsTimer=setTimeout(refreshLogs,5000);});return logsTask;
 }
-function resume(){if(!document.hidden){void refresh();void refreshLogs();}else{clearTimeout(refreshTimer);clearTimeout(logsTimer);}}
+function resume(){if(!document.hidden){void refresh();void refreshLogs();}else{for(const state of Object.values(roleRefresh))clearTimeout(state.timer);clearTimeout(logsTimer);}}
 document.addEventListener("visibilitychange",resume);window.relay.onVisible(resume);window.relay.onNotice(message);
 $("logPanel").ontoggle=()=>{$("logPanel").open?refreshLogs():clearTimeout(logsTimer);};
 $("pair").onsubmit=event=>{event.preventDefault();void action($("pairButton"),async()=>{await window.relay.call("near","/pair/connect",{code:$("code").value.trim()});$("code").value="";return "配对已保存，正在自动连接";});};
 $("offer").onclick=()=>action($("offer"),async()=>{const p=await window.relay.call("far","/pair/create",{});pairRevision++;showPair(p);return "配对码已生成，有效 24 小时，请仅交给可信电脑";});
 $("copyCode").onclick=()=>action($("copyCode"),async()=>{await window.relay.copyCode($("pairCode").textContent);return "✓ 配对码已复制到剪贴板";});
 $("cancelCode").onclick=()=>action($("cancelCode"),async()=>{await window.relay.call("far","/pair/cancel",{});pairRevision++;showPair(null);return "有效配对码已取消";});
-$("nearToggle").onclick=()=>action($("nearToggle"),()=>window.relay.call("near","/settings",{enabled:!nearEnabled}),nearEnabled?"连接功能已关闭":"连接功能已开启");
-$("farToggle").onclick=()=>action($("farToggle"),()=>window.relay.call("far","/settings",{enabled:!farEnabled}),farEnabled?"本机被连接已关闭":"已允许连接本机");
+$("nearToggle").onclick=()=>action($("nearToggle"),()=>snapshots.near?.serviceError?window.relay.call("near","/service/start",{}):window.relay.call("near","/settings",{enabled:!nearEnabled}),nearEnabled?"连接功能已关闭":"连接功能已开启");
+$("farToggle").onclick=()=>action($("farToggle"),()=>snapshots.far?.serviceError?window.relay.call("far","/service/start",{}):window.relay.call("far","/settings",{enabled:!farEnabled}),farEnabled?"本机被连接已关闭":"已允许连接本机");
 $("retry").onclick=()=>action($("retry"),()=>window.relay.call("near","/retry",{}),"所有已启用电脑的重连请求已提交");
 $("clearLogs").onclick=()=>action($("clearLogs"),async()=>{await window.relay.call("near","/logs/clear",{});await window.relay.call("far","/logs/clear",{});await refreshLogs();return "连接日志已清理，任务记录保留";});
 $("export").onclick=()=>action($("export"),async()=>(await window.relay.exportLogs())?"脱敏日志已导出":"已取消导出");
 function showStartup(value){lastStartup=value;$("autoStart").checked=value.enabled;$("autoStart").disabled=!!value.effectiveUnknown;$("saveStartup").disabled=!!value.effectiveUnknown||!!$("saveStartup").dataset.busy;}
 $("saveStartup").onclick=()=>action($("saveStartup"),async()=>{try{showStartup(await window.relay.setStartup({enabled:$("autoStart").checked,mode:"client"}));return "已保存";}catch(error){if(lastStartup)showStartup(lastStartup);throw error;}});
-window.relay.startup().then(showStartup).catch(error=>message(error.message,"error"));
+window.relay.startup().then(showStartup).catch(error=>{report(error,"startup-status");message(error.message,"error");});
 for(const toolbar of document.querySelectorAll(".batch-toolbar")){
   const role=toolbar.dataset.role;
   toolbar.querySelector("[data-select-all]").onchange=event=>{selected[role]=event.target.checked?new Set(rows[role].keys()):new Set();syncSelection(role);message(event.target.checked?"已全选设备":"已取消全选");};

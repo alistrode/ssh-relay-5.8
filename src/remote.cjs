@@ -1,6 +1,6 @@
 "use strict";
 const runtimeLog=require('./pro/runtime-log.cjs').install('relay-far');
-if (require.main === module) throw Error("5.5 不支持独立后台入口，请启动 SSH Relay Pro 客户端");
+if (require.main === module) throw Error("5.7 不支持独立后台入口，请启动 SSH Relay Pro 客户端");
 
 var fs = require("node:fs");
 var path = require("node:path");
@@ -22,7 +22,7 @@ var root = path.resolve(process.argv[2] || path.join(__dirname, "config"));
 var config = JSON.parse(
   fs.readFileSync(path.join(root, "remote.json"), "utf8"),
 );
-if(config.version!==55||config.applicationRelease!=="5.5"||!config.clientKeysFile||config.connectionAdmission!==true)throw Error("Only the 5.5 authorized endpoint is supported");
+if(config.version!==57||config.applicationRelease!=="5.7"||!config.clientKeysFile||config.connectionAdmission!==true)throw Error("Only the 5.7 authorized endpoint is supported");
 function authorizedController(ctx) {
   try {
     const keys = Object.entries(JSON.parse(fs.readFileSync(config.clientKeysFile,"utf8"))).filter(([,v])=>v.enabled!==false).map(([id,v])=>({id,label:v.label,key:utils.parseKey(v.publicKey)}));
@@ -239,7 +239,7 @@ var server = new Server({ hostKeys: [hostKey] }, (client, info) => {
       session.on("shell", (accept2, reject) => canStart() ? start(accept2) : reject());
       session.on("sftp", (accept2, reject) => canStart() ? serveSftp(trackChannel(accept2()), canStart) : reject());
       session.on("subsystem", (accept2, reject2, subsystem) => {
-        if (subsystem.name !== "relay-control-5.5" || config.controlSubsystem !== 55 ||
+        if (subsystem.name !== "relay-control-5.7" || config.controlSubsystem !== 57 ||
             !process.connected || !controllerId || !canStart()) return reject2();
         const stream = trackChannel(accept2());
         const control = serveControl(stream,
@@ -272,17 +272,17 @@ server.listen({port:0,host:"127.0.0.1",exclusive:true}, () => {
       pty: false,
       forwarding: "loopback-only",
       reliableRelay: true,
-      controlSubsystem: config.controlSubsystem === 55 && process.connected ? 55 : 0,
-      persistentExec: config.taskProtocol === 55 && config.persistentTasks === true && process.connected,
-      taskProtocol: config.taskProtocol === 55 && process.connected ? 55 : 0,
+      controlSubsystem: config.controlSubsystem === 57 && process.connected ? 57 : 0,
+      persistentExec: config.taskProtocol === 57 && config.persistentTasks === true && process.connected,
+      taskProtocol: config.taskProtocol === 57 && process.connected ? 57 : 0,
       taskJobs: config.taskJobs || {},
-      fileProtocol: config.fileProtocol === 55 && process.connected ? 55 : 0,
-      sessionProtocol: config.sessionProtocol === 55 && process.connected ? 55 : 0,
-      sessionResume: config.sessionProtocol === 55 && config.persistentSessions === true && process.connected,
-      version: 55,
+      fileProtocol: config.fileProtocol === 57 && process.connected ? 57 : 0,
+      sessionProtocol: config.sessionProtocol === 57 && process.connected ? 57 : 0,
+      sessionResume: config.sessionProtocol === 57 && config.persistentSessions === true && process.connected,
+      version: 57,
     },
     fingerprint,
-    applicationRelease: "5.5",
+    applicationRelease: "5.7",
     platform: process.platform,
     system: require("./pro/os-version.cjs").systemVersion(),
     user: config.user,

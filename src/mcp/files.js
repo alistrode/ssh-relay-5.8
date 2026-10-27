@@ -16,14 +16,14 @@ export async function upload(a) {
   const s = await sftp(a.server);
   const target = await remotePath(a.server, a.remotePath);
   const conn = await connect(a.server);
-  if (!conn.config.agentDeviceId || conn.config.capabilities.fileProtocol !== 55)
-    throw Error("Only 5.5 resumable transfer endpoints are supported");
+  if (!conn.config.agentDeviceId || conn.config.capabilities.fileProtocol !== 57)
+    throw Error("Only 5.7 resumable transfer endpoints are supported");
   return uploadSnapshot(a.server, a.localPath, path.posix.join(await sftpCall(s, "realpath", path.posix.dirname(target)), path.posix.basename(target)));
 }
 export async function download(a) {
   const s = await sftp(a.server), source = await remotePath(a.server, a.remotePath), conn = await connect(a.server);
-  if (!conn.config.agentDeviceId || conn.config.capabilities.fileProtocol !== 55)
-    throw Error("Only 5.5 resumable transfer endpoints are supported");
+  if (!conn.config.agentDeviceId || conn.config.capabilities.fileProtocol !== 57)
+    throw Error("Only 5.7 resumable transfer endpoints are supported");
   return downloadSnapshot(a.server, await sftpCall(s, "realpath", source), a.localPath);
 }
 async function hash(stream) {
