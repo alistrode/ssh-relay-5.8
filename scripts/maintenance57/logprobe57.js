@@ -1,0 +1,1 @@
+(()=>{const error=new Error('relay57-manual-outer',{cause:new Error('relay57-manual-inner')});window.dispatchEvent(new ErrorEvent('error',{error,message:error.message}));window.relay.diagnostic({event:'renderer_error',message:'relay57-manual-long',stack:'x'.repeat(20000)+'relay57-long-end'});return {title:document.title,ready:document.readyState,probeReported:true}})()
