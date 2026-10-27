@@ -4,6 +4,8 @@ const {app,BrowserWindow,Tray,Menu,nativeImage,ipcMain,dialog,clipboard}=require
 const fs=require("node:fs"),path=require("node:path"),os=require("node:os"),cp=require("node:child_process");
 const {folder,read,write}=require("../src/pro/store.cjs"),lifecycle=require("../src/pro/client-lifecycle.cjs"),startup=require("../src/pro/autostart.cjs");
 const args=process.argv.slice(1),arg=(name,fallback)=>args.includes(name)?args[args.indexOf(name)+1]:fallback;
+const displayVersion=require("../src/pro/release.cjs").DISPLAY_VERSION;
+if(process.platform==="win32"&&args.includes("--disable-gpu")){app.disableHardwareAcceleration();app.commandLine.appendSwitch("disable-gpu-compositing");app.commandLine.appendSwitch("disable-direct-composition");}
 const root=path.resolve(__dirname,".."),profile=path.resolve(arg("--profile-dir",path.join(os.homedir(),".ssh-relay-pro-5.5")));
 require("../src/pro/release.cjs").requireProfile(profile,{create:true});
 const diagnostics=require("../src/pro/gui-diagnostics.cjs"),diagnosticDirectory=path.join(profile,"logs"),diagnostic=diagnostics.create(diagnosticDirectory);
@@ -26,7 +28,7 @@ if(!args.includes("--managed-client")){
   lifecycle.launch({...options(),bootstrapPid:process.pid}).then(()=>app.exit(0)).catch(error=>{diagnostic.record("client_launch_failed",{error});console.error(error.message);app.exit(1);});
 }else if(!app.requestSingleInstanceLock())app.exit(0);
 else{
-  let window,tray,quitting=false,exiting=false,heartbeat,pollTimer,startupChanging=false,backendReady=false;
+  let window,tray,quitting=false,exiting=false,heartbeat,pollTimer,startupChanging=false,backendReady=false,startupFailure=false;const healthyRoles=new Set();
   const agentClient=require("../src/pro/agent-client.cjs"),statusPending=new Map(),seenAdmission=new Set();
   let prompting=false;
   if(process.platform==="win32")app.setAppUserModelId("rororo.ssh-relay.pro.5.5");
@@ -38,7 +40,7 @@ else{
   function statusRequest(role){
     if(!backendReady)return Promise.reject(Error("客户端正在迁移并启动连接服务"));
     if(!statusPending.has(role))statusPending.set(role,(async()=>{
-      try{return await request(role,"/status");}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:39});await ensure(role);return request(role,"/status");}
+      try{const result=await request(role,"/status");healthyRoles.add(role);if(startupFailure&&healthyRoles.size===2){startupFailure=false;notice("连接服务已就绪");diagnostic.record("backend_recovered",{});}return result;}catch (error) { healthyRoles.delete(role);require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:39});await ensure(role);return request(role,"/status");}
     })().finally(()=>statusPending.delete(role)));
     return statusPending.get(role);
   }
@@ -46,8 +48,11 @@ else{
   function notice(message){window?.webContents.send("relay-notice",message);}
   function createWindow(){
     if(quitting)return;
-    window=new BrowserWindow({width:1180,height:850,minWidth:860,minHeight:650,title:"SSH Relay Pro 5.5",icon:path.join(root,"assets/relay.ico"),
+    window=new BrowserWindow({show:false,backgroundColor:"#f1f5fa",width:1180,height:850,minWidth:860,minHeight:650,title:"SSH Relay Pro "+displayVersion,icon:path.join(root,"assets/relay.ico"),
       webPreferences:{preload:path.join(__dirname,"preload.cjs"),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+    window.once("ready-to-show",()=>{diagnostic.record("window_paint_ready",{});if(!quitting){window.show();window.focus();}});
+    window.on("unresponsive",()=>diagnostic.record("window_unresponsive",{}));
+    window.on("responsive",()=>diagnostic.record("window_responsive",{}));
     window.webContents.on("did-finish-load",()=>diagnostic.record("window_loaded"));
     let renderFailures=0,lastRenderFailure=0;
     window.webContents.on("render-process-gone",(_event,details)=>{const now=Date.now();if(now-lastRenderFailure>60000)renderFailures=0;lastRenderFailure=now;renderFailures++;
@@ -71,7 +76,7 @@ else{
   }
   module.exports={trayExit};
   function createTray(){
-    tray=new Tray(nativeImage.createFromPath(path.join(root,"assets/relay-tray.png")));tray.setToolTip("SSH Relay Pro 5.5");
+    tray=new Tray(nativeImage.createFromPath(path.join(root,"assets/relay-tray.png")));tray.setToolTip("SSH Relay Pro "+displayVersion);
     tray.setContextMenu(Menu.buildFromTemplate([{label:"打开客户端",click:show},{label:"重连已启用电脑",click:async()=>{notice("正在重新连接…");try{await request("near","/retry",{});notice("重连请求已提交");}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:73});notice(error.message);}}},{type:"separator"},{id:"tray-exit",label:"退出（关闭全部连接和进程）",click:()=>void trayExit()}]));tray.on("click",show);
   }
   const validSender=event=>event.sender===window?.webContents;
@@ -133,7 +138,7 @@ else{
     };
     await beat();heartbeat=setInterval(()=>void beat(),2000);
     try{diagnostic.record("backend_prepare_begin",{});await startup.prepareClientProfile(options());diagnostic.record("backend_prepare_end",{});backendReady=true;await Promise.all(["near","far"].map(ensure));}
-    catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:134});notice("启动尚未完成："+error.message);diagnostic.record("client_backend_start_failed",{error});}
+    catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:134});startupFailure=true;notice("启动尚未完成："+error.message);diagnostic.record("client_backend_start_failed",{error});}
     if(!args.includes("--no-shortcuts"))try{await require("./shortcuts.cjs").install(options());}catch (error) { require('../src/pro/runtime-log.cjs').captureCaught(error,{component:'main.cjs',line:135});diagnostic.record("shortcut_failed",{error});}
     pollTimer=setInterval(()=>{if(!quitting&&!exiting&&window&&!window.isVisible())void statusRequest("far").then(checkAdmission).catch(error=>diagnostic.record("background_status_failed",{error}));},3000);
   }).catch(error=>{diagnostic.record("client_start_failed",{error});app.exit(1);});

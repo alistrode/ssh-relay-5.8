@@ -11,4 +11,4 @@ function requireProfile(profile,{create=false}={}){
   if(fs.existsSync(dir)&&fs.readdirSync(dir).length)throw Error("5.5 requires a fresh directory; existing branch data will not be imported or changed");
   folder(dir);write(marker,{release:RELEASE,protocol:PROTOCOL,edition:EDITION});return dir;
 }
-module.exports={RELEASE,PROTOCOL,EDITION,requireProfile};
+module.exports={RELEASE,PROTOCOL,EDITION,requireProfile,DISPLAY_VERSION:"5.6"};

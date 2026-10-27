@@ -137,12 +137,13 @@ async function startAgent(options, dir) {
     });
     child.unref();
   } finally { fs.closeSync(fd); }
-  const deadline = Date.now() + 20000;
+  const startupWaitMs=90000;
+  const deadline = Date.now() + startupWaitMs;
   while (Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 200));
     if (await check()) return;
   }
-  diagnostic.record("agent_start_timeout",{role,waitMs:20000});
+  diagnostic.record("agent_start_timeout",{role,waitMs:startupWaitMs});
   throw Error("Agent could not start; inspect the private bootstrap.log");
 }
 async function ensureAgent(options = {}) {
