@@ -27,3 +27,5 @@ description: 项目分支索引维护规范。
 - [界面请求失败边界](../../../scripts/maintenance57/ui57-errors.js)、[短时状态观察](../../../scripts/maintenance57/soak57.js)、[连续观察启动](../../../scripts/maintenance57/start-soak57.js)、[连续观察结果](../../../scripts/maintenance57/soak-status57.js)、[长堆栈与原因链手工诊断](../../../scripts/maintenance57/logprobe57.js)、[恢复临时界面显示](../../../scripts/maintenance57/restore57-ui.js)：通过已核验 5.7 客户端的本地调试接口执行；属于手工实机诊断，不自动运行。
 
 只保存经过脱敏的命令、脚本与结果。配对码、身份密钥、私人 profile、原始日志和桌面截图不上传。
+
+- 手工诊断传输入口：[MCP 单次调用](../../../scripts/maintenance57/mcp57.mjs)、[固定身份 SSH PowerShell](../../../scripts/maintenance57/remote-powershell57.cjs)、[CDP 表达式](../../../scripts/maintenance57/cdp57.cjs)、[小文件 SFTP](../../../scripts/maintenance57/sftp57.cjs)。显式指定 RELAY_AGENT、RELAY_DEVICE，RELAY_SOURCE 默认为本分支根目录。大文件由接收端自行下载；配对结果用 PRIVATE_RESULT_FILE 私下保存，不在控制台输出。
