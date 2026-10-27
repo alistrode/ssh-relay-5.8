@@ -13,7 +13,7 @@ description: 项目分支索引维护规范。
 
 每次变动分支时立刻更新主分支workspace-backup-dev所有项目分支索引地图，
 
-当前开发分支：5.7。运行源码基线 bdd0dd1；Windows 实机连接、任务取消与后续执行、原生窗口绘制、文件往返和 300 次连续状态查询已记录。完整性能计划仍有待办，见 docs/PERFORMANCE-5.7.md。源码、Windows 与 Linux Cloud 运行包统一保存在 packages/5.7，Git LFS 保存归档。
+当前规划分支：5.8，仅记录持久中继账本候选，见 [5.8 规划](../../../docs/5.8-PLAN.md)。禁止在 5.7 应用新中继。未修改运行源码或创建 5.8 运行包。以下为继承的 5.7 基线记录：运行源码基线 bdd0dd1；Windows 实机连接、任务取消与后续执行、原生窗口绘制、文件往返和 300 次连续状态查询已记录。完整性能计划仍有待办，见 docs/PERFORMANCE-5.7.md。源码、Windows 与 Linux Cloud 运行包统一保存在 packages/5.7，Git LFS 保存归档。
 
 ## 本版本有用命令与维护脚本索引
 
